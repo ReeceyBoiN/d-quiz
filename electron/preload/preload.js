@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('api', {
     start: (data) => invoke('quiz/start', data),
     score: (data) => invoke('quiz/score', data),
   },
+  files: {
+    openFromFile: () => invoke('app/open-from-file')
+  },
   backend: {
     url: () => process.env.BACKEND_URL,
     ws: () => process.env.BACKEND_WS

@@ -22,7 +22,7 @@ function createMainWindow() {
   if (isDev) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(path.join(__dirname, '../../dist/index.html'));
+    win.loadFile(path.join(__dirname, '../../build/index.html'));
   }
   return win;
 }
