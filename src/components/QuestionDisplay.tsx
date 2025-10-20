@@ -56,7 +56,18 @@ export function QuestionDisplay({
             Back
           </Button>
           
-          <Button className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md">
+          <Button
+            className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md"
+            onClick={async () => {
+              try {
+                const api = (window as any).api;
+                const res = await api?.files?.openFromFile();
+                if (!res || res.ok === false) console.error(res?.error || 'Failed to open folder');
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+          >
             Open From File
           </Button>
           

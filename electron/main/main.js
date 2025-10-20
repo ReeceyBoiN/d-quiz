@@ -1,7 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const log = require('electron-log');
 const { createMainWindow } = require('./windows');
 const { applySecurity } = require('./security');
@@ -44,10 +43,10 @@ async function boot() {
   router.mount('quiz/start', require('../modules/quizEngine').startQuiz);
   router.mount('quiz/score', require('../modules/scoring').scoreAttempt);
 
-  // Open user's Documents/PopQuiz in OS file explorer, creating it if needed
+  // Open user's Documents/Pop Quiz in OS file explorer, creating it if needed
   router.mount('app/open-from-file', async () => {
-    const docsDir = path.join(os.homedir(), 'Documents');
-    const targetDir = path.join(docsDir, 'PopQuiz');
+    const docsDir = app.getPath('documents');
+    const targetDir = path.join(docsDir, 'Pop Quiz');
     fs.mkdirSync(targetDir, { recursive: true });
     const err = await shell.openPath(targetDir);
     if (err) throw new Error(err);
