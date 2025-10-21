@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
+import { openFromFile } from "../utils/openFromFile";
 import { Eye, ArrowRight, Trophy } from "lucide-react";
 
 interface Question {
@@ -60,8 +61,7 @@ export function QuestionDisplay({
             className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md"
             onClick={async () => {
               try {
-                const api = (window as any).api;
-                const res = await api?.files?.openFromFile();
+                const res = await openFromFile();
                 if (!res || res.ok === false) console.error(res?.error || 'Failed to open folder');
               } catch (e) {
                 console.error(e);

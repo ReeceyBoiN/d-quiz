@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { openFromFile } from '../utils/openFromFile';
 
 export default function OpenFromFileButton({ className }) {
   const [loading, setLoading] = useState(false);
@@ -6,7 +7,7 @@ export default function OpenFromFileButton({ className }) {
   const handleClick = async () => {
     try {
       setLoading(true);
-      const res = await window.api?.files?.openFromFile();
+      const res = await openFromFile();
       if (!res || res.ok === false) {
         // Prefer console error over UI alert to avoid styling changes
         console.error(res?.error || 'Failed to open folder');
