@@ -66,6 +66,12 @@ export function QuestionDisplay({
     }
   }
 
+  useEffect(() => {
+    // Load the user's Documents/PopQuiz/Question Packs by default
+    loadHome();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="space-y-6 p-6">
       {/* Main Title/Brand */}
