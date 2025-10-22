@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -43,14 +43,48 @@ async function boot() {
   router.mount('quiz/start', require('../modules/quizEngine').startQuiz);
   router.mount('quiz/score', require('../modules/scoring').scoreAttempt);
 
-  // Open user's Documents/Pop Quiz in OS file explorer, creating it if needed
+  // Open user's Documents/PopQuiz, prompting via folder dialog defaulting to that path; create it if missing
   router.mount('app/open-from-file', async () => {
     const docsDir = app.getPath('documents');
-    const targetDir = path.join(docsDir, 'Pop Quiz');
+    const targetDir = path.join(docsDir, 'PopQuiz');
     fs.mkdirSync(targetDir, { recursive: true });
-    const err = await shell.openPath(targetDir);
+
+    // Let user confirm/adjust, but default to Documents/PopQuiz
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select PopQuiz folder',
+      defaultPath: targetDir,
+      properties: ['openDirectory', 'createDirectory']
+    });
+
+    const selectedPath = result.canceled || !result.filePaths?.[0] ? targetDir : result.filePaths[0];
+
+    const err = await shell.openPath(selectedPath);
     if (err) throw new Error(err);
-    return { path: targetDir };
+
+    return { ok: true, data: { path: selectedPath } };
+  });
+
+  // Return the default Question Packs directory (Documents/PopQuiz/Question Packs), creating it if needed
+  router.mount('files/question-packs-path', async () => {
+    const docsDir = app.getPath('documents');
+    const baseDir = path.join(docsDir, 'PopQuiz');
+    const qpDir = path.join(baseDir, 'Question Packs');
+    fs.mkdirSync(qpDir, { recursive: true });
+    return { ok: true, data: { path: qpDir } };
+  });
+
+  // List the contents of a directory
+  router.mount('files/list-directory', async (payload = {}) => {
+    const dirPath = payload.path;
+    if (!dirPath || typeof dirPath !== 'string') {
+      throw new Error('path is required');
+    }
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true }).map((d) => ({
+      name: d.name,
+      isDirectory: d.isDirectory(),
+      path: path.join(dirPath, d.name),
+    }));
+    return { ok: true, data: { entries } };
   });
 
   log.info('App boot complete');

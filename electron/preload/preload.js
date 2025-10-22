@@ -9,7 +9,9 @@ contextBridge.exposeInMainWorld('api', {
     score: (data) => invoke('quiz/score', data),
   },
   files: {
-    openFromFile: () => invoke('app/open-from-file')
+    openFromFile: () => invoke('app/open-from-file'),
+    questionPacksPath: () => invoke('files/question-packs-path'),
+    listDirectory: (path) => invoke('files/list-directory', { path }),
   },
   backend: {
     url: () => process.env.BACKEND_URL,

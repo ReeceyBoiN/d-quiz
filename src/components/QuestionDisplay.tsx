@@ -1,6 +1,8 @@
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { getQuestionPacksPath, listDirectory } from "../utils/fileBrowser";
 import { openFromFile } from "../utils/openFromFile";
 import { Eye, ArrowRight, Trophy } from "lucide-react";
 
@@ -33,6 +35,37 @@ export function QuestionDisplay({
 }: QuestionDisplayProps) {
   const timeProgress = (timeRemaining / question.timeLimit) * 100;
 
+  const [currentPath, setCurrentPath] = useState<string | null>(null);
+  const [entries, setEntries] = useState<{ name: string; path: string; isDirectory: boolean }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function loadHome() {
+    try {
+      setLoading(true);
+      const homePath = await getQuestionPacksPath();
+      const items = await listDirectory(homePath);
+      setCurrentPath(homePath);
+      setEntries(items);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openDir(dirPath: string) {
+    try {
+      setLoading(true);
+      const items = await listDirectory(dirPath);
+      setCurrentPath(dirPath);
+      setEntries(items);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-6 p-6">
       {/* Main Title/Brand */}
@@ -49,7 +82,7 @@ export function QuestionDisplay({
         </h2>
         
         <div className="grid grid-cols-4 gap-4 mb-8">
-          <Button className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md">
+          <Button className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md" onClick={loadHome}>
             Home
           </Button>
           
@@ -71,12 +104,12 @@ export function QuestionDisplay({
             Open From File
           </Button>
           
-          <Button className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md">
+          <Button className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md" onClick={() => currentPath ? openDir(currentPath) : loadHome()}>
             Refresh
           </Button>
         </div>
 
-        {/* File Browser Simulation */}
+        {/* File Browser */}
         <Card className="min-h-[400px] bg-[#34495e] border-[#4a5568]">
           <CardHeader>
             <CardTitle className="text-xl text-[#ecf0f1]">Select Quiz Pack File</CardTitle>
@@ -84,20 +117,15 @@ export function QuestionDisplay({
           <CardContent className="max-h-[350px] overflow-y-auto">
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
               {/* Simulate folders and files */}
-              {[
-                'Quiz Pack 1', 'Quiz Pack 2', 'Holiday Quiz', 'Sports Quiz', 
-                'Music Quiz', 'Science Quiz', 'History Quiz', 'Movie Quiz',
-                'Geography Quiz', 'Art Quiz', 'Literature Quiz', 'General Knowledge',
-                'Math Quiz', 'Chemistry Quiz', 'Physics Quiz', 'Biology Quiz',
-                'Pop Culture Quiz', 'TV Shows Quiz', 'Celebrity Quiz', 'Food Quiz',
-                'Travel Quiz', 'Nature Quiz', 'Animals Quiz', 'Space Quiz',
-                'Technology Quiz', 'Gaming Quiz', 'Fashion Quiz', 'Architecture Quiz',
-                'Philosophy Quiz', 'Psychology Quiz', 'Economics Quiz', 'Politics Quiz',
-                'Religion Quiz', 'Mythology Quiz', 'Languages Quiz', 'Cooking Quiz'
-              ].map((folderName, index) => (
+              {(entries.length === 0 && !loading) && (
+                <div className="text-center col-span-full text-[#ecf0f1] opacity-80">No items</div>
+              )}
+              {entries.map((item, index) => (
                 <div
-                  key={index}
+                  key={item.path + index}
                   className="flex flex-col items-center p-4 rounded-lg bg-[#2c3e50] hover:bg-[#233242] cursor-pointer transition-all duration-200 hover:scale-105"
+                  onClick={() => item.isDirectory && openDir(item.path)}
+                  title={item.path}
                 >
                   <svg
                     className="w-12 h-12 text-[#f39c12] mb-2"
@@ -107,7 +135,7 @@ export function QuestionDisplay({
                     <path d="M10 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2h-8l-2-2z"/>
                   </svg>
                   <span className="text-sm text-[#ecf0f1] text-center">
-                    {folderName}
+                    {item.name}
                   </span>
                 </div>
               ))}
