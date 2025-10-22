@@ -18,13 +18,18 @@ async function ensureVfsRoot(): Promise<string> {
   if (!w) throw new Error('No window');
   if (vfsRoot) return `${VFS_PREFIX}/${vfsRoot.name}`;
   if (typeof (w as any).showDirectoryPicker !== 'function') {
-    // Browser cannot pick directories; return empty root
     return `${VFS_PREFIX}/`;
   }
-  vfsRoot = await (w as any).showDirectoryPicker();
-  const rootPath = `${VFS_PREFIX}/${vfsRoot.name}`;
-  vfsMap.set(rootPath, vfsRoot);
-  return rootPath;
+  try {
+    // Some environments (e.g., cross-origin iframes) disallow file pickers
+    vfsRoot = await (w as any).showDirectoryPicker();
+    const rootPath = `${VFS_PREFIX}/${vfsRoot.name}`;
+    vfsMap.set(rootPath, vfsRoot);
+    return rootPath;
+  } catch (err) {
+    // Graceful fallback: no picker available, use empty virtual root
+    return `${VFS_PREFIX}/`;
+  }
 }
 
 export async function getQuestionPacksPath(): Promise<string> {
