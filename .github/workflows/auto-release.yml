@@ -1,0 +1,40 @@
+name: Auto-release (date-based)
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          lfs: true     # pulls LFS files too
+
+      - name: Compute version
+        id: ver
+        run: |
+          today=$(date +'%y.%m.%d')
+          count=$(git tag -l "$today*" | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "tag=$today" >> $GITHUB_OUTPUT
+          else
+            echo "tag=$today.$count" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: "Release ${{ steps.ver.outputs.tag }}"
+          body: "Automatic build from push on ${{ steps.ver.outputs.tag }}"
+          files: |
+            PopQuiz.exe
+            popquiz-0.1.0-x64.nsis.7z
+            win-unpacked/PopQuiz.exe
