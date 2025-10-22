@@ -3,8 +3,9 @@ import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { getQuestionPacksPath, listDirectory, getParentPath } from "../utils/fileBrowser";
-import { openFromFile } from "../utils/openFromFile";
 import { Eye, ArrowRight, Trophy } from "lucide-react";
+import { useRef } from "react";
+import { useQuizLoader } from "../utils/useQuizLoader";
 
 interface Question {
   id: number;
@@ -38,6 +39,8 @@ export function QuestionDisplay({
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [entries, setEntries] = useState<{ name: string; path: string; isDirectory: boolean }[]>([]);
   const [loading, setLoading] = useState(false);
+  const quizFileInputRef = useRef<HTMLInputElement | null>(null);
+  const { handleQuizFileSelection } = useQuizLoader();
 
   async function loadHome() {
     try {
@@ -104,18 +107,26 @@ export function QuestionDisplay({
           
           <Button
             className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md"
-            onClick={async () => {
-              try {
-                const res = await openFromFile();
-                if (!res || res.ok === false) console.error(res?.error || 'Failed to open folder');
-              } catch (e) {
-                console.error(e);
-              }
+            onClick={() => {
+              if (quizFileInputRef.current) quizFileInputRef.current.click();
             }}
           >
             Open From File
           </Button>
-          
+          <input
+            ref={quizFileInputRef}
+            type="file"
+            accept=".sqq,.sqn,.sqb"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.currentTarget.files && e.currentTarget.files[0];
+              if (file) {
+                handleQuizFileSelection(file);
+                e.currentTarget.value = "";
+              }
+            }}
+          />
+
           <Button className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md" onClick={() => currentPath ? openDir(currentPath) : loadHome()}>
             Refresh
           </Button>
