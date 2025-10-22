@@ -9,7 +9,7 @@ export function useQuizLoader() {
       const { loadQuizFromFile } = await import("./quizLoader");
       const quiz = await loadQuizFromFile(file);
 
-      setCurrentQuiz(quiz);
+      setCurrentQuiz({ ...quiz, isQuizPack: true });
 
       console.log("✅ Quiz loaded:", quiz);
       console.log("Game:", quiz.game);

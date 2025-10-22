@@ -19,6 +19,7 @@ import { ImageSlideshow } from "./ImageSlideshow";
 import { DisplaySettings } from "./DisplaySettings";
 import { PlayerDevicesSettings } from "./PlayerDevicesSettings";
 import { ScoresDisplay } from "./ScoresDisplay";
+import { QuizPackDisplay } from "./QuizPackDisplay";
 // BasicDisplay component removed - was not being used
 import { LeaderboardReveal } from "./LeaderboardReveal";
 import { PopoutDisplay, QuizStage } from "./PopoutDisplay";
@@ -213,6 +214,7 @@ export function QuizHost() {
   // Loaded quiz state
   const [loadedQuizQuestions, setLoadedQuizQuestions] = useState<any[]>([]);
   const [currentLoadedQuestionIndex, setCurrentLoadedQuestionIndex] = useState(0);
+  const [showQuizPackDisplay, setShowQuizPackDisplay] = useState(false);
 
   // Settings state
   const [showSettings, setShowSettings] = useState(false);
@@ -290,14 +292,19 @@ export function QuizHost() {
     }
   }, [quizzes, fastestTeamData?.team.id]);
 
-  // Handle loaded quiz - auto-open Keypad interface when quiz is loaded
+  // Handle loaded quiz - auto-open Keypad interface or QuizPackDisplay when quiz is loaded
   useEffect(() => {
     if (currentQuiz && currentQuiz.questions && currentQuiz.questions.length > 0) {
       setLoadedQuizQuestions(currentQuiz.questions);
       setCurrentLoadedQuestionIndex(0);
-      // Auto-open Keypad interface
       closeAllGameModes();
-      setShowKeypadInterface(true);
+
+      // Show QuizPackDisplay for quiz packs, otherwise show KeypadInterface
+      if (currentQuiz.isQuizPack) {
+        setShowQuizPackDisplay(true);
+      } else {
+        setShowKeypadInterface(true);
+      }
       setActiveTab("teams");
     }
   }, [currentQuiz]);
@@ -310,6 +317,7 @@ export function QuizHost() {
     setShowNearestWinsInterface(false);
     setShowWheelSpinnerInterface(false);
     setShowFastestTeamDisplay(false);
+    setShowQuizPackDisplay(false);
     setBuzzInConfig(null);
     // Reset current round scores
     setCurrentRoundPoints(null);
@@ -536,6 +544,24 @@ export function QuizHost() {
   const handleKeypadClose = () => {
     setShowKeypadInterface(false);
     setActiveTab("home"); // Return to home when keypad is closed
+  };
+
+  // Handle quiz pack display navigation
+  const handleQuizPackPrevious = () => {
+    if (currentLoadedQuestionIndex > 0) {
+      setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex - 1);
+    }
+  };
+
+  const handleQuizPackNext = () => {
+    if (currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
+      setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex + 1);
+    }
+  };
+
+  const handleQuizPackClose = () => {
+    setShowQuizPackDisplay(false);
+    setActiveTab("home");
   };
 
   // Handle buzz-in interface toggle
@@ -2960,6 +2986,22 @@ export function QuizHost() {
             soundCheck={buzzInConfig.soundCheck}
             teams={teamData}
             onEndRound={handleBuzzInEnd}
+          />
+        </div>
+      );
+    }
+
+    // Show quiz pack display in center when active
+    if (showQuizPackDisplay) {
+      return (
+        <div className="flex-1 overflow-hidden">
+          <QuizPackDisplay
+            questions={loadedQuizQuestions}
+            currentQuestionIndex={currentLoadedQuestionIndex}
+            onPreviousQuestion={handleQuizPackPrevious}
+            onNextQuestion={handleQuizPackNext}
+            onBack={handleQuizPackClose}
+            totalTeams={quizzes.length}
           />
         </div>
       );

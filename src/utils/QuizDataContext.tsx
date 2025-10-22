@@ -15,6 +15,7 @@ export interface LoadedQuiz {
   title?: string;
   gameVariation?: string;
   questions: LoadedQuizQuestion[];
+  isQuizPack?: boolean;
 }
 
 interface QuizDataContextValue {
