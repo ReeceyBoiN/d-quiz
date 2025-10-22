@@ -3,18 +3,26 @@
 function getText(el) {
   return (el && el.textContent ? el.textContent : "").trim();
 }
-function $(el, sel) {
-  return el.querySelector(sel);
+
+// Replacement for querySelector in xmldom
+function $(parent, tag) {
+  if (!parent) return null;
+  const els = parent.getElementsByTagName(tag);
+  return els && els.length ? els[0] : null;
 }
-function $all(el, sel) {
-  return Array.from(el.querySelectorAll(sel));
+
+function $all(parent, tag) {
+  if (!parent) return [];
+  const els = parent.getElementsByTagName(tag);
+  return Array.from(els);
 }
+
 function letterToIndex(letter) {
   const i = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".indexOf(letter.trim().toUpperCase());
   return i >= 0 ? i : undefined;
 }
 
-// Detect file type for images
+// Detect MIME for base64 images
 function sniffMime(bytes) {
   if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
     return "image/jpeg";
@@ -25,7 +33,7 @@ function sniffMime(bytes) {
   return "application/octet-stream";
 }
 
-// Convert Base64 to bytes
+// Convert Base64 → bytes
 function base64ToBytes(b64) {
   if (typeof atob !== "undefined") {
     const bin = atob(b64.replace(/\s+/g, ""));
@@ -38,7 +46,7 @@ function base64ToBytes(b64) {
   }
 }
 
-// Convert Base64 image to data URL
+// Convert Base64 → data URL
 function toDataUrlFromBase64(b64) {
   const bytes = base64ToBytes(b64);
   const mime = sniffMime(bytes);
@@ -51,7 +59,7 @@ function parseQuestion(qEl, roundGame) {
   const userView = getText($(qEl, "user_view"));
   const shortAns = getText($(qEl, "short_answer"));
   const longAns = getText($(qEl, "long_answer"));
-  const options = $all(qEl, "options > option").map(getText);
+  const options = $all($(qEl, "options"), "option").map(getText);
   const pictureB64 = getText($(qEl, "picture"));
 
   // Decide question type
@@ -65,7 +73,7 @@ function parseQuestion(qEl, roundGame) {
   let answerText = longAns || undefined;
   let correctIndex;
 
-  // Handle multiple choice options
+  // Handle multiple choice mapping
   if (type === "multi" && options.length) {
     if (/^[A-Za-z]$/.test(shortAns)) {
       const i = letterToIndex(shortAns);
@@ -98,52 +106,46 @@ function parseQuestion(qEl, roundGame) {
     options: options.length ? options : undefined,
     correctIndex,
     imageDataUrl,
-    meta: {
-      short_answer: shortAns || undefined,
-      user_view: userView || undefined,
-    },
+    meta: { short_answer: shortAns || undefined, user_view: userView || undefined },
   };
 }
 
-// ---------- Parse entire XML file ----------
+// ---------- Parse entire XML ----------
 function parseQuizXmlString(xml) {
   let parser;
-
   if (typeof DOMParser !== "undefined") {
-    // Browser
+    // Browser environment
     parser = new DOMParser();
   } else {
-    // Node.js environment - use xmldom
+    // Node.js – use xmldom
     const { DOMParser } = require("xmldom");
     parser = new DOMParser();
   }
 
   const doc = parser.parseFromString(xml, "application/xml");
-  const round = doc.querySelector("round");
-  if (!round) throw new Error("Invalid file: missing <round>");
+  const rounds = doc.getElementsByTagName("round");
+  if (!rounds.length) throw new Error("Invalid file: missing <round>");
+  const round = rounds[0];
 
   const game = getText($(round, "game")) || "Unknown";
   const title = getText($(round, "title")) || undefined;
   const gameVariation = getText($(round, "game_variation")) || undefined;
 
-  const qEls = $all(round, "questions > question").length
-    ? $all(round, "questions > question")
-    : $all(round, "question");
+  let qEls = $all($(round, "questions"), "question");
+  if (!qEls.length) qEls = $all(round, "question");
 
   const questions = qEls.map((q) => parseQuestion(q, game));
   return { game, title, gameVariation, questions };
 }
 
-// ---------- Load a quiz file ----------
+// ---------- Load from file ----------
 async function loadQuizFromFile(fileOrPath) {
   if (typeof File !== "undefined" && fileOrPath instanceof File) {
-    // Browser
     const xml = await fileOrPath.text();
     return parseQuizXmlString(xml);
   }
 
   if (typeof fileOrPath === "string") {
-    // Node/Electron
     const fs = require("fs/promises");
     const xml = await fs.readFile(fileOrPath, "utf-8");
     return parseQuizXmlString(xml);
@@ -152,5 +154,5 @@ async function loadQuizFromFile(fileOrPath) {
   throw new Error("Pass a File (browser) or string path (Node).");
 }
 
-// ---------- Export for Node ----------
+// ---------- Export ----------
 module.exports = { loadQuizFromFile, parseQuizXmlString };
