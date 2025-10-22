@@ -11,7 +11,6 @@
     "watch:exe": "chokidar \"src/**/*\" \"electron/**/*\" \"vite.config.ts\" \"package.json\" -c \"npm run build:exe\" --debounce 2000",
     "rebuild": "npm run build:exe",
     "dev:builder": "npm run dev && npm run rebuild"
-
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.3",
@@ -61,6 +60,7 @@
     "tailwind-merge": "*",
     "vaul": "^1.1.2",
     "ws": "^8.18.3",
+    "xmldom": "^0.6.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -90,11 +90,26 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico",
       "artifactName": "PopQuiz.exe"
     }
-  }
+  },
+  "description": "This is a code bundle for Quiz 5 - Reece - Ready. The original project is available at https://www.figma.com/design/ZLJookmFmhZlO3WJIT8zDx/Quiz-5---Reece---Ready.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ReeceyBoiN/d-quiz.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ReeceyBoiN/d-quiz/issues"
+  },
+  "homepage": "https://github.com/ReeceyBoiN/d-quiz#readme"
 }
