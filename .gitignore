@@ -1,1 +1,16 @@
-node_modules
+# Ignore Git internals
+.git/
+
+# Ignore build folders and temp files
+node_modules/
+dist/
+build/
+out/
+win-unpacked/
+
+# Ignore temporary logs and cache
+*.log
+*.tmp
+*.bak
+
+# Don't ignore .exe or archives — they're handled by Git LFS
