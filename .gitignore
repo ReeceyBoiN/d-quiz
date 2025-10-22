@@ -14,4 +14,4 @@ win-unpacked/
 *.tmp
 *.bak
 
-# Don't ignore .exe or archives — they're handled by Git LFS
+# Don't ignore .exe or archives â€” they're handled by Git LFS
