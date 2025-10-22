@@ -43,25 +43,17 @@ async function boot() {
   router.mount('quiz/start', require('../modules/quizEngine').startQuiz);
   router.mount('quiz/score', require('../modules/scoring').scoreAttempt);
 
-  // Open user's Documents/PopQuiz, prompting via folder dialog defaulting to that path; create it if missing
+  // Open user's Documents/PopQuiz/Question Packs; create it if missing
   router.mount('app/open-from-file', async () => {
     const docsDir = app.getPath('documents');
-    const targetDir = path.join(docsDir, 'PopQuiz');
-    fs.mkdirSync(targetDir, { recursive: true });
+    const baseDir = path.join(docsDir, 'PopQuiz');
+    const qpDir = path.join(baseDir, 'Question Packs');
+    fs.mkdirSync(qpDir, { recursive: true });
 
-    // Let user confirm/adjust, but default to Documents/PopQuiz
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Select PopQuiz folder',
-      defaultPath: targetDir,
-      properties: ['openDirectory', 'createDirectory']
-    });
-
-    const selectedPath = result.canceled || !result.filePaths?.[0] ? targetDir : result.filePaths[0];
-
-    const err = await shell.openPath(selectedPath);
+    const err = await shell.openPath(qpDir);
     if (err) throw new Error(err);
 
-    return { ok: true, data: { path: selectedPath } };
+    return { path: qpDir };
   });
 
   // Return the default Question Packs directory (Documents/PopQuiz/Question Packs), creating it if needed
@@ -70,7 +62,7 @@ async function boot() {
     const baseDir = path.join(docsDir, 'PopQuiz');
     const qpDir = path.join(baseDir, 'Question Packs');
     fs.mkdirSync(qpDir, { recursive: true });
-    return { ok: true, data: { path: qpDir } };
+    return { path: qpDir };
   });
 
   // List the contents of a directory
@@ -84,7 +76,7 @@ async function boot() {
       isDirectory: d.isDirectory(),
       path: path.join(dirPath, d.name),
     }));
-    return { ok: true, data: { entries } };
+    return { entries };
   });
 
   log.info('App boot complete');
