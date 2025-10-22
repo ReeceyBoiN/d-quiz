@@ -86,3 +86,43 @@ export async function listDirectory(dirPath: string): Promise<FileEntry[]> {
   });
   return entries;
 }
+
+export function getParentPath(inputPath: string): string | null {
+  if (!inputPath) return null;
+  // VFS paths: keep within vfs:/<rootName>
+  if (inputPath.startsWith(`${VFS_PREFIX}/`)) {
+    const normalized = inputPath.replace(/\\/g, '/');
+    const rootParts = normalized.split('/').slice(0, 2); // ["vfs:", "<root>"]
+    const root = rootParts.join('/');
+    const trimmed = normalized.endsWith('/') && normalized.length > root.length ? normalized.slice(0, -1) : normalized;
+    const lastSlash = trimmed.lastIndexOf('/');
+    if (lastSlash <= root.length) return null; // at root, no parent above
+    return trimmed.slice(0, lastSlash);
+  }
+
+  // Generic (Electron/OS) paths: support both Windows and POSIX
+  const normalized = inputPath.replace(/\\/g, '/');
+  // Detect Windows drive root like C:/
+  const m = normalized.match(/^([a-zA-Z]):\//);
+  const driveRoot = m ? `${m[1]}:/` : '/';
+
+  // Remove trailing slash except for root
+  const trimmed = normalized !== driveRoot && normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
+
+  // If already at root, no parent
+  if (trimmed === driveRoot || trimmed === '/' || /^[a-zA-Z]:$/.test(trimmed)) {
+    return null;
+  }
+
+  const lastSlash = trimmed.lastIndexOf('/');
+  if (lastSlash <= (m ? driveRoot.length - 1 : 0)) {
+    // No higher parent beyond root
+    return m ? driveRoot : '/';
+  }
+  const parent = trimmed.slice(0, lastSlash);
+  // Convert back to backslashes for Windows aesthetics if original used them
+  if (/^[a-zA-Z]:[\\]/.test(inputPath)) {
+    return parent.replace(/\//g, '\\');
+  }
+  return parent;
+}

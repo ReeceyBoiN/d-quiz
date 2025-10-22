@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { getQuestionPacksPath, listDirectory } from "../utils/fileBrowser";
+import { getQuestionPacksPath, listDirectory, getParentPath } from "../utils/fileBrowser";
 import { openFromFile } from "../utils/openFromFile";
 import { Eye, ArrowRight, Trophy } from "lucide-react";
 
@@ -86,7 +86,13 @@ export function QuestionDisplay({
             Home
           </Button>
           
-          <Button className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md">
+          <Button className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md" onClick={() => {
+            if (!currentPath) return;
+            const parent = getParentPath(currentPath);
+            if (parent) {
+              openDir(parent);
+            }
+          }}>
             Back
           </Button>
           
