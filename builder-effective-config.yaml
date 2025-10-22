@@ -1,0 +1,20 @@
+directories:
+  output: .
+  buildResources: build
+appId: com.reeceyboin.popquiz
+productName: PopQuiz
+copyright: Copyright © 2025 Reece N
+files:
+  - filter:
+      - electron/**/*
+      - dist/**/*
+      - package.json
+asar: true
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: PopQuiz.exe
+electronVersion: 38.3.0

@@ -8,7 +8,8 @@
     "build": "vite build",
     "build:renderer": "vite build",
     "build:exe": "npm run build:renderer && electron-builder --win portable --publish never",
-    "watch:exe": "chokidar \"src/**/*\" \"electron/**/*\" \"vite.config.ts\" \"package.json\" -c \"npm run build:exe\" --debounce 2000"
+    "watch:exe": "chokidar \"src/**/*\" \"electron/**/*\" \"vite.config.ts\" \"package.json\" -c \"npm run build:exe\" --debounce 2000",
+    "rebuild": "npm run build:exe"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.3",
@@ -66,12 +67,15 @@
     "chokidar-cli": "^3.0.0",
     "electron": "^38.3.0",
     "electron-builder": "^24.13.3",
+    "rimraf": "^6.0.1",
     "vite": "6.3.5"
   },
   "build": {
-    "appId": "com.popquiz.app",
+    "appId": "com.reeceyboin.popquiz",
     "productName": "PopQuiz",
+    "copyright": "Copyright © 2025 Reece N",
     "directories": {
+      "buildResources": "build",
       "output": "."
     },
     "files": [
@@ -84,11 +88,10 @@
       "target": [
         {
           "target": "portable",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
+      "icon": "build/icon.ico",
       "artifactName": "PopQuiz.exe"
     }
   }

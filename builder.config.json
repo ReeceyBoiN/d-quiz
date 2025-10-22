@@ -1,5 +1,5 @@
 {
-  "command": "npm run dev",
+  "command": "npm install",
   "serverUrl": "localhost:5173",
   "authenticateProxy": false,
   "commitMode": "commits"

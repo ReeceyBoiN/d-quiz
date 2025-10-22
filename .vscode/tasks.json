@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Rebuild PopQuiz.exe",
+      "type": "npm",
+      "script": "rebuild",
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}
