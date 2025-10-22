@@ -9,6 +9,15 @@ import { Switch } from "./ui/switch";
 import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
 
+interface LoadedQuestion {
+  type: string;
+  q: string;
+  options?: string[];
+  correctIndex?: number;
+  imageDataUrl?: string;
+  answerText?: string;
+}
+
 interface KeypadInterfaceProps {
   onBack: () => void;
   onHome?: () => void; // Add home navigation prop
@@ -28,16 +37,19 @@ interface KeypadInterfaceProps {
   onFastestTeamReveal?: (fastestTeam: { team: any; responseTime: number }) => void; // Callback for fastest team reveal
   triggerNextQuestion?: number; // Trigger to advance to next question (increment to trigger)
   onAnswerStatusUpdate?: (correctAnswer: string | null, questionType: string | null) => void; // Callback for answer status updates
+  loadedQuestions?: LoadedQuestion[]; // Loaded questions from .sqq file
+  currentQuestionIndex?: number; // Current question index from loaded quiz
+  onQuestionComplete?: () => void; // Callback when a question is completed
 }
 
-export function KeypadInterface({ 
-  onBack, 
-  onHome, 
-  externalWindow, 
-  onExternalDisplayUpdate, 
-  teams = [], 
-  onTeamAnswerUpdate, 
-  onTeamResponseTimeUpdate, 
+export function KeypadInterface({
+  onBack,
+  onHome,
+  externalWindow,
+  onExternalDisplayUpdate,
+  teams = [],
+  onTeamAnswerUpdate,
+  onTeamResponseTimeUpdate,
   onAwardPoints,
   onEvilModePenalty,
   currentRoundPoints,
@@ -49,7 +61,10 @@ export function KeypadInterface({
   onFastestTeamReveal,
   triggerNextQuestion = 0,
   onAnswerStatusUpdate,
-  onFastTrack
+  onFastTrack,
+  loadedQuestions = [],
+  currentQuestionIndex = 0,
+  onQuestionComplete
 }: KeypadInterfaceProps) {
   const { 
     defaultPoints, 
@@ -75,7 +90,7 @@ export function KeypadInterface({
   const [noAnswerPenalty, setNoAnswerPenalty] = useState(false);
   const [autoDisableTwoOptions, setAutoDisableTwoOptions] = useState(false);
   const [showQuestionTypes, setShowQuestionTypes] = useState(false);
-  const [currentScreen, setCurrentScreen] = useState<'config' | 'question-types' | 'letters-game' | 'multiple-choice-game' | 'numbers-game' | 'results'>('config');
+  const [currentScreen, setCurrentScreen] = useState<'config' | 'question-types' | 'letters-game' | 'multiple-choice-game' | 'numbers-game' | 'sequence-game' | 'results'>('config');
   const [selectedLetter, setSelectedLetter] = useState<string | null>(null);
   const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(1);
@@ -83,7 +98,7 @@ export function KeypadInterface({
   const [totalTimerLength, setTotalTimerLength] = useState<number>(30); // Track total timer length for progress bar
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerFinished, setTimerFinished] = useState(false);
-  const [questionType, setQuestionType] = useState<'letters' | 'multiple-choice' | 'numbers' | null>(null);
+  const [questionType, setQuestionType] = useState<'letters' | 'multiple-choice' | 'numbers' | 'sequence' | null>(null);
   
   // Add state for correct answer revelation
   const [answerRevealed, setAnswerRevealed] = useState(false);
@@ -106,6 +121,15 @@ export function KeypadInterface({
   // Numbers game state
   const [numbersAnswer, setNumbersAnswer] = useState('');
   const [numbersAnswerConfirmed, setNumbersAnswerConfirmed] = useState(false);
+
+  // Sequence game state
+  const [sequenceItems, setSequenceItems] = useState<string[]>([]);
+  const [shuffledSequence, setShuffledSequence] = useState<Array<{id: string, item: string}>>([]);
+  const [selectedSequence, setSelectedSequence] = useState<string[]>([]);
+  const [sequenceCompleted, setSequenceCompleted] = useState(false);
+
+  // Current loaded question state for displaying picture and info
+  const [currentLoadedQuestion, setCurrentLoadedQuestion] = useState<LoadedQuestion | null>(null);
   
   // Debug mode state for keypad designs
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -196,12 +220,13 @@ export function KeypadInterface({
   // Handle timer completion and update team answer statuses
   useEffect(() => {
     if (timerFinished && onAnswerStatusUpdate && currentScreen !== 'results') {
-      const correctAnswer = currentScreen === 'letters-game' ? selectedLetter : 
+      const correctAnswer = currentScreen === 'letters-game' ? selectedLetter :
                            currentScreen === 'multiple-choice-game' ? selectedAnswers.join(', ') :
-                           currentScreen === 'numbers-game' ? numbersAnswer : null;
+                           currentScreen === 'numbers-game' ? numbersAnswer :
+                           currentScreen === 'sequence-game' ? selectedSequence.join(', ') : null;
       onAnswerStatusUpdate(correctAnswer, questionType);
     }
-  }, [timerFinished, onAnswerStatusUpdate, currentScreen, selectedLetter, selectedAnswers, numbersAnswer, questionType]);
+  }, [timerFinished, onAnswerStatusUpdate, currentScreen, selectedLetter, selectedAnswers, numbersAnswer, selectedSequence, questionType]);
   
   // Reset component to initial state when component mounts
   useEffect(() => {
@@ -222,6 +247,10 @@ export function KeypadInterface({
     setIsSimulated(false);
     setNumbersAnswer('');
     setNumbersAnswerConfirmed(false);
+    setSequenceItems([]);
+    setShuffledSequence([]);
+    setSelectedSequence([]);
+    setSequenceCompleted(false);
     setShowDebugPanel(false);
     setSelectedDesign(0);
     
@@ -243,7 +272,14 @@ export function KeypadInterface({
       onTimerLockChange(false);
     }
   }, []); // Empty dependency array means this runs once on mount
-  
+
+  // Update currentLoadedQuestion when loaded questions or index changes
+  useEffect(() => {
+    if (loadedQuestions && loadedQuestions.length > 0 && currentQuestionIndex >= 0 && currentQuestionIndex < loadedQuestions.length) {
+      setCurrentLoadedQuestion(loadedQuestions[currentQuestionIndex]);
+    }
+  }, [loadedQuestions, currentQuestionIndex]);
+
   // Calculate actual results based on team answers and correct answer
   const calculateAnswerStats = useCallback(() => {
     if (!teamAnswers || Object.keys(teamAnswers).length === 0) {
@@ -327,8 +363,28 @@ export function KeypadInterface({
   }, [teamAnswers, teamAnswerTimes, teams, questionType, selectedLetter, selectedAnswers, numbersAnswer]);
 
   const handleStartRound = () => {
-    setCurrentScreen('question-types');
-    
+    // If we have loaded questions, auto-detect the question type and skip question-types screen
+    if (loadedQuestions && loadedQuestions.length > 0 && currentQuestionIndex >= 0 && currentQuestionIndex < loadedQuestions.length) {
+      const question = loadedQuestions[currentQuestionIndex];
+
+      // Auto-detect question type
+      if (question.type === 'letters') {
+        handleQuestionTypeSelect('letters');
+      } else if (question.type === 'multi') {
+        handleQuestionTypeSelect('multiple-choice');
+      } else if (question.type === 'numbers' || question.type === 'nearest') {
+        handleQuestionTypeSelect('numbers');
+      } else if (question.type === 'sequence') {
+        handleQuestionTypeSelect('sequence');
+      } else {
+        // Fallback to question-types screen if type is not recognized
+        setCurrentScreen('question-types');
+      }
+    } else {
+      // No loaded questions, show question-types screen for manual selection
+      setCurrentScreen('question-types');
+    }
+
     // Send questionWaiting to external display when starting round
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
       onExternalDisplayUpdate('questionWaiting', {
@@ -341,21 +397,36 @@ export function KeypadInterface({
     }
   };
 
-  const handleQuestionTypeSelect = (type: 'letters' | 'multiple-choice' | 'numbers') => {
+  const handleQuestionTypeSelect = (type: 'letters' | 'multiple-choice' | 'numbers' | 'sequence') => {
     setQuestionType(type);
+
+    // Setup sequence game items if it's a sequence question with loaded data
+    if (type === 'sequence' && currentLoadedQuestion?.options && currentLoadedQuestion.options.length > 0) {
+      const items = [...currentLoadedQuestion.options];
+      setSequenceItems(items);
+
+      // Shuffle items for display
+      const shuffled = items
+        .map((item, idx) => ({ id: `seq-${idx}`, item }))
+        .sort(() => Math.random() - 0.5);
+      setShuffledSequence(shuffled);
+    }
+
     if (type === 'letters') {
       setCurrentScreen('letters-game');
     } else if (type === 'multiple-choice') {
       setCurrentScreen('multiple-choice-game');
     } else if (type === 'numbers') {
       setCurrentScreen('numbers-game');
+    } else if (type === 'sequence') {
+      setCurrentScreen('sequence-game');
     }
-    
-    console.log("Starting keypad round with:", { 
-      points, 
-      speedBonus, 
-      bonusType, 
-      goWideEnabled, 
+
+    console.log("Starting keypad round with:", {
+      points,
+      speedBonus,
+      bonusType,
+      goWideEnabled,
       evilModeEnabled,
       questionType: type
     });
@@ -371,14 +442,18 @@ export function KeypadInterface({
     setSelectedAnswers([]);
     setNumbersAnswer('');
     setNumbersAnswerConfirmed(false);
+    setSequenceItems([]);
+    setShuffledSequence([]);
+    setSelectedSequence([]);
+    setSequenceCompleted(false);
     setTimerFinished(false);
     setTimerLocked(false); // Reset timer lock when going back
-    
+
     // Notify parent component about timer lock reset
     if (onTimerLockChange) {
       onTimerLockChange(false);
     }
-    
+
     setAnswerRevealed(false);
     setFastestTeamRevealed(false);
     setTeamAnswers({});
@@ -393,6 +468,31 @@ export function KeypadInterface({
     if (!numbersAnswerConfirmed) {
       setNumbersAnswer(prev => prev + digit);
     }
+  };
+
+  const handleSequenceItemClick = (itemId: string) => {
+    if (sequenceCompleted) return;
+
+    const item = shuffledSequence.find(s => s.id === itemId);
+    if (!item) return;
+
+    const newSelected = [...selectedSequence, itemId];
+    setSelectedSequence(newSelected);
+
+    if (newSelected.length === shuffledSequence.length) {
+      setSequenceCompleted(true);
+    }
+  };
+
+  const handleSequenceUndo = () => {
+    if (!sequenceCompleted) {
+      setSelectedSequence(prev => prev.slice(0, -1));
+    }
+  };
+
+  const handleSequenceReset = () => {
+    setSelectedSequence([]);
+    setSequenceCompleted(false);
   };
 
   const handleStartTimer = () => {
@@ -901,14 +1001,16 @@ export function KeypadInterface({
   // Auto-advance to results screen when timer finishes and answer is selected
   useEffect(() => {
     if (timerFinished) {
-      const hasAnswer = currentScreen === 'letters-game' 
-        ? selectedLetter 
+      const hasAnswer = currentScreen === 'letters-game'
+        ? selectedLetter
         : currentScreen === 'multiple-choice-game'
           ? selectedAnswers.length > 0
           : currentScreen === 'numbers-game'
             ? numbersAnswer && numbersAnswerConfirmed
-            : false;
-      
+            : currentScreen === 'sequence-game'
+              ? selectedSequence.length > 0
+              : false;
+
       if (hasAnswer) {
         // Auto-advance to results after a brief delay to let users see the timer finished
         const timer = setTimeout(() => {
@@ -918,7 +1020,7 @@ export function KeypadInterface({
         return () => clearTimeout(timer);
       }
     }
-  }, [timerFinished, selectedLetter, selectedAnswers, numbersAnswer, numbersAnswerConfirmed, currentScreen, handleShowResults]);
+  }, [timerFinished, selectedLetter, selectedAnswers, numbersAnswer, numbersAnswerConfirmed, selectedSequence, currentScreen, handleShowResults]);
 
   // Remove auto-reveal functionality - answers should only be revealed when manually clicked
 
@@ -1125,6 +1227,17 @@ export function KeypadInterface({
 
 
 
+        {/* Picture Display Box - Bottom Right Corner */}
+        {currentLoadedQuestion?.imageDataUrl && (
+          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ maxWidth: '200px', maxHeight: '200px' }}>
+            <img
+              src={currentLoadedQuestion.imageDataUrl}
+              alt="Question"
+              className="w-full h-full object-contain rounded"
+            />
+          </div>
+        )}
+
         {/* Start Timer Button - Fixed bottom right position */}
         {!isTimerRunning && !timerFinished && (
           <div className="fixed bottom-20 right-6 z-50">
@@ -1236,6 +1349,30 @@ export function KeypadInterface({
             >
               <Eye className="h-6 w-6" />
               REVEAL ANSWER & SHOW RESULTS
+            </Button>
+          </div>
+        )}
+
+        {/* Picture Display Box - Bottom Right Corner */}
+        {currentLoadedQuestion?.imageDataUrl && (
+          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ maxWidth: '200px', maxHeight: '200px' }}>
+            <img
+              src={currentLoadedQuestion.imageDataUrl}
+              alt="Question"
+              className="w-full h-full object-contain rounded"
+            />
+          </div>
+        )}
+
+        {/* Start Timer Button - Fixed bottom right position */}
+        {!isTimerRunning && !timerFinished && (
+          <div className="fixed bottom-20 right-6 z-50">
+            <Button
+              onClick={handleStartTimer}
+              className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
+            >
+              <Timer className="h-6 w-6" />
+              Start Timer
             </Button>
           </div>
         )}
@@ -1393,6 +1530,149 @@ export function KeypadInterface({
 
         {/* Show Results Button - Only visible after timer finishes and answer is confirmed */}
 
+        {/* Picture Display Box - Bottom Right Corner */}
+        {currentLoadedQuestion?.imageDataUrl && (
+          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ maxWidth: '200px', maxHeight: '200px' }}>
+            <img
+              src={currentLoadedQuestion.imageDataUrl}
+              alt="Question"
+              className="w-full h-full object-contain rounded"
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Sequence Game Screen
+  if (currentScreen === 'sequence-game') {
+    return (
+      <div className="h-full bg-[#2c3e50] text-[#ecf0f1] p-6 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              onClick={handleBackFromGame}
+              className="p-2 text-[#ecf0f1] hover:bg-[#4a5568]"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <h2 className="text-3xl font-semibold text-white">Question {currentQuestion}: Sequence Question</h2>
+          </div>
+        </div>
+
+        {/* Timer Progress Bar */}
+        <TimerProgressBar
+          isVisible={isTimerRunning}
+          timeRemaining={countdown || 0}
+          totalTime={totalTimerLength}
+          position="top"
+        />
+
+        {/* Sequence Game Interface */}
+        <div className="flex-1 flex flex-col items-center justify-center gap-8">
+          {/* Instructions */}
+          <div className="text-center mb-4">
+            <h3 className="text-2xl font-semibold text-white mb-2">
+              {sequenceCompleted ? '✓ Sequence Complete!' : 'Tap items in the correct order'}
+            </h3>
+            <p className="text-[#95a5a6]">
+              {sequenceCompleted
+                ? `You selected ${selectedSequence.length} items`
+                : `Select ${shuffledSequence.length} items in order (${selectedSequence.length}/${shuffledSequence.length})`}
+            </p>
+          </div>
+
+          {/* Sequence Items Grid */}
+          <div className="grid grid-cols-2 gap-6 w-full max-w-2xl">
+            {shuffledSequence.map((item, index) => {
+              const isSelected = selectedSequence.includes(item.id);
+              const position = selectedSequence.indexOf(item.id) + 1;
+
+              return (
+                <Button
+                  key={item.id}
+                  onClick={() => handleSequenceItemClick(item.id)}
+                  disabled={sequenceCompleted || (isSelected && position !== selectedSequence.length)}
+                  className={`h-32 text-lg font-bold rounded-xl transition-all duration-200 flex flex-col items-center justify-center gap-2 ${
+                    isSelected
+                      ? `bg-gradient-to-br from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg ring-2 ring-green-300`
+                      : `bg-gradient-to-br from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white shadow-lg border-2 border-blue-300 hover:scale-105`
+                  }`}
+                >
+                  <div>{item.item}</div>
+                  {isSelected && <div className="text-sm font-bold">#{position}</div>}
+                </Button>
+              );
+            })}
+          </div>
+
+          {/* Selected Sequence Preview */}
+          {selectedSequence.length > 0 && (
+            <div className="w-full max-w-2xl bg-[#34495e] rounded-lg p-4 border-2 border-[#4a5568]">
+              <h4 className="text-white font-semibold mb-3">Your Sequence:</h4>
+              <div className="flex flex-wrap gap-2">
+                {selectedSequence.map((itemId, index) => {
+                  const item = shuffledSequence.find(s => s.id === itemId);
+                  return (
+                    <div
+                      key={index}
+                      className="bg-[#3498db] text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2"
+                    >
+                      <span className="text-sm">#{index + 1}</span>
+                      <span>{item?.item}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-4">
+            {selectedSequence.length > 0 && !sequenceCompleted && (
+              <Button
+                onClick={handleSequenceUndo}
+                className="bg-[#e67e22] hover:bg-[#d35400] text-white px-6 py-3 font-semibold rounded-lg"
+              >
+                ← Undo
+              </Button>
+            )}
+            {selectedSequence.length > 0 && (
+              <Button
+                onClick={handleSequenceReset}
+                className="bg-[#c0392b] hover:bg-[#a93226] text-white px-6 py-3 font-semibold rounded-lg"
+              >
+                Reset
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Picture Display Box - Bottom Right Corner */}
+        {currentLoadedQuestion?.imageDataUrl && (
+          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ maxWidth: '200px', maxHeight: '200px' }}>
+            <img
+              src={currentLoadedQuestion.imageDataUrl}
+              alt="Question"
+              className="w-full h-full object-contain rounded"
+            />
+          </div>
+        )}
+
+        {/* Start Timer Button - Fixed bottom right position */}
+        {!isTimerRunning && !timerFinished && (
+          <div className="fixed bottom-20 right-6 z-50">
+            <Button
+              onClick={handleStartTimer}
+              className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
+            >
+              <Timer className="h-6 w-6" />
+              Start Timer
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -1446,6 +1726,16 @@ export function KeypadInterface({
               <Hash className="h-16 w-16" />
               <div className="text-2xl font-bold">Numbers Question</div>
               <div className="text-sm opacity-90">Answer with numbers 0-9</div>
+            </Button>
+
+            {/* Sequence Question */}
+            <Button
+              onClick={() => handleQuestionTypeSelect('sequence')}
+              className="flex-1 h-48 bg-[#8e44ad] hover:bg-[#7d3c98] text-white flex flex-col items-center justify-center gap-4 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
+            >
+              <RotateCcw className="h-16 w-16" />
+              <div className="text-2xl font-bold">Sequence Question</div>
+              <div className="text-sm opacity-90">Order items in sequence</div>
             </Button>
           </div>
         </div>

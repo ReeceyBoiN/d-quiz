@@ -30,6 +30,7 @@ import { TimerProgressBar } from "./TimerProgressBar";
 
 import { StoredImage, projectImageStorage } from "../utils/projectImageStorage";
 import { useSettings } from "../utils/SettingsContext";
+import { useQuizData } from "../utils/QuizDataContext";
 import { Resizable } from "re-resizable";
 import { Button } from "./ui/button";
 import { ChevronRight } from "lucide-react";
@@ -112,11 +113,11 @@ const mockParticipants: Participant[] = [
 
 export function QuizHost() {
   // Settings context
-  const { 
-    goWideEnabled, 
-    evilModeEnabled, 
+  const {
+    goWideEnabled,
+    evilModeEnabled,
     punishmentEnabled,
-    updateGoWideEnabled, 
+    updateGoWideEnabled,
     updateEvilModeEnabled,
     gameModePoints,
     defaultSpeedBonus,
@@ -126,6 +127,9 @@ export function QuizHost() {
     gameModeTimers,
     voiceCountdown
   } = useSettings();
+
+  // Quiz data context
+  const { currentQuiz, setCurrentQuiz } = useQuizData();
 
   // Current round scores (for temporary modifications during a round)
   const [currentRoundPoints, setCurrentRoundPoints] = useState<number | null>(null);
@@ -205,7 +209,11 @@ export function QuizHost() {
   const [showKeypadInterface, setShowKeypadInterface] = useState(false);
   const [keypadInstanceKey, setKeypadInstanceKey] = useState(0);
   const [keypadNextQuestionTrigger, setKeypadNextQuestionTrigger] = useState(0);
-  
+
+  // Loaded quiz state
+  const [loadedQuizQuestions, setLoadedQuizQuestions] = useState<any[]>([]);
+  const [currentLoadedQuestionIndex, setCurrentLoadedQuestionIndex] = useState(0);
+
   // Settings state
   const [showSettings, setShowSettings] = useState(false);
 
@@ -275,12 +283,24 @@ export function QuizHost() {
     if (fastestTeamData) {
       const updatedTeam = quizzes.find(quiz => quiz.id === fastestTeamData.team.id);
       if (updatedTeam) {
-        setFastestTeamData(prev => 
+        setFastestTeamData(prev =>
           prev ? { ...prev, team: updatedTeam } : null
         );
       }
     }
   }, [quizzes, fastestTeamData?.team.id]);
+
+  // Handle loaded quiz - auto-open Keypad interface when quiz is loaded
+  useEffect(() => {
+    if (currentQuiz && currentQuiz.questions && currentQuiz.questions.length > 0) {
+      setLoadedQuizQuestions(currentQuiz.questions);
+      setCurrentLoadedQuestionIndex(0);
+      // Auto-open Keypad interface
+      closeAllGameModes();
+      setShowKeypadInterface(true);
+      setActiveTab("teams");
+    }
+  }, [currentQuiz]);
 
   // Helper function to close all active game modes
   const closeAllGameModes = () => {
@@ -1206,7 +1226,7 @@ export function QuizHost() {
                   const emojis = [
                     '🎯', '🎪', '🎉', '🏆', '⭐', '💫', '🎊', '🎈',
                     '🎺', '🐼', '🎨', '🎭', '🎸', '🎲', '🎳', '🎮',
-                    '🎱', '🎰', '🎵', '🌮', '🍕', '🍦', '🍪', '🍰',
+                    '🎱', '🎰', '🎵', '🌮', '��', '🍦', '🍪', '🍰',
                     '🧁', '🍓', '🍊', '��', '🍍', '🐶', '🐱', '🐭',
                     '🐹', '🐰', '🦊', '🐻', '🐨', '🐯', '🌸', '🌺',
                     '🌻', '🌷', '🌹', '🌵', '🌲', '🌳', '🍀', '🍃',
@@ -2952,9 +2972,9 @@ export function QuizHost() {
         <div className="flex-1 relative min-h-0">
           {/* Keypad interface - always rendered when active */}
           <div className={showFastestTeamDisplay ? "invisible flex-1 overflow-hidden" : "flex-1 overflow-hidden"}>
-            <KeypadInterface 
-              key={keypadInstanceKey} 
-              onBack={handleKeypadClose} 
+            <KeypadInterface
+              key={keypadInstanceKey}
+              onBack={handleKeypadClose}
               onHome={() => setActiveTab("home")}
               externalWindow={externalWindow}
               onExternalDisplayUpdate={handleExternalDisplayUpdate}
@@ -2971,6 +2991,8 @@ export function QuizHost() {
               triggerNextQuestion={keypadNextQuestionTrigger}
               onAnswerStatusUpdate={handleTeamAnswerStatusUpdate}
               onFastTrack={handleFastTrack}
+              loadedQuestions={loadedQuizQuestions}
+              currentQuestionIndex={currentLoadedQuestionIndex}
             />
           </div>
           

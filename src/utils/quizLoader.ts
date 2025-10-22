@@ -1,7 +1,7 @@
 // Browser-only ESM quiz loader
 
 function getText(el: Element | null): string {
-  return (el && (el.textContent || "")).trim();
+  return (el?.textContent || "").trim();
 }
 
 function $(parent: Element | Document | null, tag: string): Element | null {

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode } from "react";
 
 export interface LoadedQuizQuestion {
-  type: string;
+  type: 'letters' | 'multi' | 'numbers' | 'nearest' | 'sequence' | 'buzzin' | string;
   q: string;
   answerText?: string;
   options?: string[];
