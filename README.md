@@ -9,4 +9,4 @@
 
   Run `npm run dev` to start the development server.
   
-Hate THOSE people!!!!
+  IDK what im doing lol

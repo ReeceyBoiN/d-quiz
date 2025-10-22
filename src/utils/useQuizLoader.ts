@@ -6,8 +6,7 @@ export function useQuizLoader() {
 
   const handleQuizFileSelection = useCallback(async (file: File | string) => {
     try {
-      const mod = await import("../../quizLoader.js");
-      const loadQuizFromFile = (mod as any).loadQuizFromFile as (f: File | string) => Promise<any>;
+      const { loadQuizFromFile } = await import("./quizLoader");
       const quiz = await loadQuizFromFile(file);
 
       setCurrentQuiz(quiz);
