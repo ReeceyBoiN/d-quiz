@@ -1,6 +1,6 @@
 # Ignore Git internals
 .git/
-.env/
+.env
 
 # Ignore build folders and temp files
 node_modules/
