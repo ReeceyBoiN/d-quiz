@@ -2443,7 +2443,7 @@ export function QuizHost() {
                                         {displayData.wheelSpinnerData.winner}
                                       </div>
                                       <div className="text-2xl text-gray-400">
-                                        Congratulations! 🏆
+                                        Congratulations! ���
                                       </div>
                                     </>
                                   ) : (
@@ -3341,7 +3341,7 @@ export function QuizHost() {
     // Fallback to old QuizPackDisplay for config screen
     else if (showQuizPackDisplay && !flowState.isQuestionMode) {
       return (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden h-full w-full flex">
           <QuizPackDisplay
             questions={loadedQuizQuestions}
             currentQuestionIndex={currentLoadedQuestionIndex}

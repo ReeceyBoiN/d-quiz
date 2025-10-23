@@ -568,18 +568,50 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
   }; 
 
   return (
-    <div className="h-screen w-screen bg-[#1a252f] overflow-hidden">
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        margin: 0,
+        padding: 0,
+        overflow: 'hidden',
+        backgroundColor: '#1a252f'
+      }}
+    >
       {/* Display Content Area */}
-      <div className="w-full h-full relative">
-        <div className="w-full h-full">
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%'
+        }}>
           {renderDisplayContent()}
         </div>
-        
+
         {/* Render overlays on top of base content */}
         {renderOverlays()}
-        
+
         {/* Position Watermark */}
-        <div className="absolute bottom-4 right-4 text-xs text-white/30 font-mono">
+        <div style={{
+          position: 'absolute',
+          bottom: '1rem',
+          right: '1rem',
+          fontSize: '0.75rem',
+          color: 'rgba(255,255,255,0.2)',
+          fontFamily: 'monospace'
+        }}>
           EXT-1
         </div>
       </div>
