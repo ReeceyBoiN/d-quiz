@@ -227,6 +227,23 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
   const [teamName, setTeamName] = useState<string | null>(null);
   const [welcomeTeamName, setWelcomeTeamName] = useState<string>("");
 
+  // Debug logging
+  useEffect(() => {
+    console.log('ExternalDisplayWindow mounted', {
+      displayMode,
+      isBasic: displayMode === 'basic',
+      hasBasicDisplay: typeof BasicDisplay !== 'undefined'
+    });
+  }, [displayMode]);
+
+  // Check if this is the preview/standalone version (not in Electron)
+  const isStandalone = typeof window.electron === 'undefined';
+
+  const openNewExternalWindow = () => {
+    const url = window.location.origin + window.location.pathname + '?external=1';
+    window.open(url, 'externalDisplay', 'width=1920,height=1080,scrollbars=no,resizable=yes,status=no,location=no,toolbar=no,menubar=no');
+  };
+
   // Listen for messages from parent window
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -568,20 +585,61 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
   }; 
 
   return (
-    <div className="h-screen w-screen bg-[#1a252f] overflow-hidden">
+    <div
+      className="h-screen w-screen bg-[#1a252f] overflow-hidden"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        margin: 0,
+        padding: 0,
+        backgroundColor: '#1a252f',
+        overflow: 'hidden',
+        zIndex: 99998,
+      }}
+    >
       {/* Display Content Area */}
-      <div className="w-full h-full relative">
-        <div className="w-full h-full">
+      <div className="w-full h-full relative" style={{ width: '100%', height: '100%', position: 'relative' }}>
+        <div className="w-full h-full" style={{ width: '100%', height: '100%' }}>
           {renderDisplayContent()}
         </div>
-        
+
         {/* Render overlays on top of base content */}
         {renderOverlays()}
-        
+
         {/* Position Watermark */}
-        <div className="absolute bottom-4 right-4 text-xs text-white/30 font-mono">
+        <div
+          className="absolute bottom-4 right-4 text-xs text-white/30 font-mono"
+          style={{ position: 'absolute', bottom: '1rem', right: '1rem', fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.3)', fontFamily: 'monospace' }}
+        >
           EXT-1
         </div>
+
+        {/* Preview/Standalone Mode Button - Open in New Window */}
+        {isStandalone && (
+          <button
+            onClick={openNewExternalWindow}
+            className="fixed bottom-4 left-4 px-4 py-2 bg-[#27ae60] hover:bg-[#2ecc71] text-white font-bold rounded text-sm transition-colors"
+            style={{
+              position: 'fixed',
+              bottom: '1rem',
+              left: '1rem',
+              zIndex: 99999,
+              padding: '0.5rem 1rem',
+              backgroundColor: '#27ae60',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.375rem',
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              fontWeight: 'bold'
+            }}
+          >
+            Open in New Window
+          </button>
+        )}
       </div>
     </div>
   );
