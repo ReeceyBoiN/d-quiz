@@ -2564,6 +2564,77 @@ export function QuizHost() {
     }
   };
 
+  const openExternalDisplaySimple = () => {
+    if (externalWindow && !externalWindow.closed) {
+      externalWindow.focus();
+      return;
+    }
+
+    // If window exists but is closed, clear the state
+    if (externalWindow && externalWindow.closed) {
+      setExternalWindow(null);
+      setIsExternalDisplayOpen(false);
+    }
+
+    // Build a URL that toggles the external route while preserving existing query/hash
+    try {
+      const href = window.location.href;
+      const hasQuery = href.indexOf('?') !== -1;
+      const fullUrl = href + (hasQuery ? '&' : '?') + 'external=1';
+
+      let newWindow = null;
+
+      try {
+        newWindow = window.open(fullUrl, 'externalDisplay', 'width=1920,height=1080,scrollbars=no,resizable=yes,status=no,location=no,toolbar=no,menubar=no');
+      } catch (e) {
+        newWindow = null;
+      }
+
+      // If window.open returned null (popup blocked) or failed, open about:blank and redirect it to the fullUrl
+      if (!newWindow) {
+        const blank = window.open('about:blank', 'externalDisplay', 'width=1920,height=1080,scrollbars=no,resizable=yes,status=no,location=no,toolbar=no,menubar=no');
+        if (blank) {
+          try {
+            blank.document.location.href = fullUrl;
+            newWindow = blank;
+          } catch (e) {
+            // Fallback: write a minimal HTML that redirects
+            try {
+              blank.document.write(`<!doctype html><html><head><meta charset="utf-8"></head><body><script>window.location.replace(${JSON.stringify(fullUrl)});</script></body></html>`);
+              blank.document.close();
+              newWindow = blank;
+            } catch (err) {
+              console.warn('Failed to redirect external window to SPA route', err);
+            }
+          }
+        }
+      }
+
+      if (newWindow) {
+        setExternalWindow(newWindow);
+        setIsExternalDisplayOpen(true);
+
+        // Poll for window close and cleanup state
+        const checkClosed = setInterval(() => {
+          if (newWindow.closed) {
+            clearInterval(checkClosed);
+            setExternalWindow(null);
+            setIsExternalDisplayOpen(false);
+          }
+        }, 1000);
+
+        // Give the external window a moment to initialize before sending first update
+        setTimeout(() => {
+          updateExternalDisplay(newWindow, displayMode);
+        }, 800);
+      } else {
+        console.warn('Unable to open external display window (popup blocked or unavailable).');
+      }
+    } catch (err) {
+      console.error('openExternalDisplaySimple error', err);
+    }
+  };
+
   const closeExternalDisplay = () => {
     if (externalWindow) {
       externalWindow.close();
@@ -2576,7 +2647,8 @@ export function QuizHost() {
     if (isExternalDisplayOpen && externalWindow) {
       closeExternalDisplay();
     } else {
-      openExternalDisplay();
+      // Use the simplified external display opener which loads the SPA route
+      openExternalDisplaySimple();
     }
   };
 

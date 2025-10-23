@@ -306,28 +306,18 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
       case "leaderboard-intro":
       case "leaderboard-reveal":
         return (
-          <div className="w-full h-full overflow-hidden">
-            <PopoutDisplay
-              stage={modeToRender as QuizStage}
-              onNext={() => {}}
-              onSkipTimer={() => {}}
-              leaderboardData={leaderboardData}
-              revealedTeams={revealedTeams}
-            />
-          </div>
+          <PopoutDisplay 
+            stage={modeToRender as QuizStage}
+            onNext={() => {}}
+            onSkipTimer={() => {}}
+            leaderboardData={leaderboardData}
+            revealedTeams={revealedTeams}
+          />
         );
       case "slideshow":
-        return (
-          <div className="w-full h-full overflow-hidden">
-            <ImageSlideshow images={images} interval={slideshowSpeed * 1000} />
-          </div>
-        );
+        return <ImageSlideshow images={images} interval={slideshowSpeed * 1000} />;
       case "scores":
-        return (
-          <div className="w-full h-full overflow-hidden">
-            <ScoresDisplay quizzes={quizzes} />
-          </div>
-        );
+        return <ScoresDisplay quizzes={quizzes} />;
       case "nearest-wins-question":
         return (
           <div className="h-full w-full flex items-center justify-center bg-[#2c3e50]">
@@ -420,11 +410,7 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
 
       case "basic":
       default:
-        return (
-          <div className="w-full h-full overflow-hidden">
-            <BasicDisplay />
-          </div>
-        );
+        return <BasicDisplay />;
     }
   };
 
@@ -582,50 +568,18 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
   }; 
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        margin: 0,
-        padding: 0,
-        overflow: 'hidden',
-        backgroundColor: '#1a252f'
-      }}
-    >
+    <div className="h-screen w-screen bg-[#1a252f] overflow-hidden">
       {/* Display Content Area */}
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        overflow: 'hidden'
-      }}>
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%'
-        }}>
+      <div className="w-full h-full relative">
+        <div className="w-full h-full">
           {renderDisplayContent()}
         </div>
-
+        
         {/* Render overlays on top of base content */}
         {renderOverlays()}
-
+        
         {/* Position Watermark */}
-        <div style={{
-          position: 'absolute',
-          bottom: '1rem',
-          right: '1rem',
-          fontSize: '0.75rem',
-          color: 'rgba(255,255,255,0.2)',
-          fontFamily: 'monospace'
-        }}>
+        <div className="absolute bottom-4 right-4 text-xs text-white/30 font-mono">
           EXT-1
         </div>
       </div>
