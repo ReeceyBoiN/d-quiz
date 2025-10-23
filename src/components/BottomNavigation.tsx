@@ -55,12 +55,19 @@ interface StatusBarProps {
   showNearestWinsInterface?: boolean;
   showWheelSpinnerInterface?: boolean;
   showBuzzInMode?: boolean;
+  showQuizPackDisplay?: boolean;
   onEndRound?: () => void;
   onOpenBuzzersManagement?: () => void;
+  // Quiz pack question mode button
+  onPrimaryAction?: () => void;
+  onSilentTimer?: () => void;
+  primaryButtonLabel?: string;
+  flowState?: string;
 }
 
 interface ExtendedStatusBarProps extends StatusBarProps {
   leftSidebarWidth?: number;
+  showQuizPackDisplay?: boolean;
 }
 
 interface GameModeConfigPanelProps {
@@ -330,10 +337,10 @@ function GameModeConfigPanel({
   );
 }
 
-export function StatusBar({ 
-  activeTab, 
-  onTabChange, 
-  teamCount, 
+export function StatusBar({
+  activeTab,
+  onTabChange,
+  teamCount,
   displayMode = "basic",
   onDisplayModeChange,
   onHandsetSettings,
@@ -367,8 +374,13 @@ export function StatusBar({
   showNearestWinsInterface = false,
   showWheelSpinnerInterface = false,
   showBuzzInMode = false,
+  showQuizPackDisplay = false,
   onEndRound,
-  onOpenBuzzersManagement
+  onOpenBuzzersManagement,
+  onPrimaryAction,
+  onSilentTimer,
+  primaryButtonLabel = 'Send Question',
+  flowState = 'idle'
 }: ExtendedStatusBarProps) {
   const { 
     goWideEnabled: settingsGoWide, 
@@ -394,7 +406,7 @@ export function StatusBar({
       style={{ left: `${leftSidebarWidth}px` }}
     >
       {/* END ROUND button - show when any game interface is active */}
-      {(showKeypadInterface || showBuzzInInterface || showNearestWinsInterface || showWheelSpinnerInterface || showBuzzInMode) && (
+      {(showKeypadInterface || showBuzzInInterface || showNearestWinsInterface || showWheelSpinnerInterface || showBuzzInMode || showQuizPackDisplay) && (
         <Button
           onClick={() => {
             // TODO: Add sound effect here
@@ -407,6 +419,37 @@ export function StatusBar({
         >
           END ROUND
         </Button>
+      )}
+
+      {/* Send Question button - show when in quiz pack question mode */}
+      {showQuizPackDisplay && flowState !== 'idle' && (
+        <div className="flex gap-3 mr-4">
+          <Button
+            onClick={onSilentTimer}
+            disabled={flowState !== 'sent-question' && flowState !== 'running'}
+            className={`h-8 px-3 flex items-center gap-1 text-xs font-semibold rounded transition-all ${
+              flowState !== 'sent-question' && flowState !== 'running'
+                ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                : 'bg-slate-600 hover:bg-slate-500 text-white'
+            }`}
+            title="Start timer without audio"
+          >
+            ⏭️ Silent
+          </Button>
+
+          <Button
+            onClick={onPrimaryAction}
+            className={`h-8 px-4 flex items-center gap-2 text-xs font-semibold rounded transition-all ${
+              flowState === 'idle'
+                ? 'bg-slate-500 text-slate-400 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700 text-white hover:scale-105'
+            }`}
+            disabled={flowState === 'idle'}
+            title="Press Spacebar to trigger this action"
+          >
+            {primaryButtonLabel}
+          </Button>
+        </div>
       )}
 
       {/* Dynamic game mode configuration panel */}

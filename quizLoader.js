@@ -125,17 +125,26 @@ function parseQuizXmlString(xml) {
   const doc = parser.parseFromString(xml, "application/xml");
   const rounds = doc.getElementsByTagName("round");
   if (!rounds.length) throw new Error("Invalid file: missing <round>");
-  const round = rounds[0];
 
-  const game = getText($(round, "game")) || "Unknown";
-  const title = getText($(round, "title")) || undefined;
-  const gameVariation = getText($(round, "game_variation")) || undefined;
+  // Load the first round's metadata
+  const firstRound = rounds[0];
+  const game = getText($(firstRound, "game")) || "Unknown";
+  const title = getText($(firstRound, "title")) || undefined;
+  const gameVariation = getText($(firstRound, "game_variation")) || undefined;
 
-  let qEls = $all($(round, "questions"), "question");
-  if (!qEls.length) qEls = $all(round, "question");
+  // Load ALL questions from ALL rounds
+  const allQuestions = [];
+  for (let i = 0; i < rounds.length; i++) {
+    const round = rounds[i];
+    let qEls = $all($(round, "questions"), "question");
+    if (!qEls.length) qEls = $all(round, "question");
 
-  const questions = qEls.map((q) => parseQuestion(q, game));
-  return { game, title, gameVariation, questions };
+    const roundGame = getText($(round, "game")) || game;
+    const roundQuestions = qEls.map((q) => parseQuestion(q, roundGame));
+    allQuestions.push(...roundQuestions);
+  }
+
+  return { game, title, gameVariation, questions: allQuestions };
 }
 
 // ---------- Load from file ----------
