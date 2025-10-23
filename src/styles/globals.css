@@ -350,6 +350,78 @@ html {
 }
 
 /* Countdown Timer Styles */
+
+/* External display and basic mode styles */
+.external-display-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #f1c40f; /* yellow base */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pop-quiz-wrapper {
+  position: relative;
+  width: min(80vw, 1200px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pop-quiz-card {
+  background: #f97316; /* orange */
+  padding: 4rem 6rem;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+  border: 6px solid white;
+  transform: rotate(-3deg);
+  transition: transform 0.3s ease;
+  text-align: center;
+}
+
+.pop-quiz-line {
+  font-size: clamp(3rem, 12vw, 10rem);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  margin: 0;
+  color: black;
+  text-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  line-height: 0.9;
+}
+
+.decor-emoji {
+  position: absolute;
+  font-size: 2.5rem;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.12));
+  animation: bounce 2s infinite;
+}
+
+.decor-top-left { top: -1rem; left: -1rem; font-size: 3rem; }
+.decor-top-right { top: 1.5rem; right: -2rem; font-size: 2.5rem; }
+.decor-bottom-right { bottom: 3rem; right: -3rem; font-size: 2.5rem; }
+.decor-bottom-left { bottom: -2rem; left: -2rem; font-size: 2rem; }
+.decor-mid-right { top: 50%; right: -4rem; font-size: 2rem; transform: translateY(-50%); }
+.decor-top-mid { top: -2rem; right: 30%; font-size: 2.5rem; }
+
+/* container-based falling emojis */
+.basic-emoji {
+  position: absolute;
+  top: -60px;
+  font-size: 2rem;
+  pointer-events: none;
+  z-index: 5;
+  animation: falling-emoji 8s linear forwards;
+  transform: translateX(-50%);
+}
+
+/* keep existing falling-emoji keyframes as-is */
 @layer utilities {
   /* Digital Clock Style */
   .digital-clock-container {
