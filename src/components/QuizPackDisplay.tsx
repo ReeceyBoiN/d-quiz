@@ -49,6 +49,7 @@ export function QuizPackDisplay({
   const [timerFinished, setTimerFinished] = useState(false);
   const [localPoints, setLocalPoints] = useState<number | null>(null);
   const [localSpeedBonus, setLocalSpeedBonus] = useState<number | null>(null);
+  const [autoDisableEnabled, setAutoDisableEnabled] = useState(false);
 
   const {
     defaultPoints,
@@ -179,218 +180,214 @@ export function QuizPackDisplay({
     });
   };
 
-  // Configuration Screen
+  // Configuration Screen - exact copy of KeypadInterface layout
   if (currentScreen === 'config') {
     return (
-      <div className="h-full bg-slate-700 text-slate-100 p-6 flex flex-col">
-        {/* Main Config Area - flex row */}
-        <div className="flex gap-6 flex-1 mb-6">
-          {/* Left Column - Points, Speed Bonus, Staggered */}
-          <div className="flex flex-col gap-4 w-64">
-            {/* Points */}
-            <Card className="bg-slate-600 border-slate-500">
-              <CardContent className="p-4">
-                <div className="flex flex-col items-center text-center">
-                  <div className="bg-red-600 p-2 rounded-lg mb-2">
-                    <Star className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="text-2xl font-bold text-white mb-1">{points[0]}</div>
-                  <h4 className="font-semibold mb-1 text-sm">Points</h4>
-                  <p className="text-xs text-slate-200 mb-3">
-                    Points awarded for each correct answer.
-                  </p>
-                  <Slider
-                    value={points}
-                    onValueChange={(value) => {
-                      setLocalPoints(value[0]);
-                      onPointsChange?.(value[0]);
-                    }}
-                    max={10}
-                    min={0}
-                    step={1}
-                    className="w-full"
-                  />
+    <div className="h-full bg-[#2c3e50] text-[#ecf0f1] p-6">
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        {/* Scoring Section */}
+        <div>
+          {/* Points */}
+          <Card className="bg-[#34495e] border-[#4a5568] mb-2">
+            <CardContent className="p-4">
+              <div className="flex flex-col items-center text-center">
+                <div className="bg-[#e74c3c] p-2 rounded-lg mb-2">
+                  <Star className="h-4 w-4 text-white" />
                 </div>
-              </CardContent>
-            </Card>
+                <div className="text-2xl font-bold text-white mb-1">{points[0]}</div>
+                <h4 className="font-semibold mb-1 text-sm">Points</h4>
+                <p className="text-xs text-[rgba(255,255,255,1)] mb-2">
+                  Points awarded for each correct answer.
+                </p>
+                <Slider
+                  value={points}
+                  onValueChange={(value) => {
+                    if (value[0] !== points[0] && onPointsChange) {
+                      onPointsChange(value[0]);
+                    }
+                  }}
+                  max={10}
+                  min={0}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-            {/* Speed Bonus */}
-            <Card className="bg-slate-600 border-slate-500">
-              <CardContent className="p-4">
-                <div className="flex flex-col items-center text-center">
-                  <div className="bg-red-600 p-2 rounded-lg mb-2">
-                    <Zap className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="text-2xl font-bold text-white mb-1">{speedBonus[0]}</div>
-                  <h4 className="font-semibold mb-1 text-sm">Speed Bonus</h4>
-                  <p className="text-xs text-slate-200 mb-3">
-                    Bonus points for fastest correct answering team.
-                  </p>
-                  <Slider
-                    value={speedBonus}
-                    onValueChange={(value) => {
-                      setLocalSpeedBonus(value[0]);
-                      onSpeedBonusChange?.(value[0]);
-                    }}
-                    max={10}
-                    min={0}
-                    step={1}
-                    className="w-full"
-                  />
+        {/* Speed Bonus */}
+        <div>
+          <Card className="bg-[#34495e] border-[#4a5568] mb-2">
+            <CardContent className="p-4 bg-[rgba(102,102,255,0)]">
+              <div className="flex flex-col items-center text-center">
+                <div className="bg-[#e74c3c] p-2 rounded-lg mb-2">
+                  <Zap className="h-4 w-4 text-white" />
                 </div>
-              </CardContent>
-            </Card>
+                <div className="text-2xl font-bold text-white mb-1">{speedBonus[0]}</div>
+                <h4 className="font-semibold mb-1 text-sm">Speed Bonus</h4>
+                <p className="text-xs text-[rgba(255,255,255,1)] mb-2">
+                  Bonus points for the fastest correct answering team.
+                </p>
+                <Slider
+                  value={speedBonus}
+                  onValueChange={(value) => {
+                    if (value[0] !== speedBonus[0] && onSpeedBonusChange) {
+                      onSpeedBonusChange(value[0]);
+                    }
+                  }}
+                  max={10}
+                  min={0}
+                  step={1}
+                  className="w-full"
+                />
 
-            {/* Staggered Option */}
-            <Card
-              className={`border-slate-500 transition-all cursor-pointer ${
-                staggeredEnabled ? 'bg-blue-700 border-blue-600' : 'bg-slate-500'
-              }`}
-              onClick={() => updateStaggeredEnabled(!staggeredEnabled)}
-            >
-              <CardContent className="p-4">
-                <div className="flex flex-col items-center text-center">
-                  <div className="bg-slate-600 p-2 rounded-lg mb-2">
-                    <Zap className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="flex items-center gap-1 mb-2">
+                <div
+                  className="w-full border-t border-[#4a5568] pt-[20px] mt-[8px] cursor-pointer pr-[0px] pb-[0px] pl-[0px]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateStaggeredEnabled(!staggeredEnabled);
+                  }}
+                >
+                  <div className="flex items-center gap-1 justify-center mb-1">
                     <Checkbox
                       checked={staggeredEnabled}
                       onCheckedChange={updateStaggeredEnabled}
                       className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
                       onClick={(e) => e.stopPropagation()}
                     />
-                    <h4 className="font-semibold text-sm">Staggered</h4>
+                    <h5 className="font-semibold text-xs">Staggered</h5>
                   </div>
-                  <p className="text-xs text-slate-300">
+                  <p className="text-xs text-[rgba(255,255,255,1)]">
                     Speed bonus points will scale down for slower answering teams.
                   </p>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-          {/* Right Columns - Two cards side by side */}
-          <div className="flex gap-4 flex-1">
-            {/* Left Right Card - Go Wide + Auto Disable */}
-            <Card className="bg-slate-500 border-slate-400 flex-1 flex flex-col">
-              <CardContent className="p-4 flex flex-col gap-4">
-                {/* Go Wide */}
+        {/* Go Wide */}
+        <div>
+          <Card
+            className={`border-[#4a5568] mb-2 transition-all cursor-pointer ${
+              goWideEnabled ? 'bg-[#27ae60] border-[#27ae60]' : 'bg-[#7f8c8d]'
+            }`}
+            onClick={() => updateGoWideEnabled(!goWideEnabled)}
+          >
+            <CardContent className="p-4">
+              <div className="flex flex-col items-center text-center">
+                <div className="bg-[#95a5a6] p-2 rounded-lg mb-2">
+                  <Grid3X3 className="h-4 w-4 text-white" />
+                </div>
+                <div className="flex items-center gap-1 mb-1">
+                  <Checkbox
+                    checked={goWideEnabled}
+                    onCheckedChange={updateGoWideEnabled}
+                    className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <h4 className="font-semibold text-sm">Go Wide</h4>
+                </div>
+                <p className="text-xs text-[#2c3e50] mb-3">
+                  Multiple answers for half points.
+                </p>
+
+                {/* Auto Disable Two Options Toggle */}
                 <div
-                  className={`border-slate-400 transition-all cursor-pointer rounded-lg p-3 border ${
-                    goWideEnabled ? 'bg-green-700 border-green-600' : 'bg-slate-600'
-                  }`}
-                  onClick={() => updateGoWideEnabled(!goWideEnabled)}
+                  className="w-full border-t border-[#4a5568] pt-3 cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAutoDisableEnabled(!autoDisableEnabled);
+                  }}
                 >
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-center gap-1 justify-center mb-1">
                     <Checkbox
-                      checked={goWideEnabled}
-                      onCheckedChange={updateGoWideEnabled}
-                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black mt-0.5"
+                      checked={autoDisableEnabled}
+                      onCheckedChange={setAutoDisableEnabled}
+                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
                       onClick={(e) => e.stopPropagation()}
                     />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-white">Go Wide</h4>
-                      <p className="text-xs text-slate-200">
-                        Multiple answers for half points.
-                      </p>
-                    </div>
+                    <h5 className="font-semibold text-xs">Auto Disable</h5>
                   </div>
+                  <p className="text-xs text-[#2c3e50]">
+                    Auto disable for questions with only 2 options like A or B questions.
+                  </p>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-                {/* Auto Disable */}
-                <div
-                  className="bg-slate-600 border border-slate-400 transition-all cursor-pointer rounded-lg p-3"
-                  onClick={() => {}}
-                >
-                  <div className="flex items-start gap-2">
-                    <Checkbox
-                      checked={false}
-                      onCheckedChange={() => {}}
-                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black mt-0.5"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-white">Auto Disable</h4>
-                      <p className="text-xs text-slate-200">
-                        Auto disable for questions with only 2 options like A or B questions.
-                      </p>
-                    </div>
-                  </div>
+        {/* Evil Mode */}
+        <div>
+          <Card
+            className={`border-[#4a5568] mb-2 transition-all cursor-pointer ${
+              evilModeEnabled ? 'bg-[#8b0000] border-[#8b0000]' : 'bg-[#7f8c8d]'
+            }`}
+            onClick={() => updateEvilModeEnabled(!evilModeEnabled)}
+          >
+            <CardContent className="p-4">
+              <div className="flex flex-col items-center text-center">
+                <div className="bg-[#95a5a6] p-2 rounded-lg mb-2">
+                  <Skull className="h-4 w-4 text-white" />
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Right Right Card - Evil Mode + Punishment */}
-            <Card className="bg-slate-500 border-slate-400 flex-1 flex flex-col">
-              <CardContent className="p-4 flex flex-col gap-4">
-                {/* Evil Mode */}
-                <div
-                  className={`border-slate-400 transition-all cursor-pointer rounded-lg p-3 border ${
-                    evilModeEnabled ? 'bg-red-900 border-red-800' : 'bg-slate-600'
-                  }`}
-                  onClick={() => updateEvilModeEnabled(!evilModeEnabled)}
-                >
-                  <div className="flex items-start gap-2">
-                    <Checkbox
-                      checked={evilModeEnabled}
-                      onCheckedChange={updateEvilModeEnabled}
-                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black mt-0.5"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-white">Evil Mode</h4>
-                      <p className="text-xs text-slate-200">
-                        Evil mode takes the available points to win away from the teams score if they answer incorrectly.
-                      </p>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-1 mb-1">
+                  <Checkbox
+                    checked={evilModeEnabled}
+                    onCheckedChange={updateEvilModeEnabled}
+                    className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <h4 className="font-semibold text-sm">Evil Mode</h4>
                 </div>
+                <p className="text-xs text-[#2c3e50] mb-2">
+                  Evil mode takes the available points to win, away from the teams score if they answer incorectly.
+                </p>
 
-                {/* Punishment */}
                 <div
-                  className={`border-slate-400 transition-all cursor-pointer rounded-lg p-3 border ${
-                    punishmentEnabled ? 'bg-red-900 border-red-800' : 'bg-slate-600'
-                  }`}
-                  onClick={() => updatePunishmentEnabled(!punishmentEnabled)}
+                  className="w-full border-t border-[#4a5568] pt-[20px] mt-[8px] cursor-pointer pr-[0px] pb-[0px] pl-[0px]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updatePunishmentEnabled(!punishmentEnabled);
+                  }}
                 >
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-center gap-1 justify-center mb-1">
                     <Checkbox
                       checked={punishmentEnabled}
                       onCheckedChange={updatePunishmentEnabled}
-                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black mt-0.5"
+                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
                       onClick={(e) => e.stopPropagation()}
                     />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-white">Punishment</h4>
-                      <p className="text-xs text-slate-200">
-                        If a team answers wrong or doesn't answer in time they lose points too.
-                      </p>
-                    </div>
+                    <h5 className="font-semibold text-xs">Punishment</h5>
                   </div>
+                  <p className="text-xs text-[#2c3e50]">
+                    If a team answers wrong or doesnt answer in time they lose points too.
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-4">
-          <Button
-            onClick={handleStartRound}
-            className="flex-1 h-16 bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-3 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg text-xl font-bold"
-          >
-            START ROUND
-          </Button>
-          <Button
-            onClick={onBack}
-            variant="outline"
-            className="flex-1 h-16 border-slate-500 hover:bg-slate-600 text-slate-100 flex items-center justify-center gap-3 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg text-xl font-bold"
-          >
-            CANCEL
-          </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
+
+      {/* Action Buttons - Updated to match BuzzInInterface */}
+      <div className="flex gap-4">
+        <Button
+          onClick={handleStartRound}
+          className="flex-1 h-16 bg-[#3498db] hover:bg-[#2980b9] text-white flex items-center justify-center gap-3 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg text-xl font-bold"
+        >
+          START ROUND
+        </Button>
+        <Button
+          onClick={onBack}
+          variant="outline"
+          className="flex-1 h-16 border-[#4a5568] hover:bg-[#4a5568] text-[#ecf0f1] flex items-center justify-center gap-3 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg text-xl font-bold"
+        >
+          CANCEL
+        </Button>
+      </div>
+    </div>
     );
   }
 

@@ -306,18 +306,28 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
       case "leaderboard-intro":
       case "leaderboard-reveal":
         return (
-          <PopoutDisplay 
-            stage={modeToRender as QuizStage}
-            onNext={() => {}}
-            onSkipTimer={() => {}}
-            leaderboardData={leaderboardData}
-            revealedTeams={revealedTeams}
-          />
+          <div className="w-full h-full overflow-hidden">
+            <PopoutDisplay
+              stage={modeToRender as QuizStage}
+              onNext={() => {}}
+              onSkipTimer={() => {}}
+              leaderboardData={leaderboardData}
+              revealedTeams={revealedTeams}
+            />
+          </div>
         );
       case "slideshow":
-        return <ImageSlideshow images={images} interval={slideshowSpeed * 1000} />;
+        return (
+          <div className="w-full h-full overflow-hidden">
+            <ImageSlideshow images={images} interval={slideshowSpeed * 1000} />
+          </div>
+        );
       case "scores":
-        return <ScoresDisplay quizzes={quizzes} />;
+        return (
+          <div className="w-full h-full overflow-hidden">
+            <ScoresDisplay quizzes={quizzes} />
+          </div>
+        );
       case "nearest-wins-question":
         return (
           <div className="h-full w-full flex items-center justify-center bg-[#2c3e50]">
@@ -410,7 +420,11 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
 
       case "basic":
       default:
-        return <BasicDisplay />;
+        return (
+          <div className="w-full h-full overflow-hidden">
+            <BasicDisplay />
+          </div>
+        );
     }
   };
 

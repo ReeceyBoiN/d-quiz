@@ -3699,18 +3699,6 @@ export function QuizHost() {
         flowState={flowState.flow}
       />
 
-      {/* Primary Controls for Quiz Pack Question Mode */}
-      {showQuizPackDisplay && flowState.isQuestionMode && (
-        <PrimaryControls
-          flow={flowState.flow}
-          isQuestionMode={flowState.isQuestionMode}
-          currentQuestionIndex={currentLoadedQuestionIndex}
-          totalQuestions={loadedQuizQuestions.length}
-          onPrimaryAction={handlePrimaryAction}
-          onSilentTimer={handleSilentTimer}
-          primaryLabel={primaryButtonLabel}
-        />
-      )}
 
       {/* Modals and overlays */}
       {showDisplaySettings && (
@@ -3808,6 +3796,18 @@ export function QuizHost() {
         </div>
       )}
 
+      {/* Primary Controls for Quiz Pack Question Mode - rendered at root level for proper fixed positioning */}
+      {showQuizPackDisplay && flowState.isQuestionMode && (
+        <PrimaryControls
+          flow={flowState.flow}
+          isQuestionMode={flowState.isQuestionMode}
+          currentQuestionIndex={currentLoadedQuestionIndex}
+          totalQuestions={loadedQuizQuestions.length}
+          onPrimaryAction={handlePrimaryAction}
+          onSilentTimer={handleSilentTimer}
+          primaryLabel={primaryButtonLabel}
+        />
+      )}
     </div>
   );
 }

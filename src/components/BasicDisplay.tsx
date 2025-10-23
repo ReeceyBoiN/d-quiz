@@ -27,24 +27,27 @@ export function BasicDisplay({ className = '' }: BasicDisplayProps) {
       try {
         const emoji = emojis[Math.floor(Math.random() * emojis.length)];
         const emojiElement = document.createElement('div');
-        
+
         emojiElement.textContent = emoji;
         emojiElement.className = 'falling-emoji emoji-font';
+
+        const leftPercent = Math.random() * 100;
+
         emojiElement.style.cssText = `
           position: fixed;
-          left: ${Math.random() * 100}%;
+          left: ${leftPercent}vw;
           top: -60px;
           font-size: 2rem;
           pointer-events: none;
           z-index: 5;
           font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", "EmojiOne Color", "Twemoji Mozilla", system-ui, sans-serif !important;
           animation: falling-emoji 8s linear forwards;
+          transform: translateX(-50%);
         `;
-        
+
         if (document.body) {
           document.body.appendChild(emojiElement);
-          
-          // Clean up after animation with tracked timeout
+
           const cleanupTimeout = setTimeout(() => {
             try {
               if (emojiElement && emojiElement.parentNode) {
@@ -54,8 +57,8 @@ export function BasicDisplay({ className = '' }: BasicDisplayProps) {
             } catch (error) {
               console.warn('Error cleaning up emoji:', error);
             }
-          }, 8200); // Slightly longer than animation duration
-          
+          }, 8200);
+
           activeTimeouts.add(cleanupTimeout);
         }
       } catch (error) {
@@ -63,23 +66,17 @@ export function BasicDisplay({ className = '' }: BasicDisplayProps) {
       }
     };
 
-    // Spawn first emoji immediately
     spawnEmoji();
-    
-    // Then spawn every 15 seconds (reduced frequency to improve performance)
     emojiInterval = setInterval(spawnEmoji, 15000);
     
     return () => {
-      // Clear interval
       if (emojiInterval) {
         clearInterval(emojiInterval);
       }
       
-      // Clear all tracked timeouts
       activeTimeouts.forEach(timeout => clearTimeout(timeout));
       activeTimeouts.clear();
       
-      // Clean up any remaining emojis
       try {
         const existingEmojis = document.querySelectorAll('.falling-emoji');
         existingEmojis.forEach(emoji => {
@@ -94,40 +91,132 @@ export function BasicDisplay({ className = '' }: BasicDisplayProps) {
   }, []);
 
   return (
-    <div className={`w-full h-full relative overflow-hidden bg-orange-500 flex items-center justify-center ${className}`}>
-      {/* Background animated circles */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 left-20 w-32 h-32 bg-yellow-400 rounded-full animate-pulse"></div>
-        <div className="absolute top-60 right-32 w-24 h-24 bg-red-400 rounded-full animate-pulse delay-500"></div>
-        <div className="absolute bottom-60 left-40 w-40 h-40 bg-green-400 rounded-full animate-pulse delay-1000"></div>
-        <div className="absolute top-40 right-20 w-24 h-24 bg-red-400 rounded-full animate-pulse delay-1000"></div>
-        <div className="absolute bottom-20 left-32 w-28 h-28 bg-pink-400 rounded-full animate-pulse delay-2000"></div>
-        <div className="absolute bottom-40 right-40 w-36 h-36 bg-purple-400 rounded-full animate-pulse delay-500"></div>
-      </div>
-      
-      {/* Main content */}
-      <div className="relative z-10 text-center transform -rotate-6">
-        <div className="bg-orange-500 text-black px-20 py-12 rounded-2xl shadow-2xl border-4 border-white transform rotate-3 hover:rotate-0 transition-transform duration-300">
-          <h1 className="text-[12rem] font-black tracking-wider drop-shadow-lg">
+    <div className="basic-display-bg" style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      backgroundColor: '#f1c40f',
+      overflow: 'hidden',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      margin: 0,
+      padding: 0
+    }}>
+      {/* Main centered card */}
+      <div className="pop-quiz-card" style={{
+        position: 'relative',
+        zIndex: 10
+      }}>
+        <div style={{
+          backgroundColor: '#f97316',
+          padding: '4rem 6rem',
+          borderRadius: '1rem',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+          border: '6px solid white',
+          transform: 'rotate(-3deg)',
+          transition: 'transform 0.3s ease'
+        }}>
+          <h1 style={{
+            fontSize: '10rem',
+            fontWeight: 900,
+            letterSpacing: '0.05em',
+            margin: 0,
+            color: 'black',
+            textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+            lineHeight: 0.9
+          }}>
             POP
           </h1>
-          <h2 className="text-[12rem] font-black tracking-wider -mt-8 drop-shadow-lg">
+          <h2 style={{
+            fontSize: '10rem',
+            fontWeight: 900,
+            letterSpacing: '0.05em',
+            marginTop: '0.5rem',
+            marginBottom: 0,
+            color: 'black',
+            textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+            lineHeight: 0.9
+          }}>
             QUIZ!
           </h2>
         </div>
+
+        {/* Decorative emoji stickers */}
+        <div className="emoji-font" style={{
+          position: 'absolute',
+          top: '-1rem',
+          left: '-1rem',
+          fontSize: '3rem',
+          animation: 'bounce 2s infinite',
+          filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))'
+        }}>🎯</div>
         
-        {/* Decorative elements */}
-        <div className="absolute -top-8 -left-8 text-6xl animate-bounce emoji-font">🎯</div>
-        <div className="absolute -top-8 -right-8 text-6xl animate-bounce delay-300 emoji-font">🧠</div>
-        <div className="absolute -bottom-8 -left-8 text-6xl animate-bounce delay-700 emoji-font">🎵</div>
-        <div className="absolute -bottom-8 -right-8 text-6xl animate-bounce delay-1000 emoji-font">🏆</div>
+        <div className="emoji-font" style={{
+          position: 'absolute',
+          top: '2rem',
+          right: '-2rem',
+          fontSize: '2.5rem',
+          animation: 'bounce 2s infinite 0.3s',
+          filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))'
+        }}>🌟</div>
+        
+        <div className="emoji-font" style={{
+          position: 'absolute',
+          bottom: '3rem',
+          right: '-3rem',
+          fontSize: '2.5rem',
+          animation: 'bounce 2s infinite 0.7s',
+          filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))'
+        }}>🏆</div>
+        
+        <div className="emoji-font" style={{
+          position: 'absolute',
+          bottom: '-2rem',
+          left: '-2rem',
+          fontSize: '2rem',
+          animation: 'bounce 2s infinite 1s',
+          filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))'
+        }}>🎵</div>
+
+        <div className="emoji-font" style={{
+          position: 'absolute',
+          top: '50%',
+          right: '-4rem',
+          fontSize: '2rem',
+          animation: 'bounce 2s infinite 0.5s',
+          filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))'
+        }}>💬</div>
+
+        <div className="emoji-font" style={{
+          position: 'absolute',
+          top: '-2rem',
+          right: '30%',
+          fontSize: '2.5rem',
+          animation: 'bounce 2s infinite 0.8s',
+          filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))'
+        }}>🎨</div>
+
+        <div className="emoji-font" style={{
+          position: 'absolute',
+          bottom: '-1rem',
+          right: '20%',
+          fontSize: '2rem',
+          animation: 'bounce 2s infinite 1.2s',
+          filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))'
+        }}>🐟</div>
+
+        <div className="emoji-font" style={{
+          position: 'absolute',
+          top: '40%',
+          left: '-3rem',
+          fontSize: '2rem',
+          animation: 'bounce 2s infinite 0.4s',
+          filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1))'
+        }}>🧠</div>
       </div>
-      
-      {/* Floating elements */}
-      <div className="absolute top-1/4 left-1/4 text-4xl animate-spin emoji-font">⭐</div>
-      <div className="absolute top-3/4 right-1/4 text-4xl animate-spin delay-500 emoji-font">✨</div>
-      <div className="absolute top-1/2 left-1/6 text-3xl animate-pulse emoji-font">🎵</div>
-      <div className="absolute top-1/3 right-1/6 text-3xl animate-pulse delay-300 emoji-font">⚡</div>
     </div>
   );
 }

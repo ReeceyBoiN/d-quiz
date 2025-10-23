@@ -31,7 +31,17 @@ export function ScoresDisplay({ quizzes }: ScoresDisplayProps) {
   };
 
   return (
-    <div className="w-full h-full bg-gradient-to-b from-[#2c3e50] to-[#34495e] p-8 overflow-auto">
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      margin: 0,
+      padding: '2rem',
+      overflow: 'auto',
+      background: 'linear-gradient(to bottom, #2c3e50, #34495e)'
+    }}>
       {/* Header */}
       <div className="text-center mb-8">
         <div className="flex items-center justify-center gap-3 mb-4">

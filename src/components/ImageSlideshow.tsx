@@ -38,7 +38,19 @@ export function ImageSlideshow({ images, autoPlay = true, interval = 10000 }: Im
 
   if (images.length === 0) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-black">
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        margin: 0,
+        padding: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'black'
+      }}>
         <div className="text-center space-y-4">
           <div className="w-24 h-24 mx-auto mb-6 relative">
             <div className="absolute inset-0 border-4 border-[#3498db]/40 rounded-full border-t-transparent animate-spin"></div>
@@ -55,7 +67,17 @@ export function ImageSlideshow({ images, autoPlay = true, interval = 10000 }: Im
   const currentImage = images[currentIndex];
 
   return (
-    <div className="relative w-full h-full bg-black overflow-hidden">
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      margin: 0,
+      padding: 0,
+      backgroundColor: 'black',
+      overflow: 'hidden'
+    }}>
       {/* Main Image */}
       <div className="w-full h-full flex items-center justify-center">
         <ImageWithFallback
