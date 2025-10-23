@@ -2490,7 +2490,7 @@ export function QuizHost() {
                         {/* Main content */}
                         <div className="relative z-10 text-center">
                           <div className="text-4xl text-white mb-8 font-bold">
-                            🎉 Welcome! 🎉
+                            🎉 Welcome! ���
                           </div>
                           <div className="text-8xl font-bold text-white mb-8 drop-shadow-lg" style={{textShadow: '2px 2px 4px rgba(0,0,0,0.5)'}}>
                             {displayData.teamName || "Team Name"}
@@ -3698,6 +3698,19 @@ export function QuizHost() {
         primaryButtonLabel={primaryButtonLabel}
         flowState={flowState.flow}
       />
+
+      {/* Primary Controls for Quiz Pack Question Mode */}
+      {showQuizPackDisplay && flowState.isQuestionMode && (
+        <PrimaryControls
+          flow={flowState.flow}
+          isQuestionMode={flowState.isQuestionMode}
+          currentQuestionIndex={currentLoadedQuestionIndex}
+          totalQuestions={loadedQuizQuestions.length}
+          onPrimaryAction={handlePrimaryAction}
+          onSilentTimer={handleSilentTimer}
+          primaryLabel={primaryButtonLabel}
+        />
+      )}
 
       {/* Modals and overlays */}
       {showDisplaySettings && (

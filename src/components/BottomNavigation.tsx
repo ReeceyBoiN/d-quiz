@@ -421,36 +421,6 @@ export function StatusBar({
         </Button>
       )}
 
-      {/* Send Question button - show when in quiz pack question mode */}
-      {showQuizPackDisplay && flowState !== 'idle' && (
-        <div className="flex gap-3 mr-4">
-          <Button
-            onClick={onSilentTimer}
-            disabled={flowState !== 'sent-question' && flowState !== 'running'}
-            className={`h-8 px-3 flex items-center gap-1 text-xs font-semibold rounded transition-all ${
-              flowState !== 'sent-question' && flowState !== 'running'
-                ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
-                : 'bg-slate-600 hover:bg-slate-500 text-white'
-            }`}
-            title="Start timer without audio"
-          >
-            ⏭️ Silent
-          </Button>
-
-          <Button
-            onClick={onPrimaryAction}
-            className={`h-8 px-4 flex items-center gap-2 text-xs font-semibold rounded transition-all ${
-              flowState === 'idle'
-                ? 'bg-slate-500 text-slate-400 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700 text-white hover:scale-105'
-            }`}
-            disabled={flowState === 'idle'}
-            title="Press Spacebar to trigger this action"
-          >
-            {primaryButtonLabel}
-          </Button>
-        </div>
-      )}
 
       {/* Dynamic game mode configuration panel */}
       {currentGameMode ? (
