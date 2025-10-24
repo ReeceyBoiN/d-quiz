@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { getQuestionPacksPath, listDirectory, getParentPath } from "../utils/fileBrowser";
+import { getQuestionPacksPath, listDirectory, getParentPath, readFileAsBlob } from "../utils/fileBrowser";
 import { Eye, ArrowRight, Trophy } from "lucide-react";
 import { useRef } from "react";
 import { useQuizLoader } from "../utils/useQuizLoader";
@@ -146,8 +146,21 @@ export function QuestionDisplay({
               {entries.map((item, index) => (
                 <div
                   key={item.path + index}
+                  style={{ border: "1px solid red" }}
                   className="flex flex-col items-center p-4 rounded-lg bg-[#2c3e50] hover:bg-[#233242] cursor-pointer transition-all duration-200 hover:scale-105"
-                  onClick={() => item.isDirectory && openDir(item.path)}
+                  onClick={async () => {
+                    console.log("clicked item:", item.name);
+                    if (item.isDirectory) {
+                      openDir(item.path);
+                    } else if (/\.(sqq|sqn|sqb)$/i.test(item.name)) {
+                      try {
+                        const file = await readFileAsBlob(item.path);
+                        if (file) handleQuizFileSelection(file);
+                      } catch (err) {
+                        console.error("Failed to open quiz file:", err);
+                      }
+                    }
+                  }}
                   title={item.path}
                 >
                   <svg

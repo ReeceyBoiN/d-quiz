@@ -6,7 +6,7 @@ const bus = require('../utils/bus');
 
 function loadEndpoints(app) {
   // Each file in backend/endpoints exports (router) => void
-  require('./endpoints/health')(app);
+  //require('./endpoints/health')(app);
   require('./endpoints/quizzes')(app);
   require('./endpoints/users')(app);
 }

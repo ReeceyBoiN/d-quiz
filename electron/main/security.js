@@ -9,6 +9,10 @@ function applySecurity() {
       if (url === 'about:blank') {
         return { action: 'allow' };
       }
+      // Allow localhost URLs (for external display in dev mode)
+      if (url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:')) {
+        return { action: 'allow' };
+      }
       // Deny all other window opens
       return { action: 'deny' };
     });
@@ -19,7 +23,7 @@ function applySecurity() {
         responseHeaders: {
           ...details.responseHeaders,
           'Content-Security-Policy': [
-            "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*"
+            "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:*"
           ]
         }
       });

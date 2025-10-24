@@ -13,6 +13,32 @@ const VFS_PREFIX = 'vfs:';
 let vfsRoot: any | null = null; // FileSystemDirectoryHandle
 const vfsMap = new Map<string, any>(); // path -> handle
 
+export async function readFileAsBlob(filePath: string): Promise<File | null> {
+  const w = getWindow();
+
+  // ✅ Electron environment
+  if (w?.api?.files?.readFileAsBlob) {
+    const res = await w.api.files.readFileAsBlob(filePath);
+    if (!res?.ok) throw new Error(res?.error || "Failed to read file");
+    const blob = new Blob([res.data.buffer]);
+    const name = filePath.split(/[\\/]/).pop() || "quiz.sqq";
+    return new File([blob], name, { type: "application/octet-stream" });
+  }
+
+  // ✅ Browser fallback using the virtual FS
+  if (filePath.startsWith("vfs:")) {
+    // Access the internal map safely
+    const handle = (vfsMap as Map<string, any>).get(filePath);
+    if (handle && typeof handle.getFile === "function") {
+      return await handle.getFile();
+    }
+    console.warn("File handle not found for", filePath);
+  }
+
+  return null;
+}
+
+
 async function ensureVfsRoot(): Promise<string> {
   const w = getWindow();
   if (!w) throw new Error('No window');

@@ -5,7 +5,7 @@ import { ScoresDisplay } from "./ScoresDisplay";
 import { BasicDisplay } from "./BasicDisplay";
 import { Zap, Trophy, Sparkles, Crown } from "lucide-react";
 // CountdownTimer not used in external display - using simple timer instead
-import { StoredImage } from "../utils/projectImageStorage";
+import { StoredImage } from "../utils/imageStorage";
 import { useSettings } from "../utils/SettingsContext";
 
 // FAST TRACK Display Component - The most amazing display ever!
@@ -211,6 +211,14 @@ interface ExternalDisplayWindowProps {
 }
 
 export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
+  interface NearestWinsData {
+    targetNumber?: number;
+    results?: any;
+    correctAnswer?: string;
+    answerRevealed?: boolean;
+    [key: string]: any;
+  }
+
   const { countdownStyle, gameModeTimers } = useSettings();
   const [displayMode, setDisplayMode] = useState<"basic" | "slideshow" | "scores" | "leaderboard-intro" | "leaderboard-reveal" | "timer" | "correctAnswer" | "fastestTeam" | "fastTrack" | "nearest-wins-question" | "nearest-wins-timer" | "nearest-wins-results" | "team-welcome">("basic");
   const [baseDisplayMode, setBaseDisplayMode] = useState<"basic" | "slideshow" | "scores" | "leaderboard-intro" | "leaderboard-reveal" | "nearest-wins-question" | "nearest-wins-timer" | "nearest-wins-results" | "team-welcome">("basic");
@@ -222,7 +230,7 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
   const [timerValue, setTimerValue] = useState<number | null>(null);
   const [answerData, setAnswerData] = useState<any>(null);
   const [questionInfo, setQuestionInfo] = useState<{number: number, type: string, total: number} | null>(null);
-  const [nearestWinsData, setNearestWinsData] = useState<any>(null);
+  const [nearestWinsData, setNearestWinsData] = useState<NearestWinsData | null>(null);
   const [currentGameMode, setCurrentGameMode] = useState<"keypad" | "buzzin" | "nearestwins">("keypad");
   const [teamName, setTeamName] = useState<string | null>(null);
   const [welcomeTeamName, setWelcomeTeamName] = useState<string>("");
@@ -284,7 +292,8 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
         }
         if (event.data.data) setAnswerData(event.data.data);
         if (event.data.questionInfo) setQuestionInfo(event.data.questionInfo);
-        if (event.data.gameMode) setCurrentGameMode(event.data.gameMode);
+        if (event.data.gameMode)
+          setCurrentGameMode(event.data.gameMode as "keypad" | "buzzin" | "nearestwins");
         if (event.data.teamName) setTeamName(event.data.teamName);
         if (event.data.targetNumber !== undefined || event.data.gameInfo) setNearestWinsData(prev => ({...prev, ...event.data}));
         if (event.data.results) setNearestWinsData(prev => ({...prev, ...event.data}));
@@ -328,7 +337,11 @@ export function ExternalDisplayWindow({ onClose }: ExternalDisplayWindowProps) {
             onNext={() => {}}
             onSkipTimer={() => {}}
             leaderboardData={leaderboardData}
-            revealedTeams={revealedTeams}
+            revealedTeams={revealedTeams.map(team => ({
+              id: team.id,
+              name: team.name,
+              score: team.score ?? 0,
+            }))}
           />
         );
       case "slideshow":
