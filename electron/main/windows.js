@@ -26,5 +26,42 @@ function createMainWindow() {
   }
   return win;
 }
+let externalWindow = null;
 
-module.exports = { createMainWindow };
+function createExternalWindow() {
+  if (externalWindow) {
+    externalWindow.focus();
+    return externalWindow;
+  }
+
+  const isDev = process.env.VITE_DEV_SERVER_URL;
+
+  externalWindow = new BrowserWindow({
+    width: 1920,
+    height: 1080,
+    backgroundColor: '#000000',
+    title: 'External Display',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, '../preload/preload.js'),
+      sandbox: true,
+    },
+  });
+
+  if (isDev) {
+    externalWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?external=1`);
+  } else {
+    externalWindow.loadFile(path.join(__dirname, '../../dist/index.html'), {
+      query: { external: '1' },
+    });
+  }
+
+  externalWindow.on('closed', () => {
+    externalWindow = null;
+  });
+
+  return externalWindow;
+}
+
+module.exports = { createMainWindow, createExternalWindow };

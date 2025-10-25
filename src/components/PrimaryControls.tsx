@@ -21,7 +21,7 @@ interface PrimaryControlsProps {
  * 
  * The primary button's label changes based on flow state:
  *   ready → "Send Picture" or "Send Question"
- *   sent-picture → "Send Question"
+ *   sent-picture �� "Send Question"
  *   sent-question → "Start Timer"
  *   running / timeup → "Reveal Answer"
  *   revealed → "Fastest Team"
@@ -109,7 +109,7 @@ export function PrimaryControls({
       {/* Primary Blue Action Button */}
       <Button
         onClick={onPrimaryAction}
-        className={`flex items-center gap-3 px-8 py-5 rounded-lg font-bold text-xl transition-all shadow-lg whitespace-nowrap ${
+        className={`flex items-center gap-3 px-[15px] py-5 rounded-lg font-bold text-xl transition-all shadow-lg whitespace-nowrap mx-auto ${
           flow === 'idle'
             ? 'bg-slate-500 text-slate-400 cursor-not-allowed'
             : 'bg-blue-600 hover:bg-blue-700 text-white hover:scale-105'

@@ -1,8 +1,8 @@
 import { QuizHost } from "./components/QuizHost";
+import React, { useEffect } from "react";
 import { SettingsProvider } from "./utils/SettingsContext";
 import { AuthProvider } from "./utils/AuthContext";
 import { QuizDataProvider } from "./utils/QuizDataContext";
-import { useEffect } from "react";
 import { useQuizLoader } from "./utils/useQuizLoader";
 
 function AppInner() {

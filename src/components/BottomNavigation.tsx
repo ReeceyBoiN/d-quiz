@@ -162,7 +162,7 @@ function GameModeConfigPanel({
   };
 
   return (
-    <div className="flex-1 h-full flex items-center gap-2">
+    <div className="flex-1 h-full flex items-center">
       {/* Points section - show for keypad and buzzin modes */}
       {(gameMode === "keypad" || gameMode === "buzzin") && (
         <div className="bg-[rgba(92,97,107,1)] rounded px-2 py-0.5 border shadow-sm">

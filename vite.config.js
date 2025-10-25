@@ -44,6 +44,10 @@ const alias = {
 
 export default {
   base: './',
+  esbuild: {
+    jsxImportSource: 'react',
+    jsx: 'automatic',
+  },
   plugins: [],
   resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],

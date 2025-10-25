@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
-const { createMainWindow } = require('./windows');
+const { createMainWindow, createExternalWindow } = require('./windows');
 const { applySecurity } = require('./security');
 const { createIpcRouter } = require('../ipc/ipcRouter');
 const { startBackend } = require('../backend/server');
@@ -39,10 +39,14 @@ async function boot() {
 
   // IPC router (renderer ↔ main/modules)
   const router = createIpcRouter(ipcMain);
+  router.mount('app/open-external-display', async () => {
+    createExternalWindow();
+    return { ok: true };
+  });
   router.mount('app/ready', async () => ({ ok: true, version: app.getVersion() }));
   router.mount('quiz/start', require('../modules/quizEngine').startQuiz);
   router.mount('quiz/score', require('../modules/scoring').scoreAttempt);
-
+  
   // Open user's Documents/PopQuiz/Question Packs; create it if missing
   router.mount('app/open-from-file', async () => {
     const docsDir = app.getPath('documents');
