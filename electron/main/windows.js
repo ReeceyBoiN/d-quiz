@@ -1,32 +1,39 @@
 const { BrowserWindow } = require('electron');
 const path = require('path');
 
+let externalWindow = null;
+
 function createMainWindow() {
-  const isDev = process.env.VITE_DEV_SERVER_URL; // set by Vite
+  const isDev = !!process.env.VITE_DEV_SERVER_URL; // true if Vite dev server running
+
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 960,
     minHeight: 600,
     show: false,
+    backgroundColor: '#ffffff',
+    title: 'PopQuiz',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
       preload: path.join(__dirname, '../preload/preload.js'),
-      sandbox: true
-    }
+    },
   });
 
   win.once('ready-to-show', () => win.show());
 
   if (isDev) {
+    // ✅ Load Vite dev server
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
+    // ✅ Load production build from dist
     win.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
+
   return win;
 }
-let externalWindow = null;
 
 function createExternalWindow() {
   if (externalWindow) {
@@ -34,7 +41,7 @@ function createExternalWindow() {
     return externalWindow;
   }
 
-  const isDev = process.env.VITE_DEV_SERVER_URL;
+  const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
   externalWindow = new BrowserWindow({
     width: 1920,
@@ -44,16 +51,18 @@ function createExternalWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, '../preload/preload.js'),
       sandbox: true,
+      preload: path.join(__dirname, '../preload/preload.js'),
     },
   });
 
   if (isDev) {
+    // ✅ Use Vite dev server with external flag
     externalWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?external=1`);
   } else {
+    // ✅ Load from dist and pass search param correctly
     externalWindow.loadFile(path.join(__dirname, '../../dist/index.html'), {
-      query: { external: '1' },
+      search: 'external=1',
     });
   }
 

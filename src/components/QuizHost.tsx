@@ -157,15 +157,15 @@ export function QuizHost() {
   // Teams state with 9 teams featuring Muslim names and random scores
   const [quizzes, setQuizzes] = useState<Quiz[]>(() => {
     const initialTeams = [
-      { id: "1", name: "Ahmad", type: "test" as const, icon: "⭐", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "2", name: "Fatima", type: "test" as const, icon: "🎪", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "3", name: "Omar", type: "test" as const, icon: "🎉", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "4", name: "Aisha", type: "test" as const, icon: "🏆", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "5", name: "Hassan", type: "test" as const, icon: "💫", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "6", name: "Khadija", type: "test" as const, icon: "🎊", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "7", name: "Ali", type: "test" as const, icon: "����", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "8", name: "Zainab", type: "test" as const, icon: "🎯", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "9", name: "Ibrahim", type: "test" as const, icon: "✨", score: Math.floor(Math.random() * 200) + 50 }
+      { id: "1", name: "Ahmad", type: "test" as const, icon: "â­", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "2", name: "Fatima", type: "test" as const, icon: "ðŸŽª", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "3", name: "Omar", type: "test" as const, icon: "ðŸŽ‰", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "4", name: "Aisha", type: "test" as const, icon: "ðŸ†", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "5", name: "Hassan", type: "test" as const, icon: "ðŸ’«", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "6", name: "Khadija", type: "test" as const, icon: "ðŸŽŠ", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "7", name: "Ali", type: "test" as const, icon: "ï¿½ï¿½ï¿½ï¿½", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "8", name: "Zainab", type: "test" as const, icon: "ðŸŽ¯", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "9", name: "Ibrahim", type: "test" as const, icon: "âœ¨", score: Math.floor(Math.random() * 200) + 50 }
     ];
     // Sort teams by score initially (highest first)
     return initialTeams.sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -370,7 +370,7 @@ export function QuizHost() {
 
   // Handle timer when flow state changes to 'running'
   useEffect(() => {
-    if (flowState.flow === 'running') {
+    if ((flowState.flow as any) === 'running') {
       const isSilent = flowState.answerSubmitted === 'silent'; // Check if silent timer was used
       timer.start(flowState.totalTime, isSilent);
     } else if (flowState.flow !== 'running' && flowState.flow !== 'timeup') {
@@ -1512,7 +1512,7 @@ export function QuizHost() {
                           {displayData.mode}
                         </span>
                       </div>
-                      <div className="text-xs text-gray-400">1920x1080 • 16:9</div>
+                      <div className="text-xs text-gray-400">1920x1080 â€¢ 16:9</div>
                     </div>
                   </div>
                   <div className="flex-1 bg-black relative overflow-hidden">
@@ -2184,24 +2184,24 @@ export function QuizHost() {
 
   // Handle scramble keypad
   const handleScrambleKeypad = (teamId: string) => {
-    console.log(`🔀 handleScrambleKeypad called for team ${teamId}`);
+    console.log(`ðŸ”€ handleScrambleKeypad called for team ${teamId}`);
     
     setQuizzes(prevQuizzes => {
-      console.log('🔀 Previous quizzes state:', prevQuizzes.map(q => ({ id: q.id, name: q.name, scrambled: q.scrambled })));
+      console.log('ðŸ”€ Previous quizzes state:', prevQuizzes.map(q => ({ id: q.id, name: q.name, scrambled: q.scrambled })));
       
       const targetTeam = prevQuizzes.find(q => q.id === teamId);
       if (!targetTeam) {
-        console.error(`🔀 Team ${teamId} not found in quizzes array`);
+        console.error(`ðŸ”€ Team ${teamId} not found in quizzes array`);
         return prevQuizzes;
       }
       
-      console.log(`🔀 Target team ${teamId} current scrambled state:`, targetTeam.scrambled);
+      console.log(`ðŸ”€ Target team ${teamId} current scrambled state:`, targetTeam.scrambled);
       
       const updatedQuizzes = prevQuizzes.map(quiz => {
         if (quiz.id === teamId) {
           // Create a completely new object to ensure React detects the change
           const newScrambledState = !quiz.scrambled;
-          console.log(`🔀 Updating team ${teamId} (${quiz.name}) scrambled from ${quiz.scrambled} to ${newScrambledState}`);
+          console.log(`ðŸ”€ Updating team ${teamId} (${quiz.name}) scrambled from ${quiz.scrambled} to ${newScrambledState}`);
           return { ...quiz, scrambled: newScrambledState };
         }
         return quiz;
@@ -2209,8 +2209,8 @@ export function QuizHost() {
       
       // Debug logging
       const updatedTeam = updatedQuizzes.find(q => q.id === teamId);
-      console.log(`🔀 After update - team ${teamId} scrambled state:`, updatedTeam?.scrambled);
-      console.log('🔀 All teams scrambled states after update:', updatedQuizzes.map(q => ({ id: q.id, name: q.name, scrambled: q.scrambled })));
+      console.log(`ðŸ”€ After update - team ${teamId} scrambled state:`, updatedTeam?.scrambled);
+      console.log('ðŸ”€ All teams scrambled states after update:', updatedQuizzes.map(q => ({ id: q.id, name: q.name, scrambled: q.scrambled })));
       
       return updatedQuizzes;
     });
@@ -2359,7 +2359,7 @@ export function QuizHost() {
         <div className="flex-1 overflow-hidden flex flex-col">
           {/* Top draining timer bar (visible when question sent) */}
           <TimerProgressBar
-            isVisible={flowState.flow === 'sent-question' || flowState.flow === 'running' || flowState.flow === 'timeup'}
+            isVisible={flowState.flow === 'sent-question' || (flowState.flow as any) === 'running' || flowState.flow === 'timeup'}
             timeRemaining={flowState.timeRemaining}
             totalTime={flowState.totalTime}
             position="top"
@@ -2536,7 +2536,7 @@ export function QuizHost() {
               question={currentQuestion}
               timeRemaining={timeRemaining}
               showAnswer={showAnswer}
-              isActive={isQuizActive}
+              
               onStart={handleStartTimer}
               onReveal={handleRevealAnswer}
               onNext={handleNextQuestion}
@@ -2553,7 +2553,7 @@ export function QuizHost() {
               question={currentQuestion}
               timeRemaining={timeRemaining}
               showAnswer={showAnswer}
-              isActive={isQuizActive}
+              
               onStart={handleStartTimer}
               onReveal={handleRevealAnswer}
               onNext={handleNextQuestion}
@@ -2585,7 +2585,7 @@ export function QuizHost() {
               question={currentQuestion}
               timeRemaining={timeRemaining}
               showAnswer={showAnswer}
-              isActive={isQuizActive}
+              
               onStart={handleStartTimer}
               onReveal={handleRevealAnswer}
               onNext={handleNextQuestion}
@@ -2656,7 +2656,7 @@ export function QuizHost() {
             activeTab={selectedTeamForWindow ? "team-settings" as any : activeTab}
             onTabChange={handleTabChange}
             teamCount={participants.length}
-            displayMode={displayMode}
+            displayMode={userSelectedDisplayMode}
             onDisplayModeChange={handleDisplayModeChange}
             onHandsetSettings={handleHandsetSettings}
             onDisplaySettings={handleDisplaySettings}
@@ -2671,7 +2671,7 @@ export function QuizHost() {
           {/* Content area with right panel */}
           <div className="flex flex-1 min-h-0">
             {/* Main content - theme-aware background */}
-            <div className="flex-1 bg-background min-w-0">
+            <div className="flex-1 bg-background min-w-0 flex flex-col">
               {renderTabContent()}
             </div>
 
@@ -2697,7 +2697,7 @@ export function QuizHost() {
         activeTab={activeTab}
         onTabChange={handleTabChange}
         teamCount={participants.length}
-        displayMode={displayMode}
+        displayMode={userSelectedDisplayMode}
         onDisplayModeChange={handleDisplayModeChange}
         onHandsetSettings={handleHandsetSettings}
         onDisplaySettings={handleDisplaySettings}

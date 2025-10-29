@@ -5,6 +5,7 @@
   "main": "electron/main/main.js",
   "scripts": {
     "dev": "npx -y vite@6.3.5",
+    "start": "cross-env VITE_DEV_SERVER_URL=http://localhost:3001 electron .",
     "dev:vite": "vite",
     "dev:electron": "wait-on http://localhost:3000 && cross-env VITE_DEV_SERVER_URL=http://localhost:3000 nodemon --watch electron --delay 500ms --exec \"electron .\"",
     "dev:browser": "vite",
@@ -67,16 +68,21 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.16",
     "@types/node": "^20.10.0",
     "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react-swc": "^3.10.2",
+    "autoprefixer": "^10.4.21",
     "chokidar-cli": "^3.0.0",
     "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
     "electron": "^38.3.0",
     "electron-builder": "^24.13.3",
     "nodemon": "^3.1.10",
+    "postcss": "^8.5.6",
     "rimraf": "^6.0.1",
+    "tailwindcss": "^4.1.16",
     "vite": "^6.3.5",
     "wait-on": "^9.0.1"
   },
