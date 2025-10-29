@@ -28,7 +28,6 @@ import { BuzzInInterface } from "./BuzzInInterface";
 import { GlobalGameModeSelector } from "./GlobalGameModeSelector";
 import { TimerProgressBar } from "./TimerProgressBar";
 import { QuestionPanel } from "./QuestionPanel";
-import { PrimaryControls } from "./PrimaryControls";
 // CountdownTimer not used in QuizHost - using inline timer in external window
 
 import { StoredImage, projectImageStorage } from "../utils/projectImageStorage";
@@ -341,7 +340,14 @@ export function QuizHost() {
       // In quiz pack mode, KeypadInterface will skip input screens and show pre-loaded answers
       const isQuizPack = currentQuiz.isQuizPack || false;
       setIsQuizPackMode(isQuizPack);
-      setShowKeypadInterface(true);
+
+      if (isQuizPack) {
+        // For quiz packs, show the quiz pack display (config or question screen)
+        setShowQuizPackDisplay(true);
+      } else {
+        // For regular games, show the keypad interface
+        setShowKeypadInterface(true);
+      }
       setActiveTab("teams");
     }
   }, [currentQuiz]);
@@ -712,7 +718,21 @@ export function QuizHost() {
         sendTimerToPlayers(flowState.totalTime, false);
         if (externalWindow && !externalWindow.closed) {
           externalWindow.postMessage(
-            { type: 'DISPLAY_UPDATE', mode: 'timer', data: { timerValue: flowState.totalTime, seconds: flowState.totalTime } },
+            {
+              type: 'DISPLAY_UPDATE',
+              mode: 'timer',
+              data: {
+                timerValue: flowState.totalTime,
+                seconds: flowState.totalTime
+              },
+              questionInfo: {
+                number: currentQuestionIndex + 1,
+                type: 'Question',
+                total: mockQuestions.length
+              },
+              gameModeTimers: gameModeTimers,
+              countdownStyle: countdownStyle
+            },
             '*'
           );
         }
@@ -2376,6 +2396,8 @@ export function QuizHost() {
             answerText={currentQuestion?.answerText}
             correctIndex={currentQuestion?.correctIndex}
             onPrimaryAction={handlePrimaryAction}
+            flow={flowState.flow}
+            primaryLabel={primaryButtonLabel}
           />
         </div>
       );
@@ -2840,18 +2862,6 @@ export function QuizHost() {
         </div>
       )}
 
-      {/* Primary Controls for Quiz Pack Question Mode - rendered at root level for proper fixed positioning */}
-      {showQuizPackDisplay && flowState.isQuestionMode && (
-        <PrimaryControls
-          flow={flowState.flow}
-          isQuestionMode={flowState.isQuestionMode}
-          currentQuestionIndex={currentLoadedQuestionIndex}
-          totalQuestions={loadedQuizQuestions.length}
-          onPrimaryAction={handlePrimaryAction}
-          onSilentTimer={handleSilentTimer}
-          primaryLabel={primaryButtonLabel}
-        />
-      )}
     </div>
   );
 }

@@ -188,20 +188,113 @@ function FastTrackDisplay({
   );
 }
 
+// =============== COUNTDOWN TIMER DISPLAY ===================
+function CountdownTimerDisplay({ initialSeconds, questionNumber = 1 }: { initialSeconds: number, questionNumber?: number }) {
+  const { countdownStyle } = useSettings();
+  const [secondsRemaining, setSecondsRemaining] = useState(initialSeconds);
+  const [isRunning, setIsRunning] = useState(true);
+
+  useEffect(() => {
+    setSecondsRemaining(initialSeconds);
+    setIsRunning(true);
+  }, [initialSeconds]);
+
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const interval = setInterval(() => {
+      setSecondsRemaining(prev => {
+        if (prev <= 1) {
+          setIsRunning(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isRunning]);
+
+  const progressPercent = (secondsRemaining / initialSeconds) * 100;
+  const strokeColor = progressPercent > 25 ? '#ff6b5b' : '#e74c3c';
+
+  return (
+    <div className="fixed inset-0 bg-slate-900 flex flex-col overflow-hidden">
+      {/* Pink Header */}
+      <div className="bg-[#ff5a9d] px-8 py-6 text-center">
+        <h1 className="text-4xl font-bold text-gray-900">
+          Question {questionNumber} • Timer
+        </h1>
+      </div>
+
+      {/* Timer Display Area */}
+      <div className="flex-1 bg-slate-800 flex items-center justify-center overflow-hidden">
+        <div className="relative flex items-center justify-center" style={{ width: '500px', height: '500px' }}>
+          {/* Progress ring */}
+          <svg className="absolute w-full h-full" style={{ transform: 'rotate(-90deg)' }}>
+            <circle
+              cx="250"
+              cy="250"
+              r="200"
+              fill="none"
+              stroke="#4a5568"
+              strokeWidth="20"
+            />
+            <circle
+              cx="250"
+              cy="250"
+              r="200"
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth="20"
+              strokeDasharray={`${(progressPercent / 100) * 2 * Math.PI * 200} ${2 * Math.PI * 200}`}
+              style={{ transition: 'stroke-dasharray 0.3s ease' }}
+            />
+          </svg>
+
+          {/* Timer text */}
+          <div className="absolute text-center">
+            <div className="text-9xl font-bold text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {secondsRemaining}
+            </div>
+            <div className="text-2xl text-slate-300 mt-4">seconds</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // =============== MAIN EXTERNAL DISPLAY ===================
 export function ExternalDisplayWindow() {
   const { countdownStyle } = useSettings();
-  const [displayMode, setDisplayMode] = useState<"basic" | "fastTrack">("basic");
+  const [displayMode, setDisplayMode] = useState<"basic" | "fastTrack" | "timer">("basic");
   const [answerData, setAnswerData] = useState<any>(null);
   const [questionInfo, setQuestionInfo] = useState<{ number: number } | null>(null);
+  const [timerSeconds, setTimerSeconds] = useState(30);
+  const [gameModeTimers, setGameModeTimers] = useState<any>(null);
 
   // 🔹 Listen for messages from both postMessage (browser) and IPC (Electron)
   useEffect(() => {
     const messageHandler = (event: MessageEvent) => {
       if (event.data?.type === "DISPLAY_UPDATE") {
-        setDisplayMode(event.data.mode || "basic");
+        const mode = event.data.mode || "basic";
+        setDisplayMode(mode);
         setAnswerData(event.data.data || null);
         setQuestionInfo(event.data.questionInfo || null);
+
+        // Handle timer mode
+        if (mode === "timer" || mode === "nearest-wins-timer") {
+          // Use provided timerValue, or fall back to keypad timer from settings, or default to 30
+          const timerValue = event.data.timerValue ||
+                            event.data.gameModeTimers?.keypad ||
+                            30;
+          setTimerSeconds(timerValue);
+          setGameModeTimers(event.data.gameModeTimers);
+        }
+      } else if (event.data?.type === "TIMER") {
+        setTimerSeconds(event.data.data?.seconds || 30);
+        setDisplayMode("timer");
       }
     };
 
@@ -213,6 +306,12 @@ export function ExternalDisplayWindow() {
         setDisplayMode(data.mode || "basic");
         setAnswerData(data.data || null);
         setQuestionInfo(data.questionInfo || null);
+
+        if (data.mode === "timer" || data.mode === "nearest-wins-timer") {
+          const timerValue = data.timerValue || data.gameModeTimers?.keypad || 30;
+          setTimerSeconds(timerValue);
+          setGameModeTimers(data.gameModeTimers);
+        }
       });
     }
 
@@ -224,6 +323,13 @@ export function ExternalDisplayWindow() {
 
   const renderContent = () => {
     switch (displayMode) {
+      case "timer":
+        return (
+          <CountdownTimerDisplay
+            initialSeconds={timerSeconds}
+            questionNumber={questionInfo?.number || 1}
+          />
+        );
       case "fastTrack":
         return (
           <FastTrackDisplay

@@ -1252,7 +1252,7 @@ export function KeypadInterface({
             size="sm"
             className="bg-gray-700 hover:bg-gray-600 text-gray-200 border-gray-500 hidden"
           >
-            {showDebugPanel ? '🎨 Hide' : '🎨 Show'} Design Panel
+            {showDebugPanel ? '🎨 Hide' : '��� Show'} Design Panel
           </Button>
         </div>
 
@@ -2062,19 +2062,6 @@ export function KeypadInterface({
             </div>
           )}
         </div>
-
-        {/* Start Timer Button - Fixed bottom right position */}
-        {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-20 right-6 z-50">
-            <Button
-              onClick={handleStartTimer}
-              className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
-            >
-              <Timer className="h-6 w-6" />
-              Start Timer
-            </Button>
-          </div>
-        )}
       </div>
     );
   }

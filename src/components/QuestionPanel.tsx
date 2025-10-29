@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Send, Timer, Eye, Zap, ChevronRight } from 'lucide-react';
+import { useSettings } from '../utils/SettingsContext';
 
 interface QuestionPanelProps {
   question: any;
@@ -9,17 +11,19 @@ interface QuestionPanelProps {
   correctIndex?: number;
   answerSubmitted?: string;
   onPrimaryAction?: () => void;
+  flow?: string;
+  primaryLabel?: string;
 }
 
 /**
  * QuestionPanel: Displays question, options, and optional image.
- * 
+ *
  * Layout:
  * - Right side: Fixed-size image area (if question.imageDataUrl present)
  * - Center: Large, readable question text
  * - Below: Dynamic options for Multi/Letters/Sequence, or nothing for Buzzin/Numbers
  * - Bottom: Optional answer display (when showAnswer is true)
- * 
+ *
  * The image is always visible to the host immediately; broadcasting to
  * players/external is controlled by the primary blue button (Send Picture action).
  */
@@ -32,7 +36,10 @@ export function QuestionPanel({
   correctIndex = -1,
   answerSubmitted = '',
   onPrimaryAction,
+  flow = 'ready',
+  primaryLabel = 'Send Question',
 }: QuestionPanelProps) {
+  const { gameModeTimers } = useSettings();
   if (!question) {
     return (
       <div className="flex-1 flex items-center justify-center bg-slate-800 text-slate-400">
@@ -44,6 +51,65 @@ export function QuestionPanel({
   const qType = (question.type || '').toLowerCase();
   const hasImage = !!question.imageDataUrl;
   const hasOptions = question.options && question.options.length > 0;
+
+  // Determine button content based on flow state
+  const getButtonContent = () => {
+    switch (flow) {
+      case 'ready':
+        return {
+          text: primaryLabel || 'Send Question',
+          icon: <Send className="w-4 h-4" />
+        };
+      case 'sent-picture':
+        return {
+          text: 'Send Question',
+          icon: <Send className="w-4 h-4" />
+        };
+      case 'sent-question':
+        return {
+          text: 'Start Timer',
+          icon: <Timer className="w-4 h-4" />
+        };
+      case 'running':
+      case 'timeup':
+        return {
+          text: 'Reveal Answer',
+          icon: <Eye className="w-4 h-4" />
+        };
+      case 'revealed':
+        return {
+          text: 'Fastest Team',
+          icon: <Zap className="w-4 h-4" />
+        };
+      case 'fastest':
+        const isLastQuestion = questionNumber >= totalQuestions;
+        return {
+          text: isLastQuestion ? 'End Round' : 'Next Question',
+          icon: <ChevronRight className="w-4 h-4" />
+        };
+      default:
+        return {
+          text: 'Send Question',
+          icon: <Send className="w-4 h-4" />
+        };
+    }
+  };
+
+  const { text, icon } = getButtonContent();
+
+  // Add spacebar shortcut for primary action
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only trigger if spacebar is pressed and not in an input field
+      if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        e.preventDefault();
+        onPrimaryAction?.();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [onPrimaryAction]);
 
   // Render options as letters (A, B, C, ...)
   const renderOptions = () => {
@@ -159,34 +225,18 @@ export function QuestionPanel({
         )}
       </div>
 
-      {/* Send Question Button */}
+      {/* Dynamic Primary Action Button - Styled to match Keypad interface */}
       <button
         onClick={onPrimaryAction}
         title="Press Spacebar to trigger this action"
-        className="flex items-center justify-center gap-3 px-3 rounded-lg font-bold text-[23px] transition-all shadow-lg whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white hover:scale-105"
+        className="border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl font-semibold bg-[#3498db] hover:bg-[#2980b9] text-white transition-all hover:scale-105 active:scale-95"
         style={{
           margin: '0 24.6px 75px auto',
-          height: '36px',
-          padding: '0 12px',
-          lineHeight: '28px',
+          whiteSpace: 'nowrap',
         }}
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="w-4 h-4"
-        >
-          <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-        Send Question
+        {icon}
+        <span>{text}</span>
       </button>
     </div>
   );
