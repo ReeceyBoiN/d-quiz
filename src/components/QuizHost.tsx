@@ -1387,165 +1387,214 @@ export function QuizHost() {
           <meta charset="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <title>Quiz External Display</title>
-          <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-          <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-          <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-          <script src="https://cdn.tailwindcss.com"></script>
           <style>
-            body {
-              margin: 0;
-              padding: 0;
-              background: #1a252f;
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-              overflow: hidden;
-            }
-            @keyframes falling-emoji {
-              from {
-                transform: translateX(-50%) translateY(-60px) rotate(0deg);
-                opacity: 1;
-              }
-              to {
-                transform: translateX(-50%) translateY(calc(100vh + 60px)) rotate(360deg);
-                opacity: 0.8;
-              }
-            }
-            @keyframes pulse {
-              0%, 100% { transform: scale(1); }
-              50% { transform: scale(1.05); }
-            }
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html, body { height: 100%; width: 100%; }
+            body { background: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+            @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+            @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            @keyframes fall {
+              0% { transform: translateY(-100px) translateX(0) rotateY(0deg); opacity: 1; }
+              100% { transform: translateY(100vh) translateX(0) rotateY(360deg); opacity: 0; }
             }
             .falling-emoji {
               position: fixed;
-              font-size: 4rem;
-              z-index: 1000;
+              font-size: 3rem;
+              z-index: 100;
               pointer-events: none;
-              animation: falling-emoji 4s linear forwards;
+              user-select: none;
+            }
+            .decorative-icon {
+              position: absolute;
+              font-size: 2.5rem;
+              filter: drop-shadow(0 4px 6px rgba(0,0,0,0.12));
+              animation: bounce 2s infinite;
             }
           </style>
         </head>
         <body>
-          <div id="root"></div>
+          <div id="root" style="width: 100vw; height: 100vh;"></div>
+          <script type="text/javascript">
+            const emojis = [
+              '🎯','🎪','🎉','🏆','⭐','💫','🎊','🎈','🎺','🧠','🎨','🎭','🎸','🎲','🎳','🎮',
+              '🎱','🎰','🎵','🌮','🍕','🍦','🍪','🍰','🧁','🍓','🍊','🍌','🍍','🐶','🐱','🐭',
+              '🐹','🐰','🦊','🐻','🐨','🐯','🌸','🌺','🌻','🌷','🌹','🌵','🌲','🌳','🍀','🍃',
+              '✨','🌙','☀️','🌤️','⛅','🌦️','❄️','🚀','🛸','🎡','🎢','🎠','🔥','💖','🌈','⚡'
+            ];
 
-          <script type="text/babel">
-            const { useState, useEffect } = React;
+            const state = {
+              mode: 'basic',
+              timerValue: 30,
+              totalTime: 30,
+              questionInfo: { number: 1 },
+              countdownStyle: 'circular',
+              gameModeTimers: { keypad: 30, buzzin: 30, nearestwins: 10 },
+              gameMode: 'keypad',
+              emojiInterval: null,
+              decorativeIcons: [
+                { emoji: '🎯', top: '-1rem', left: '-1rem' },
+                { emoji: '🌟', top: '1.5rem', right: '-2rem' },
+                { emoji: '🏆', bottom: '3rem', right: '-3rem' },
+                { emoji: '🎵', bottom: '-2rem', left: '-2rem' }
+              ]
+            };
 
-            function ExternalDisplay() {
-              const [displayData, setDisplayData] = useState({
-                mode: 'basic',
-                previousMode: 'basic',
-                images: [],
-                quizzes: [],
-                slideshowSpeed: 5,
-                leaderboardData: null,
-                revealedTeams: [],
-                timerValue: null,
-                correctAnswer: null,
-                questionInfo: null,
-                fastestTeamData: null,
-                gameInfo: null,
-                targetNumber: null,
-                answerRevealed: false,
-                results: null,
-                nearestWinsData: null,
-                wheelSpinnerData: null,
-                countdownStyle: 'circular',
-                gameMode: 'keypad',
-                gameModeTimers: { keypad: 30, buzzin: 30, nearestwins: 10 },
-                teamName: null,
-              });
+            function renderContent() {
+              const root = document.getElementById('root');
 
-              const [currentImageIndex, setCurrentImageIndex] = useState(0);
-              const [currentColorIndex, setCurrentColorIndex] = useState(0);
-              const [dynamicBackgroundColor, setDynamicBackgroundColor] = useState('#f1c40f');
-              const [welcomeColorIndex, setWelcomeColorIndex] = useState(0);
-
-              const colors = [
-                '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF',
-                '#00FFFF', '#FFA500', '#800080', '#FFC0CB', '#A52A2A',
-                '#808080', '#000000', '#FFFFFF', '#90EE90', '#FFB6C1'
-              ];
-
-              const welcomeColors = [
-                '#f39c12', '#e74c3c', '#e91e63',
-                '#9b59b6', '#3498db', '#27ae60', '#f1c40f'
-              ];
-
-              const dynamicColors = [
-                '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
-                '#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#e91e63'
-              ];
-
-              const getRandomDynamicColor = () =>
-                dynamicColors[Math.floor(Math.random() * dynamicColors.length)];
-
-              useEffect(() => {
-                const handleMessage = (event) => {
-                  if (event.data.type === 'DISPLAY_UPDATE') {
-                    const newMode = event.data.mode || 'basic';
-                    setDisplayData(prev => ({
-                      ...prev,
-                      ...event.data,
-                      mode: newMode,
-                    }));
-                  }
-                };
-                window.addEventListener('message', handleMessage);
-                return () => window.removeEventListener('message', handleMessage);
-              }, []);
-
-              const getHSLColor = (hue) => \`hsl(\${hue}, 85%, 60%)\`;
-
-              const renderContent = () => {
-                switch (displayData.mode) {
-                  case 'basic':
-                    return (
-                      <div
-                        className="h-full w-full flex items-center justify-center relative overflow-hidden"
-                        style={{ backgroundColor: getHSLColor(currentColorIndex) }}
-                      >
-                        <div className="relative z-10 text-center">
-                          <div className="bg-orange-500 text-black px-20 py-12 rounded-2xl shadow-2xl border-4 border-white">
-                            <h1 className="text-[12rem] font-black tracking-wider drop-shadow-lg">POP</h1>
-                            <h2 className="text-[12rem] font-black tracking-wider -mt-8 drop-shadow-lg">QUIZ!</h2>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  default:
-                    return (
-                      <div className="h-full w-full flex items-center justify-center text-white">
-                        External Display Active
-                      </div>
-                    );
-                }
-              };
-
-              return (
-                <div className="h-screen w-screen bg-gray-900 flex flex-col">
-                  <div className="bg-gray-700 p-3 flex-shrink-0">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-orange-500 animate-pulse"></div>
-                        <span className="text-sm font-semibold text-white">EXTERNAL DISPLAY</span>
-                        <span className="text-xs px-2 py-1 rounded uppercase font-medium bg-orange-500 text-white">
-                          {displayData.mode}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-400">1920x1080 â€¢ 16:9</div>
-                    </div>
-                  </div>
-                  <div className="flex-1 bg-black relative overflow-hidden">
-                    {renderContent()}
-                    <div className="absolute bottom-4 right-4 text-xs text-white opacity-30 font-mono">EXT-1</div>
-                  </div>
-                </div>
-              );
+              if (state.mode === 'timer') {
+                return renderTimer();
+              } else {
+                return renderBasic();
+              }
             }
 
-            ReactDOM.render(<ExternalDisplay />, document.getElementById('root'));
+            function getRandomEmoji() {
+              return emojis[Math.floor(Math.random() * emojis.length)];
+            }
+
+            function spawnEmoji() {
+              const emoji = getRandomEmoji();
+              const randomLeft = Math.random() * 80 + 10; // 10% to 90%
+
+              const emojiEl = document.createElement('div');
+              emojiEl.className = 'falling-emoji';
+              emojiEl.textContent = emoji;
+              emojiEl.style.left = randomLeft + '%';
+              emojiEl.style.top = '-100px';
+              emojiEl.style.animation = 'fall ' + (4 + Math.random() * 2) + 's linear forwards';
+              emojiEl.style.animationDelay = '0s';
+
+              const container = document.querySelector('[data-emoji-container]');
+              if (container) {
+                container.appendChild(emojiEl);
+                setTimeout(() => emojiEl.remove(), 6000);
+              }
+            }
+
+            function renderBasic() {
+              const hue = (Date.now() / 50) % 360;
+              const bgColor = 'hsl(' + hue + ', 85%, 60%)';
+
+              const decorativeHTML = state.decorativeIcons.map(icon => {
+                const posStyle = icon.top ? 'top: ' + icon.top + ';' : '';
+                const posStyle2 = icon.bottom ? 'bottom: ' + icon.bottom + ';' : '';
+                const posStyle3 = icon.left ? 'left: ' + icon.left + ';' : '';
+                const posStyle4 = icon.right ? 'right: ' + icon.right + ';' : '';
+                return '<div class="decorative-icon" style="' + posStyle + posStyle2 + posStyle3 + posStyle4 + '">' + icon.emoji + '</div>';
+              }).join('');
+
+              return \`
+                <div data-emoji-container style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: \${bgColor}; position: relative; overflow: hidden;">
+                  <div style="text-align: center; position: relative; z-index: 10; transform: rotate(-6deg);">
+                    <div style="background-color: #f97316; color: black; padding: 64px 80px; border-radius: 16px; box-shadow: 0 25px 50px rgba(0,0,0,0.4); border: 6px solid white; transform: rotate(3deg); position: relative;">
+                      <h1 style="font-size: clamp(3rem, 15vw, 14rem); font-weight: 900; letter-spacing: 0.1em; margin: 0; line-height: 0.85; text-shadow: 0 4px 6px rgba(0,0,0,0.2);">POP</h1>
+                      <h2 style="font-size: clamp(3rem, 15vw, 14rem); font-weight: 900; letter-spacing: 0.1em; margin: 0; line-height: 0.85; text-shadow: 0 4px 6px rgba(0,0,0,0.2);">QUIZ!</h2>
+                      \${decorativeHTML}
+                    </div>
+                  </div>
+                </div>
+              \`;
+            }
+
+            function renderTimer() {
+              const timerValue = state.timerValue || 0;
+              const totalTime = state.totalTime || (state.gameModeTimers && state.gameModeTimers[state.gameMode]) || 30;
+              const question = state.questionInfo?.number || 1;
+              const progress = timerValue / totalTime;
+              const circumference = 2 * Math.PI * 45;
+              const strokeOffset = circumference * (1 - progress);
+
+              return \`
+                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #f1c40f;">
+                  <div style="text-align: center; margin-bottom: 32px;">
+                    <h1 style="font-size: 48px; font-weight: bold; color: #1f2937;">Question \${question} • Timer</h1>
+                  </div>
+                  <div style="flex: 1; background-color: #1f2937; border-radius: 24px; padding: 48px; display: flex; align-items: center; justify-content: center; position: relative;">
+                    <svg style="width: 30rem; height: 30rem; transform: rotate(-90deg); position: absolute;" viewBox="0 0 100 100">
+                      <circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.1)" stroke-width="8" fill="none" />
+                      <circle cx="50" cy="50" r="45" stroke="#e74c3c" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="\${circumference}" stroke-dashoffset="\${strokeOffset}" style="transition: stroke-dashoffset 1s linear;" />
+                    </svg>
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; z-index: 10;">
+                      <div style="font-size: 12rem; font-weight: bold; color: #ef4444; line-height: 0.9;">\${timerValue}</div>
+                      <div style="font-size: 24px; color: white; margin-top: 8px;">seconds</div>
+                    </div>
+                  </div>
+                </div>
+              \`;
+            }
+
+            function render() {
+              const root = document.getElementById('root');
+              const content = renderContent();
+
+              root.innerHTML = \`
+                <div style="height: 100vh; width: 100vw; background-color: #111827; display: flex; flex-direction: column;">
+                  <div style="background-color: #374151; padding: 12px; flex: 0 0 auto;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 12px; height: 12px; border-radius: 50%; background-color: #f97316; animation: pulse 2s infinite;"></div>
+                        <span style="font-size: 14px; font-weight: 600; color: white;">EXTERNAL DISPLAY</span>
+                        <span style="font-size: 12px; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; font-weight: 500; background-color: #f97316; color: white;">\${state.mode}</span>
+                      </div>
+                      <div style="font-size: 12px; color: #9ca3af;">1920x1080 • 16:9</div>
+                    </div>
+                  </div>
+                  <div style="flex: 1; background-color: black; position: relative; overflow: hidden;">
+                    \${content}
+                    <div style="position: absolute; bottom: 16px; right: 16px; font-size: 12px; color: white; opacity: 0.3; font-family: monospace;">EXT-1</div>
+                  </div>
+                </div>
+              \`;
+
+              // Start/stop emoji animation based on mode
+              if (state.mode === 'basic') {
+                if (!state.emojiInterval) {
+                  spawnEmoji(); // Spawn one immediately
+                  state.emojiInterval = setInterval(spawnEmoji, 2000);
+                }
+              } else {
+                if (state.emojiInterval) {
+                  clearInterval(state.emojiInterval);
+                  state.emojiInterval = null;
+                }
+              }
+            }
+
+            window.addEventListener('message', (event) => {
+              if (event.data?.type === 'DISPLAY_UPDATE') {
+                state.mode = event.data.mode || 'basic';
+
+                // Extract timerValue from either top-level or nested data
+                const incomingTimerValue = event.data.timerValue !== undefined ? event.data.timerValue : event.data.data?.timerValue;
+                if (incomingTimerValue !== undefined) {
+                  state.timerValue = incomingTimerValue;
+                  state.totalTime = incomingTimerValue; // When timer starts, timerValue is the total time
+                }
+
+                state.questionInfo = event.data.questionInfo || state.questionInfo || { number: 1 };
+                state.countdownStyle = event.data.countdownStyle || 'circular';
+                state.gameModeTimers = event.data.gameModeTimers || state.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 };
+                state.gameMode = event.data.gameMode || 'keypad';
+                render();
+              }
+            });
+
+            // Initial render
+            render();
+
+            // Auto-update timer every second
+            const timerUpdateInterval = setInterval(() => {
+              if (state.mode === 'timer') {
+                if (state.timerValue > 0) {
+                  state.timerValue--;
+                } else {
+                  state.timerValue = 0;
+                }
+                render();
+              }
+            }, 1000);
           </script>
         </body>
         </html>
