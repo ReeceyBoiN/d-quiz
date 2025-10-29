@@ -8,6 +8,7 @@ interface QuestionPanelProps {
   answerText?: string;
   correctIndex?: number;
   answerSubmitted?: string;
+  onPrimaryAction?: () => void;
 }
 
 /**
@@ -30,6 +31,7 @@ export function QuestionPanel({
   answerText = '',
   correctIndex = -1,
   answerSubmitted = '',
+  onPrimaryAction,
 }: QuestionPanelProps) {
   if (!question) {
     return (
@@ -159,6 +161,7 @@ export function QuestionPanel({
 
       {/* Send Question Button */}
       <button
+        onClick={onPrimaryAction}
         title="Press Spacebar to trigger this action"
         className="flex items-center justify-center gap-3 px-3 rounded-lg font-bold text-[23px] transition-all shadow-lg whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white hover:scale-105"
         style={{

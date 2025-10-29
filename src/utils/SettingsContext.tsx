@@ -32,6 +32,7 @@ interface SettingsContextType {
   staggeredEnabled: boolean;
   punishmentEnabled: boolean;
   voiceCountdown: boolean;
+  hideQuizPackAnswers: boolean;
   updateDefaultScores: (points: number, speedBonus: number) => void;
   updateGameModePoints: (gameMode: keyof GameModePoints, points: number) => void;
   updateGameModeTimer: (gameMode: keyof GameModeTimers, timer: number) => void;
@@ -45,6 +46,7 @@ interface SettingsContextType {
   updateStaggeredEnabled: (enabled?: boolean) => void;
   updatePunishmentEnabled: (enabled?: boolean) => void;
   updateVoiceCountdown: (enabled: boolean) => void;
+  updateHideQuizPackAnswers: (enabled: boolean) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -88,6 +90,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   const [staggeredEnabled, setStaggeredEnabled] = useState(false);
   const [punishmentEnabled, setPunishmentEnabled] = useState(false);
   const [voiceCountdown, setVoiceCountdown] = useState(true);
+  const [hideQuizPackAnswers, setHideQuizPackAnswers] = useState(false);
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -121,6 +124,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         setStaggeredEnabled(parsed.staggeredEnabled || false);
         setPunishmentEnabled(parsed.punishmentEnabled || false);
         setVoiceCountdown(parsed.voiceCountdown !== undefined ? parsed.voiceCountdown : true);
+        setHideQuizPackAnswers(parsed.hideQuizPackAnswers || false);
       } catch (error) {
         console.error('Failed to parse saved settings:', error);
       }
@@ -176,6 +180,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
           setStaggeredEnabled(parsed.staggeredEnabled || false);
           setPunishmentEnabled(parsed.punishmentEnabled || false);
           setVoiceCountdown(parsed.voiceCountdown !== undefined ? parsed.voiceCountdown : true);
+          setHideQuizPackAnswers(parsed.hideQuizPackAnswers || false);
         } catch (error) {
           console.error('Failed to parse saved settings:', error);
         }
@@ -323,6 +328,15 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     window.dispatchEvent(new Event('settingsUpdated'));
   };
 
+  const updateHideQuizPackAnswers = (enabled: boolean) => {
+    setHideQuizPackAnswers(enabled);
+    // Save to localStorage and trigger event
+    const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
+    const updatedSettings = { ...currentSettings, hideQuizPackAnswers: enabled };
+    localStorage.setItem('quizHostSettings', JSON.stringify(updatedSettings));
+    window.dispatchEvent(new Event('settingsUpdated'));
+  };
+
   return (
     <SettingsContext.Provider
       value={{
@@ -341,6 +355,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         staggeredEnabled,
         punishmentEnabled,
         voiceCountdown,
+        hideQuizPackAnswers,
         updateDefaultScores,
         updateGameModePoints,
         updateGameModeTimer,
@@ -354,6 +369,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         updateStaggeredEnabled,
         updatePunishmentEnabled,
         updateVoiceCountdown,
+        updateHideQuizPackAnswers,
       }}
     >
       {children}

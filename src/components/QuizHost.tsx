@@ -216,6 +216,7 @@ export function QuizHost() {
   const [showKeypadInterface, setShowKeypadInterface] = useState(false);
   const [keypadInstanceKey, setKeypadInstanceKey] = useState(0);
   const [keypadNextQuestionTrigger, setKeypadNextQuestionTrigger] = useState(0);
+  const [isQuizPackMode, setIsQuizPackMode] = useState(false);
 
   // Loaded quiz state
   const [loadedQuizQuestions, setLoadedQuizQuestions] = useState<any[]>([]);
@@ -329,19 +330,18 @@ export function QuizHost() {
     }
   }, [quizzes, fastestTeamData?.team.id]);
 
-  // Handle loaded quiz - auto-open Keypad interface or QuizPackDisplay when quiz is loaded
+  // Handle loaded quiz - auto-open Keypad interface for both regular and quiz pack modes
   useEffect(() => {
     if (currentQuiz && currentQuiz.questions && currentQuiz.questions.length > 0) {
       setLoadedQuizQuestions(currentQuiz.questions);
       setCurrentLoadedQuestionIndex(0);
       closeAllGameModes();
 
-      // Show QuizPackDisplay for quiz packs, otherwise show KeypadInterface
-      if (currentQuiz.isQuizPack) {
-        setShowQuizPackDisplay(true);
-      } else {
-        setShowKeypadInterface(true);
-      }
+      // Use KeypadInterface for both regular and quiz pack modes
+      // In quiz pack mode, KeypadInterface will skip input screens and show pre-loaded answers
+      const isQuizPack = currentQuiz.isQuizPack || false;
+      setIsQuizPackMode(isQuizPack);
+      setShowKeypadInterface(true);
       setActiveTab("teams");
     }
   }, [currentQuiz]);
@@ -387,6 +387,7 @@ export function QuizHost() {
     setShowWheelSpinnerInterface(false);
     setShowFastestTeamDisplay(false);
     setShowQuizPackDisplay(false);
+    setIsQuizPackMode(false);
     setBuzzInConfig(null);
     // Reset current round scores
     setCurrentRoundPoints(null);
@@ -622,6 +623,7 @@ export function QuizHost() {
   // Handle keypad interface close
   const handleKeypadClose = () => {
     setShowKeypadInterface(false);
+    setIsQuizPackMode(false);
     setActiveTab("home"); // Return to home when keypad is closed
   };
 
@@ -2373,6 +2375,7 @@ export function QuizHost() {
             showAnswer={flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
             answerText={currentQuestion?.answerText}
             correctIndex={currentQuestion?.correctIndex}
+            onPrimaryAction={handlePrimaryAction}
           />
         </div>
       );
@@ -2425,6 +2428,7 @@ export function QuizHost() {
               onFastTrack={handleFastTrack}
               loadedQuestions={loadedQuizQuestions}
               currentQuestionIndex={currentLoadedQuestionIndex}
+              isQuizPackMode={isQuizPackMode}
             />
           </div>
           

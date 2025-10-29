@@ -40,6 +40,7 @@ interface KeypadInterfaceProps {
   loadedQuestions?: LoadedQuestion[]; // Loaded questions from .sqq file
   currentQuestionIndex?: number; // Current question index from loaded quiz
   onQuestionComplete?: () => void; // Callback when a question is completed
+  isQuizPackMode?: boolean; // Is this in quiz pack mode with pre-loaded answers
 }
 
 export function KeypadInterface({
@@ -64,11 +65,12 @@ export function KeypadInterface({
   onFastTrack,
   loadedQuestions = [],
   currentQuestionIndex = 0,
-  onQuestionComplete
+  onQuestionComplete,
+  isQuizPackMode = false
 }: KeypadInterfaceProps) {
-  const { 
-    defaultPoints, 
-    defaultSpeedBonus, 
+  const {
+    defaultPoints,
+    defaultSpeedBonus,
     goWideEnabled,
     evilModeEnabled,
     updateGoWideEnabled,
@@ -78,7 +80,8 @@ export function KeypadInterface({
     punishmentEnabled,
     updatePunishmentEnabled,
     gameModeTimers,
-    voiceCountdown
+    voiceCountdown,
+    hideQuizPackAnswers
   } = useSettings();
   
   // Use current round scores from props (convert to arrays for slider compatibility)
@@ -90,7 +93,7 @@ export function KeypadInterface({
   const [noAnswerPenalty, setNoAnswerPenalty] = useState(false);
   const [autoDisableTwoOptions, setAutoDisableTwoOptions] = useState(false);
   const [showQuestionTypes, setShowQuestionTypes] = useState(false);
-  const [currentScreen, setCurrentScreen] = useState<'config' | 'question-types' | 'letters-game' | 'multiple-choice-game' | 'numbers-game' | 'sequence-game' | 'results'>('config');
+  const [currentScreen, setCurrentScreen] = useState<'config' | 'question-types' | 'letters-game' | 'multiple-choice-game' | 'numbers-game' | 'sequence-game' | 'quiz-pack-question' | 'results'>('config');
   const [selectedLetter, setSelectedLetter] = useState<string | null>(null);
   const [selectedAnswers, setSelectedAnswers] = useState<string[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(1);
@@ -280,15 +283,20 @@ export function KeypadInterface({
     }
   }, [loadedQuestions, currentQuestionIndex]);
 
+  // Auto-start quiz pack mode
+  useEffect(() => {
+    if (isQuizPackMode && currentScreen === 'config' && loadedQuestions && loadedQuestions.length > 0) {
+      handleStartRound();
+    }
+  }, [isQuizPackMode, currentScreen, loadedQuestions]);
+
   // Calculate actual results based on team answers and correct answer
   const calculateAnswerStats = useCallback(() => {
     if (!teamAnswers || Object.keys(teamAnswers).length === 0) {
       return { correct: 0, wrong: 0, noAnswer: teams.length };
     }
 
-    const correctAnswer = questionType === 'letters' ? selectedLetter : 
-                         questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
-                         questionType === 'numbers' ? numbersAnswer : null;
+    const correctAnswer = getCorrectAnswer();
 
     if (!correctAnswer) {
       return { correct: 0, wrong: 0, noAnswer: teams.length };
@@ -315,7 +323,7 @@ export function KeypadInterface({
     });
 
     return { correct, wrong, noAnswer };
-  }, [teamAnswers, teams, questionType, selectedLetter, selectedAnswers, numbersAnswer]);
+  }, [teamAnswers, teams, questionType, selectedLetter, selectedAnswers, numbersAnswer, isQuizPackMode, currentQuestionIndex]);
 
   // Find the fastest team that answered correctly
   const getFastestCorrectTeam = useCallback(() => {
@@ -323,9 +331,7 @@ export function KeypadInterface({
       return null;
     }
 
-    const correctAnswer = questionType === 'letters' ? selectedLetter : 
-                         questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
-                         questionType === 'numbers' ? numbersAnswer : null;
+    const correctAnswer = getCorrectAnswer();
 
     if (!correctAnswer) {
       return null;
@@ -360,7 +366,79 @@ export function KeypadInterface({
       team: fastestTeam,
       responseTime: fastestTime
     };
-  }, [teamAnswers, teamAnswerTimes, teams, questionType, selectedLetter, selectedAnswers, numbersAnswer]);
+  }, [teamAnswers, teamAnswerTimes, teams, questionType, selectedLetter, selectedAnswers, numbersAnswer, isQuizPackMode, currentLoadedQuestion]);
+
+  // Helper function to get the question type label
+  const getQuestionTypeLabel = (type: string | null): string => {
+    if (!type) return 'Question';
+    const t = type.toLowerCase();
+    switch (t) {
+      case 'letters':
+        return 'Letters Question';
+      case 'multiple-choice':
+      case 'multi':
+        return 'Multiple Choice Question';
+      case 'numbers':
+      case 'nearest':
+        return 'Numbers Question';
+      case 'sequence':
+        return 'Sequence Question';
+      case 'buzzin':
+        return 'Buzz In Question';
+      default:
+        return type;
+    }
+  };
+
+  // Helper function to get the correct answer (either from user input or pre-loaded data)
+  const getCorrectAnswer = () => {
+    if (isQuizPackMode && currentLoadedQuestion?.answerText) {
+      return currentLoadedQuestion.answerText;
+    }
+    return questionType === 'letters' ? selectedLetter :
+           questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
+           questionType === 'numbers' ? numbersAnswer : null;
+  };
+
+  const handleQuestionTypeSelect = (type: 'letters' | 'multiple-choice' | 'numbers' | 'sequence') => {
+    setQuestionType(type);
+
+    // Setup sequence game items if it's a sequence question with loaded data
+    if (type === 'sequence' && currentLoadedQuestion?.options && currentLoadedQuestion.options.length > 0) {
+      const items = [...currentLoadedQuestion.options];
+      setSequenceItems(items);
+
+      // Shuffle items for display
+      const shuffled = items
+        .map((item, idx) => ({ id: `seq-${idx}`, item }))
+        .sort(() => Math.random() - 0.5);
+      setShuffledSequence(shuffled);
+    }
+
+    if (isQuizPackMode) {
+      // In quiz pack mode, skip the game input screen and go straight to question display
+      setCurrentScreen('quiz-pack-question');
+    } else if (type === 'letters') {
+      setCurrentScreen('letters-game');
+    } else if (type === 'multiple-choice') {
+      setCurrentScreen('multiple-choice-game');
+    } else if (type === 'numbers') {
+      setCurrentScreen('numbers-game');
+    } else if (type === 'sequence') {
+      setCurrentScreen('sequence-game');
+    }
+
+    const pointValue = points[0];
+    const bonusValue = speedBonus[0];
+    console.log("Starting keypad round with:", {
+      points: pointValue,
+      speedBonus: bonusValue,
+      bonusType,
+      goWideEnabled,
+      evilModeEnabled,
+      questionType: type
+    });
+  };
 
   const handleStartRound = () => {
     // If we have loaded questions, auto-detect the question type and skip question-types screen
@@ -395,41 +473,6 @@ export function KeypadInterface({
         }
       });
     }
-  };
-
-  const handleQuestionTypeSelect = (type: 'letters' | 'multiple-choice' | 'numbers' | 'sequence') => {
-    setQuestionType(type);
-
-    // Setup sequence game items if it's a sequence question with loaded data
-    if (type === 'sequence' && currentLoadedQuestion?.options && currentLoadedQuestion.options.length > 0) {
-      const items = [...currentLoadedQuestion.options];
-      setSequenceItems(items);
-
-      // Shuffle items for display
-      const shuffled = items
-        .map((item, idx) => ({ id: `seq-${idx}`, item }))
-        .sort(() => Math.random() - 0.5);
-      setShuffledSequence(shuffled);
-    }
-
-    if (type === 'letters') {
-      setCurrentScreen('letters-game');
-    } else if (type === 'multiple-choice') {
-      setCurrentScreen('multiple-choice-game');
-    } else if (type === 'numbers') {
-      setCurrentScreen('numbers-game');
-    } else if (type === 'sequence') {
-      setCurrentScreen('sequence-game');
-    }
-
-    console.log("Starting keypad round with:", {
-      points,
-      speedBonus,
-      bonusType,
-      goWideEnabled,
-      evilModeEnabled,
-      questionType: type
-    });
   };
 
   const handleBackFromQuestionTypes = () => {
@@ -631,15 +674,15 @@ export function KeypadInterface({
   };
 
   const handleShowResults = useCallback(() => {
-    // Check if we have an answer selected before showing results
-    const hasAnswer = currentScreen === 'letters-game' 
-      ? selectedLetter 
+    // In quiz pack mode, we always have an answer, so we can always show results
+    const hasAnswer = isQuizPackMode || (currentScreen === 'letters-game'
+      ? selectedLetter
       : currentScreen === 'multiple-choice-game'
         ? selectedAnswers.length > 0
         : currentScreen === 'numbers-game'
           ? numbersAnswer && numbersAnswerConfirmed
-          : false;
-    
+          : false);
+
     if (hasAnswer) {
       setCurrentScreen('results');
       
@@ -667,12 +710,10 @@ export function KeypadInterface({
   // Add function to handle revealing the correct answer
   const handleRevealAnswer = useCallback(() => {
     setAnswerRevealed(true);
-    
+
     // Award points to teams that answered correctly
     if (onAwardPoints) {
-      const correctAnswer = questionType === 'letters' ? selectedLetter : 
-                           questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
-                           questionType === 'numbers' ? numbersAnswer : null;
+      const correctAnswer = getCorrectAnswer();
 
       if (correctAnswer) {
         const correctTeamIds = teams.filter(team => {
@@ -716,9 +757,7 @@ export function KeypadInterface({
     
     // Send correct answer to external display with stats
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
-      const answer = questionType === 'letters' ? selectedLetter : 
-                     questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
-                     questionType === 'numbers' ? numbersAnswer : 'Unknown';
+      const answer = getCorrectAnswer() || 'Unknown';
       const stats = calculateAnswerStats();
       const fastestTeam = getFastestCorrectTeam();
       
@@ -738,7 +777,7 @@ export function KeypadInterface({
         }
       });
     }
-  }, [externalWindow, onExternalDisplayUpdate, questionType, selectedLetter, selectedAnswers, numbersAnswer, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes]);
+  }, [externalWindow, onExternalDisplayUpdate, questionType, selectedLetter, selectedAnswers, numbersAnswer, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes, isQuizPackMode, currentLoadedQuestion]);
 
   // Add function to handle revealing the fastest team
   const handleRevealFastestTeam = useCallback(() => {
@@ -1954,6 +1993,92 @@ export function KeypadInterface({
     );
   }
 
+  // Auto-show results when timer finishes in quiz pack question mode
+  useEffect(() => {
+    if (timerFinished && currentScreen === 'quiz-pack-question') {
+      handleShowResults();
+    }
+  }, [timerFinished, currentScreen]);
+
+  // Quiz Pack Question Screen
+  if (currentScreen === 'quiz-pack-question') {
+
+    return (
+      <div className="h-full bg-[#2c3e50] text-[#ecf0f1] p-6 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              onClick={handleBackFromGame}
+              className="p-2 text-[#ecf0f1] hover:bg-[#4a5568]"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <h2 className="text-3xl font-semibold text-white">Question {currentQuestion}: {getQuestionTypeLabel(questionType || '')}</h2>
+          </div>
+        </div>
+
+        {/* Timer Progress Bar */}
+        <TimerProgressBar
+          isVisible={isTimerRunning}
+          timeRemaining={countdown || 0}
+          totalTime={totalTimerLength}
+          position="top"
+        />
+
+        {/* Main Content Area */}
+        <div className="flex-1 flex items-center justify-center flex-col gap-8">
+          {/* Question Text */}
+          <div className="text-center max-w-2xl">
+            <h3 className="text-2xl text-[#95a5a6] mb-4">Question:</h3>
+            <div className="text-4xl font-bold text-white mb-6 break-words">{currentLoadedQuestion?.q || 'No question text'}</div>
+          </div>
+
+          {/* Answer Display - Always visible in quiz pack mode */}
+          <div className={`p-6 rounded-lg ${
+            hideQuizPackAnswers && !isTimerRunning
+              ? 'bg-[#34495e]'
+              : 'bg-[#2c3e50] border-2 border-[#f39c12]'
+          }`}>
+            <div className="text-lg text-[#95a5a6] mb-2">Answer:</div>
+            <div className={`text-3xl font-bold ${
+              hideQuizPackAnswers && !isTimerRunning
+                ? 'text-[#95a5a6]'
+                : 'text-[#f39c12]'
+            }`}>
+              {hideQuizPackAnswers && !isTimerRunning ? '••••••' : currentLoadedQuestion?.answerText || 'No answer'}
+            </div>
+          </div>
+
+          {/* Picture Display Box */}
+          {currentLoadedQuestion?.imageDataUrl && (
+            <div className="border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-4 shadow-lg" style={{ maxWidth: '300px', maxHeight: '300px' }}>
+              <img
+                src={currentLoadedQuestion.imageDataUrl}
+                alt="Question"
+                className="w-full h-full object-contain rounded"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Start Timer Button - Fixed bottom right position */}
+        {!isTimerRunning && !timerFinished && (
+          <div className="fixed bottom-20 right-6 z-50">
+            <Button
+              onClick={handleStartTimer}
+              className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
+            >
+              <Timer className="h-6 w-6" />
+              Start Timer
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // Results Screen
   if (currentScreen === 'results') {
     return (
@@ -1996,19 +2121,25 @@ export function KeypadInterface({
 
             {/* Answer display box - transforms from selected to correct when revealed */}
             <div className={`mb-6 p-4 rounded-lg ${
-              answerRevealed 
-                ? 'bg-[#2c3e50] border-2 border-[#f39c12]' 
+              answerRevealed
+                ? 'bg-[#2c3e50] border-2 border-[#f39c12]'
                 : 'bg-[#34495e]'
             }`}>
               <div className="text-lg text-[#95a5a6]">
-                {answerRevealed ? 'Correct Answer:' : 'Your Selected Answer:'}
+                {answerRevealed ? 'Correct Answer:' : isQuizPackMode ? 'Answer:' : 'Your Selected Answer:'}
               </div>
               <div className={`text-3xl font-bold mt-2 ${
                 answerRevealed ? 'text-[#f39c12]' : 'text-[#3498db]'
               }`}>
-                {questionType === 'letters' ? selectedLetter : 
-                 questionType === 'multiple-choice' ? selectedAnswers.join(', ') : 
-                 questionType === 'numbers' ? numbersAnswer : 'Unknown'}
+                {isQuizPackMode && hideQuizPackAnswers && !answerRevealed ? (
+                  '••••••'
+                ) : isQuizPackMode ? (
+                  currentLoadedQuestion?.answerText || 'No answer'
+                ) : (
+                  questionType === 'letters' ? selectedLetter :
+                  questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
+                  questionType === 'numbers' ? numbersAnswer : 'Unknown'
+                )}
               </div>
             </div>
 
