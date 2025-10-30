@@ -1413,6 +1413,37 @@ export function QuizHost() {
     }
   };
 
+  // Handle global scramble keypad - scrambles all team keypads
+  const handleGlobalScrambleKeypad = () => {
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz => ({
+        ...quiz,
+        scrambled: !quiz.scrambled
+      }))
+    );
+  };
+
+  // Handle toggle hide scores
+  const handleToggleHideScores = () => {
+    setScoresHidden(!scoresHidden);
+  };
+
+  // Handle change team layout - cycles through: default -> alphabetical -> random -> default
+  const handleChangeTeamLayout = () => {
+    setTeamLayoutMode(prevMode => {
+      switch (prevMode) {
+        case 'default':
+          return 'alphabetical';
+        case 'alphabetical':
+          return 'random';
+        case 'random':
+          return 'default';
+        default:
+          return 'default';
+      }
+    });
+  };
+
   const handleSettingsOpen = () => {
     setShowSettings(true);
   };
@@ -1489,6 +1520,7 @@ export function QuizHost() {
           scoresHidden={scoresHidden}
           teamAnswerStatuses={teamAnswerStatuses}
           teamCorrectRankings={teamCorrectRankings}
+          teamLayoutMode={teamLayoutMode}
         />
       </Resizable>
 
@@ -1577,6 +1609,36 @@ export function QuizHost() {
               />
             )}
 
+            {/* Buzzers Management */}
+            {showBuzzersManagement && (
+              <BuzzersManagement
+                teams={quizzes.map(quiz => ({
+                  id: quiz.id,
+                  name: quiz.name,
+                  type: quiz.type || "test",
+                  icon: quiz.icon,
+                  score: quiz.score,
+                  buzzerSound: quiz.buzzerSound,
+                  photoUrl: quiz.photoUrl,
+                  backgroundColor: quiz.backgroundColor
+                }))}
+                onBuzzerChange={(teamId, buzzerSound) => {
+                  setQuizzes(prevQuizzes =>
+                    prevQuizzes.map(quiz =>
+                      quiz.id === teamId ? { ...quiz, buzzerSound } : quiz
+                    )
+                  );
+                }}
+                onClose={handleCloseBuzzersManagement}
+                onShowTeamOnDisplay={(teamName) => {
+                  // Send team name to external display
+                  if (externalWindow && !externalWindow.closed) {
+                    handleExternalDisplayUpdate('team', { teamName });
+                  }
+                }}
+              />
+            )}
+
             {/* Fastest Team Display */}
             {showFastestTeamDisplay && fastestTeamData && (
               <FastestTeamDisplay
@@ -1657,6 +1719,15 @@ export function QuizHost() {
           showQuizPackDisplay={showQuizPackDisplay}
           onEndRound={handleEndRound}
           leftSidebarWidth={sidebarWidth}
+          onGlobalScrambleKeypad={handleGlobalScrambleKeypad}
+          scoresHidden={scoresHidden}
+          onToggleHideScores={handleToggleHideScores}
+          teamLayoutMode={teamLayoutMode}
+          onChangeTeamLayout={handleChangeTeamLayout}
+          hostControllerEnabled={hostControllerEnabled}
+          onToggleHostController={handleToggleHostController}
+          teams={quizzes}
+          onOpenBuzzersManagement={handleOpenBuzzersManagement}
         />
       </div>
 

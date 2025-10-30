@@ -32,9 +32,10 @@ interface LeftSidebarProps {
   scoresHidden?: boolean; // Whether scores should be hidden
   teamAnswerStatuses?: {[teamId: string]: 'correct' | 'incorrect' | 'no-answer'}; // Team answer statuses for temporary background colors
   teamCorrectRankings?: {[teamId: string]: number}; // Rankings for correct teams (1st, 2nd, 3rd, etc.)
+  teamLayoutMode?: 'default' | 'alphabetical' | 'random'; // Team layout mode for sorting
 }
 
-export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange, onScoreSet, onNameChange, onDeleteTeam, onTeamDoubleClick, teamAnswers = {}, teamResponseTimes = {}, showAnswers = false, scoresPaused = false, scoresHidden = false, teamAnswerStatuses = {}, teamCorrectRankings = {} }: LeftSidebarProps) {
+export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange, onScoreSet, onNameChange, onDeleteTeam, onTeamDoubleClick, teamAnswers = {}, teamResponseTimes = {}, showAnswers = false, scoresPaused = false, scoresHidden = false, teamAnswerStatuses = {}, teamCorrectRankings = {}, teamLayoutMode = 'default' }: LeftSidebarProps) {
   const { responseTimesEnabled } = useSettings();
   
   // Debug logging - disabled for performance
@@ -47,6 +48,7 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
   const [editingScore, setEditingScore] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const randomizedOrderRef = useRef<string[]>([]);
 
   // Focus input when editing starts
   useEffect(() => {
@@ -135,6 +137,50 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
     return 'border-transparent border-2'; // Default transparent border
   };
 
+  // Helper function to shuffle array using Fisher-Yates algorithm
+  const shuffleArray = (arr: Quiz[]): Quiz[] => {
+    const shuffled = [...arr];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
+  // Sort quizzes based on scoresHidden and teamLayoutMode
+  const sortedQuizzes = (() => {
+    // If scores are hidden, always sort alphabetically
+    if (scoresHidden) {
+      return [...quizzes].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // Otherwise, use teamLayoutMode for sorting
+    switch (teamLayoutMode) {
+      case 'alphabetical':
+        return [...quizzes].sort((a, b) => a.name.localeCompare(b.name));
+
+      case 'random': {
+        // Check if we need to regenerate the random order
+        // Regenerate if the quizzes array has changed (different IDs or length)
+        const quizIds = quizzes.map(q => q.id).join(',');
+        if (randomizedOrderRef.current.length === 0 || randomizedOrderRef.current.join(',') !== quizIds) {
+          const shuffled = shuffleArray(quizzes);
+          randomizedOrderRef.current = shuffled.map(q => q.id);
+          return shuffled;
+        }
+        // Return quizzes in the stored random order
+        return randomizedOrderRef.current
+          .map(id => quizzes.find(q => q.id === id))
+          .filter((q): q is Quiz => q !== undefined);
+      }
+
+      case 'default':
+      default:
+        // Sort by score descending (highest first)
+        return [...quizzes].sort((a, b) => (b.score || 0) - (a.score || 0));
+    }
+  })();
+
   return (
     <div className="w-full h-full bg-sidebar border-r border-sidebar-border flex flex-col">
       {/* Teams header */}
@@ -142,26 +188,26 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
         <div className="text-sm font-semibold text-sidebar-foreground flex items-center justify-between">
           {/* Window Control Buttons */}
           <div className="flex items-center">
-            <button 
+            <button
               className="w-14 h-7 bg-transparent hover:bg-red-600 transition-colors duration-150 flex items-center justify-center group border-r border-sidebar-border/30"
               title="Close"
             >
               <X className="w-4 h-4 text-sidebar-foreground group-hover:text-white transition-colors duration-150" />
             </button>
-            <button 
+            <button
               className="w-14 h-7 bg-transparent hover:bg-blue-500 transition-colors duration-150 flex items-center justify-center group border-r border-sidebar-border/30"
               title="Maximize"
             >
               <Square className="w-3 h-3 text-sidebar-foreground group-hover:text-white transition-colors duration-150" />
             </button>
-            <button 
+            <button
               className="w-14 h-7 bg-transparent hover:bg-blue-500 transition-colors duration-150 flex items-center justify-center group"
               title="Minimize"
             >
               <Minus className="w-4 h-4 text-sidebar-foreground group-hover:text-white transition-colors duration-150" />
             </button>
           </div>
-          
+
           {/* Teams label and count moved to right */}
           <div className="flex items-center">
             TEAMS
@@ -171,10 +217,10 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
           </div>
         </div>
       </div>
-      
+
       {/* Teams list */}
       <div className="flex-1 p-3 flex flex-col overflow-y-auto">
-        {quizzes
+        {sortedQuizzes
           .map((quiz, index) => (
           <div key={`${quiz.id}-${quiz.scrambled}`} className="flex-1 flex flex-col">
             <div 
@@ -252,36 +298,43 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
                 </div>
               )}
               
-              {/* Score badge with permanent controls - fixed position */}
-              {quiz.score !== undefined && !scoresHidden && (
-                <div 
+              {/* Score badge and adjustment controls - fixed position */}
+              {quiz.score !== undefined && (
+                <div
                   className="flex items-center gap-2 flex-shrink-0 mr-3 ml-auto"
                   onDoubleClick={(e) => e.stopPropagation()}
                 >
-                  {editingScore === quiz.id ? (
-                    <input
-                      ref={inputRef}
-                      type="number"
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(e, quiz.id)}
-                      onBlur={() => handleSaveScore(quiz.id)}
-                      className="text-sm px-2 py-1 h-6 bg-[#27ae60] text-white border-[#27ae60] min-w-[3rem] text-center rounded focus:outline-none focus:ring-1 focus:ring-white"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <Badge 
-                      variant="outline" 
-                      className="text-sm px-2 py-1 h-6 bg-[#27ae60] text-white border-[#27ae60] min-w-[3rem] justify-center cursor-pointer hover:bg-[#2ecc71] transition-colors"
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        handleDoubleClick(quiz.id, quiz.score || 0);
-                      }}
-                      title="Double-click to edit score manually"
-                    >
-                      {quiz.score}
-                    </Badge>
+                  {/* Score badge - only show when scores are not hidden */}
+                  {!scoresHidden && (
+                    <>
+                      {editingScore === quiz.id ? (
+                        <input
+                          ref={inputRef}
+                          type="number"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, quiz.id)}
+                          onBlur={() => handleSaveScore(quiz.id)}
+                          className="text-sm px-2 py-1 h-6 bg-[#27ae60] text-white border-[#27ae60] min-w-[3rem] text-center rounded focus:outline-none focus:ring-1 focus:ring-white"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-sm px-2 py-1 h-6 bg-[#27ae60] text-white border-[#27ae60] min-w-[3rem] justify-center cursor-pointer hover:bg-[#2ecc71] transition-colors"
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            handleDoubleClick(quiz.id, quiz.score || 0);
+                          }}
+                          title="Double-click to edit score manually"
+                        >
+                          {quiz.score}
+                        </Badge>
+                      )}
+                    </>
                   )}
+
+                  {/* Score adjustment arrows - always visible */}
                   <div className="flex flex-col gap-0.5">
                     <button
                       onClick={(e) => {
@@ -310,7 +363,7 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
               )}
             </div>
             {/* Separator line - shown after every item except the last */}
-            {index < quizzes.length - 1 && (
+            {index < sortedQuizzes.length - 1 && (
               <div className="mx-3 my-1 border-t border-sidebar-border opacity-60"></div>
             )}
           </div>
