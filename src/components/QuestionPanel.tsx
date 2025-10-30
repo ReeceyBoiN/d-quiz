@@ -160,12 +160,12 @@ export function QuestionPanel({
         </div>
       </div>
 
-      {/* Main content area */}
+      {/* Main scrollable content area */}
       <div className="flex-1 overflow-auto flex p-6 gap-6">
         {/* Left side: Question text and options */}
         <div className="flex-1 flex flex-col">
           {/* Question text */}
-          <div className="mb-8">
+          <div className="mb-8 ml-8">
             <p className="text-3xl font-semibold leading-relaxed text-slate-100">
               {question.q}
             </p>
@@ -182,25 +182,6 @@ export function QuestionPanel({
                 : qType === 'numbers' || qType === 'nearest'
                 ? 'Teams will submit numeric answers'
                 : 'Teams will submit their answers'}
-            </div>
-          )}
-
-          {/* Answer display (shown only after reveal) */}
-          {showAnswer && (
-            <div className="mt-auto pt-4 border-t border-slate-600">
-              <p className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-2">
-                Answer
-              </p>
-              <div className="bg-slate-900 border-l-4 border-yellow-500 rounded px-4 py-3">
-                <p className="text-2xl font-bold text-yellow-400">
-                  {answerText || 'Answer not provided'}
-                </p>
-                {answerSubmitted && (
-                  <p className="text-sm text-slate-400 mt-2">
-                    Your answer: {answerSubmitted}
-                  </p>
-                )}
-              </div>
             </div>
           )}
         </div>
@@ -225,19 +206,36 @@ export function QuestionPanel({
         )}
       </div>
 
+      {/* Answer display (shown only after reveal) - at the bottom, not scrollable */}
+      {showAnswer && (
+        <div className="px-6 pt-4 border-t border-slate-600 ml-8 pb-4">
+          <p className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-3">
+            Answer
+          </p>
+          <div className="bg-slate-900 border-l-4 border-yellow-500 rounded px-4 py-3">
+            <p className="text-2xl font-bold text-yellow-400">
+              {answerText || 'Answer not provided'}
+            </p>
+            {answerSubmitted && (
+              <p className="text-sm text-slate-400 mt-2">
+                Your answer: {answerSubmitted}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Primary Action Button - Styled to match Keypad interface */}
-      <button
-        onClick={onPrimaryAction}
-        title="Press Spacebar to trigger this action"
-        className="border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl font-semibold bg-[#3498db] hover:bg-[#2980b9] text-white transition-all hover:scale-105 active:scale-95"
-        style={{
-          margin: '0 24.6px 75px auto',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {icon}
-        <span>{text}</span>
-      </button>
+      <div className="px-6 py-4 flex justify-end border-t border-slate-700">
+        <button
+          onClick={onPrimaryAction}
+          title="Press Spacebar to trigger this action"
+          className="border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl font-semibold bg-[#3498db] hover:bg-[#2980b9] text-white transition-all hover:scale-105 active:scale-95 rounded"
+        >
+          {icon}
+          <span>{text}</span>
+        </button>
+      </div>
     </div>
   );
 }

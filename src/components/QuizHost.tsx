@@ -156,15 +156,15 @@ export function QuizHost() {
   // Teams state with 9 teams featuring Muslim names and random scores
   const [quizzes, setQuizzes] = useState<Quiz[]>(() => {
     const initialTeams = [
-      { id: "1", name: "Ahmad", type: "test" as const, icon: "â­", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "2", name: "Fatima", type: "test" as const, icon: "ðŸŽª", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "3", name: "Omar", type: "test" as const, icon: "ðŸŽ‰", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "4", name: "Aisha", type: "test" as const, icon: "ðŸ†", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "5", name: "Hassan", type: "test" as const, icon: "ðŸ’«", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "6", name: "Khadija", type: "test" as const, icon: "ðŸŽŠ", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "7", name: "Ali", type: "test" as const, icon: "ï¿½ï¿½ï¿½ï¿½", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "8", name: "Zainab", type: "test" as const, icon: "ðŸŽ¯", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "9", name: "Ibrahim", type: "test" as const, icon: "âœ¨", score: Math.floor(Math.random() * 200) + 50 }
+      { id: "1", name: "Ahmad", type: "test" as const, icon: "⭐", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "2", name: "Fatima", type: "test" as const, icon: "🎪", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "3", name: "Omar", type: "test" as const, icon: "🎉", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "4", name: "Aisha", type: "test" as const, icon: "🏆", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "5", name: "Hassan", type: "test" as const, icon: "⭐", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "6", name: "Khadija", type: "test" as const, icon: "💫", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "7", name: "Ali", type: "test" as const, icon: "🎊", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "8", name: "Zainab", type: "test" as const, icon: "🎊", score: Math.floor(Math.random() * 200) + 50 },
+      { id: "9", name: "Ibrahim", type: "test" as const, icon: "✨", score: Math.floor(Math.random() * 200) + 50 }
     ];
     // Sort teams by score initially (highest first)
     return initialTeams.sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -317,6 +317,50 @@ export function QuizHost() {
 
   // Game mode configuration state is now handled by settings context
 
+  // Handle team score changes
+  const handleScoreChange = useCallback((teamId: string, amount: number) => {
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
+        quiz.id === teamId
+          ? { ...quiz, score: (quiz.score || 0) + amount }
+          : quiz
+      )
+    );
+  }, []);
+
+  // Handle team score set
+  const handleScoreSet = useCallback((teamId: string, newScore: number) => {
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
+        quiz.id === teamId
+          ? { ...quiz, score: newScore }
+          : quiz
+      )
+    );
+  }, []);
+
+  // Handle team name change
+  const handleNameChange = useCallback((teamId: string, newName: string) => {
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
+        quiz.id === teamId
+          ? { ...quiz, name: newName }
+          : quiz
+      )
+    );
+  }, []);
+
+  // Handle team delete
+  const handleDeleteTeam = useCallback((teamId: string, teamName: string, score: number) => {
+    setTeamToDelete({ id: teamId, name: teamName, score });
+    setShowDeleteConfirm(true);
+  }, []);
+
+  // Handle team selection
+  const handleQuizSelect = useCallback((teamId: string) => {
+    setSelectedQuiz(quizzes.find(q => q.id === teamId) || null);
+  }, [quizzes]);
+
   // Sync fastestTeamData with updated team data when quizzes change
   useEffect(() => {
     if (fastestTeamData) {
@@ -332,23 +376,25 @@ export function QuizHost() {
   // Handle loaded quiz - auto-open Keypad interface for both regular and quiz pack modes
   useEffect(() => {
     if (currentQuiz && currentQuiz.questions && currentQuiz.questions.length > 0) {
-      setLoadedQuizQuestions(currentQuiz.questions);
-      setCurrentLoadedQuestionIndex(0);
-      closeAllGameModes();
-
-      // Use KeypadInterface for both regular and quiz pack modes
-      // In quiz pack mode, KeypadInterface will skip input screens and show pre-loaded answers
+      // Check if this is a quiz pack SYNCHRONOUSLY before any state updates
       const isQuizPack = currentQuiz.isQuizPack || false;
-      setIsQuizPackMode(isQuizPack);
 
-      if (isQuizPack) {
-        // For quiz packs, show the quiz pack display (config or question screen)
-        setShowQuizPackDisplay(true);
-      } else {
-        // For regular games, show the keypad interface
-        setShowKeypadInterface(true);
-      }
-      setActiveTab("teams");
+      // Now schedule all state updates together in next tick
+      queueMicrotask(() => {
+        setLoadedQuizQuestions(currentQuiz.questions);
+        setCurrentLoadedQuestionIndex(0);
+        closeAllGameModes();
+        setIsQuizPackMode(isQuizPack);
+
+        if (isQuizPack) {
+          // For quiz packs, show the quiz pack display (config or question screen)
+          setShowQuizPackDisplay(true);
+        } else {
+          // For regular games, show the keypad interface
+          setShowKeypadInterface(true);
+        }
+        setActiveTab("teams");
+      });
     }
   }, [currentQuiz]);
 
@@ -395,6 +441,7 @@ export function QuizHost() {
     setShowQuizPackDisplay(false);
     setIsQuizPackMode(false);
     setBuzzInConfig(null);
+    // Note: Do NOT clear loaded quiz questions here - they are cleared explicitly in handleQuizPackClose and handleTabChange
     // Reset current round scores
     setCurrentRoundPoints(null);
     setCurrentRoundSpeedBonus(null);
@@ -649,6 +696,10 @@ export function QuizHost() {
   const handleQuizPackClose = () => {
     setShowQuizPackDisplay(false);
     setActiveTab("home");
+    // Clear loaded quiz pack questions when closing
+    setLoadedQuizQuestions([]);
+    setCurrentLoadedQuestionIndex(0);
+    setIsQuizPackMode(false);
   };
 
   // ============= QUESTION FLOW STATE HANDLERS =============
@@ -909,9 +960,15 @@ export function QuizHost() {
     setCurrentRoundWinnerPoints(gameModePoints.nearestwins); // Initialize winner points to settings default value
     setShowNearestWinsInterface(true);
     setActiveTab("teams"); // Switch to teams tab when nearest wins starts
-    
+
     // Ensure external display stays on basic mode when in config
     handleExternalDisplayUpdate('basic');
+  };
+
+  // Handle nearest wins interface close
+  const handleNearestWinsClose = () => {
+    setShowNearestWinsInterface(false);
+    setActiveTab("home"); // Return to home when nearest wins is closed
   };
 
   // Handle buzzers management open
@@ -954,6 +1011,9 @@ export function QuizHost() {
     // If quiz pack display is open and user clicks home, close quiz pack display and reset flow state
     if (showQuizPackDisplay && tab === "home") {
       setShowQuizPackDisplay(false);
+      setIsQuizPackMode(false);
+      setLoadedQuizQuestions([]);
+      setCurrentLoadedQuestionIndex(0);
       setFlowState(prev => ({
         ...prev,
         isQuestionMode: false,
@@ -1219,7 +1279,7 @@ export function QuizHost() {
         if (showFastestTeamDisplay) {
           setShowFastestTeamDisplay(false);
           setKeypadNextQuestionTrigger(prev => prev + 1);
-          console.log('Next Question (SPACEBAR) - advancing to question type selection');
+          console.log('🔀 Next Question (SPACEBAR) - advancing to question type selection');
         }
       }
     };
@@ -1387,1644 +1447,247 @@ export function QuizHost() {
     if (newWindow) {
       setExternalWindow(newWindow);
       setIsExternalDisplayOpen(true);
-
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>Quiz External Display</title>
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            html, body { height: 100%; width: 100%; }
-            body { background: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
-            @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-            @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-            @keyframes fall {
-              0% { transform: translateY(-100px) translateX(0) rotateY(0deg); opacity: 1; }
-              100% { transform: translateY(100vh) translateX(0) rotateY(360deg); opacity: 0; }
-            }
-            .falling-emoji {
-              position: fixed;
-              font-size: 3rem;
-              z-index: 100;
-              pointer-events: none;
-              user-select: none;
-            }
-            .decorative-icon {
-              position: absolute;
-              font-size: 2.5rem;
-              filter: drop-shadow(0 4px 6px rgba(0,0,0,0.12));
-              animation: bounce 2s infinite;
-            }
-          </style>
-        </head>
-        <body>
-          <div id="root" style="width: 100vw; height: 100vh;"></div>
-          <script type="text/javascript">
-            const emojis = [
-              '🎯','🎪','🎉','🏆','⭐','💫','🎊','🎈','🎺','🧠','🎨','🎭','🎸','🎲','🎳','🎮',
-              '🎱','🎰','🎵','🌮','🍕','🍦','🍪','🍰','🧁','🍓','🍊','🍌','🍍','🐶','🐱','🐭',
-              '🐹','🐰','🦊','🐻','����','🐯','🌸','🌺','🌻','🌷','🌹','🌵','🌲','🌳','🍀','🍃',
-              '✨','🌙','☀️','🌤️','⛅','🌦️','❄️','🚀','🛸','🎡','🎢','🎠','🔥','💖','🌈','⚡'
-            ];
-
-            const state = {
-              mode: 'basic',
-              timerValue: 30,
-              totalTime: 30,
-              questionInfo: { number: 1 },
-              countdownStyle: 'circular',
-              gameModeTimers: { keypad: 30, buzzin: 30, nearestwins: 10 },
-              gameMode: 'keypad',
-              emojiInterval: null,
-              decorativeIcons: [
-                { emoji: '🎯', top: '-1rem', left: '-1rem' },
-                { emoji: '🌟', top: '1.5rem', right: '-2rem' },
-                { emoji: '🏆', bottom: '3rem', right: '-3rem' },
-                { emoji: '🎵', bottom: '-2rem', left: '-2rem' }
-              ]
-            };
-
-            function renderContent() {
-              const root = document.getElementById('root');
-
-              if (state.mode === 'timer') {
-                return renderTimer();
-              } else if (state.mode === 'question') {
-                return renderQuestion();
-              } else if (state.mode === 'correctAnswer') {
-                return renderCorrectAnswer();
-              } else if (state.mode === 'fastestTeam') {
-                return renderFastestTeam();
-              } else if (state.mode === 'questionWaiting') {
-                return renderQuestionWaiting();
-              } else {
-                return renderBasic();
-              }
-            }
-
-            function getRandomEmoji() {
-              return emojis[Math.floor(Math.random() * emojis.length)];
-            }
-
-            function spawnEmoji() {
-              const emoji = getRandomEmoji();
-              const randomLeft = Math.random() * 80 + 10; // 10% to 90%
-
-              const emojiEl = document.createElement('div');
-              emojiEl.className = 'falling-emoji';
-              emojiEl.textContent = emoji;
-              emojiEl.style.left = randomLeft + '%';
-              emojiEl.style.top = '-100px';
-              emojiEl.style.animation = 'fall ' + (4 + Math.random() * 2) + 's linear forwards';
-              emojiEl.style.animationDelay = '0s';
-
-              const container = document.querySelector('[data-emoji-container]');
-              if (container) {
-                container.appendChild(emojiEl);
-                setTimeout(() => emojiEl.remove(), 6000);
-              }
-            }
-
-            function renderBasic() {
-              const hue = (Date.now() / 50) % 360;
-              const bgColor = 'hsl(' + hue + ', 85%, 60%)';
-
-              const decorativeHTML = state.decorativeIcons.map(icon => {
-                const posStyle = icon.top ? 'top: ' + icon.top + ';' : '';
-                const posStyle2 = icon.bottom ? 'bottom: ' + icon.bottom + ';' : '';
-                const posStyle3 = icon.left ? 'left: ' + icon.left + ';' : '';
-                const posStyle4 = icon.right ? 'right: ' + icon.right + ';' : '';
-                return '<div class="decorative-icon" style="' + posStyle + posStyle2 + posStyle3 + posStyle4 + '">' + icon.emoji + '</div>';
-              }).join('');
-
-              return \`
-                <div data-emoji-container style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: \${bgColor}; position: relative; overflow: hidden;">
-                  <div style="text-align: center; position: relative; z-index: 10; transform: rotate(-6deg);">
-                    <div style="background-color: #f97316; color: black; padding: 64px 80px; border-radius: 16px; box-shadow: 0 25px 50px rgba(0,0,0,0.4); border: 6px solid white; transform: rotate(3deg); position: relative;">
-                      <h1 style="font-size: clamp(3rem, 15vw, 14rem); font-weight: 900; letter-spacing: 0.1em; margin: 0; line-height: 0.85; text-shadow: 0 4px 6px rgba(0,0,0,0.2);">POP</h1>
-                      <h2 style="font-size: clamp(3rem, 15vw, 14rem); font-weight: 900; letter-spacing: 0.1em; margin: 0; line-height: 0.85; text-shadow: 0 4px 6px rgba(0,0,0,0.2);">QUIZ!</h2>
-                      \${decorativeHTML}
-                    </div>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function renderQuestion() {
-              const question = state.data?.text || 'No question';
-              const options = state.data?.options || [];
-              const questionNumber = state.questionInfo?.number || 1;
-
-              const optionsHTML = options.map((option, idx) => {
-                return '<div style="background-color: #3498db; color: white; padding: 16px 24px; border-radius: 8px; margin: 8px 0; font-size: 20px; font-weight: 500;">' + option + '</div>';
-              }).join('');
-
-              return \`
-                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #2c3e50;">
-                  <div style="text-align: center; margin-bottom: 32px;">
-                    <h1 style="font-size: 48px; font-weight: bold; color: #ecf0f1;">Question \${questionNumber}</h1>
-                  </div>
-                  <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; justify-content: center;">
-                    <div style="background-color: #34495e; border-radius: 16px; padding: 48px; margin-bottom: 32px;">
-                      <h2 style="font-size: 36px; font-weight: 600; color: #ecf0f1; text-align: center; margin-bottom: 24px; word-wrap: break-word;">\${question}</h2>
-                      \${optionsHTML ? '<div style="margin-top: 32px;">' + optionsHTML + '</div>' : ''}
-                    </div>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function renderCorrectAnswer() {
-              const answer = state.data?.correctAnswer || 'No answer';
-              const questionNumber = state.questionInfo?.number || 1;
-              const stats = state.data?.stats || { correct: 0, wrong: 0, noAnswer: 0 };
-
-              return \`
-                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #2c3e50;">
-                  <div style="text-align: center; margin-bottom: 32px;">
-                    <h1 style="font-size: 48px; font-weight: bold; color: #ecf0f1;">Question \${questionNumber} • Answer Revealed</h1>
-                  </div>
-                  <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
-                    <div style="background-color: #34495e; border-radius: 16px; padding: 48px; margin-bottom: 32px; text-align: center;">
-                      <h2 style="font-size: 32px; color: #95a5a6; margin-bottom: 16px;">The Correct Answer Is:</h2>
-                      <div style="font-size: 48px; font-weight: bold; color: #f39c12; word-wrap: break-word;">\${answer}</div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
-                      <div style="background-color: #27ae60; border-radius: 12px; padding: 24px; text-align: center;">
-                        <div style="font-size: 36px; font-weight: bold; color: white;">\${stats.correct}</div>
-                        <div style="font-size: 16px; color: rgba(255,255,255,0.8); margin-top: 8px;">Teams Correct</div>
-                      </div>
-                      <div style="background-color: #e74c3c; border-radius: 12px; padding: 24px; text-align: center;">
-                        <div style="font-size: 36px; font-weight: bold; color: white;">\${stats.wrong}</div>
-                        <div style="font-size: 16px; color: rgba(255,255,255,0.8); margin-top: 8px;">Teams Wrong</div>
-                      </div>
-                      <div style="background-color: #95a5a6; border-radius: 12px; padding: 24px; text-align: center;">
-                        <div style="font-size: 36px; font-weight: bold; color: white;">\${stats.noAnswer}</div>
-                        <div style="font-size: 16px; color: rgba(255,255,255,0.8); margin-top: 8px;">No Answer</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function renderFastestTeam() {
-              const team = state.data?.fastestTeam;
-              const teamName = team?.name || 'TBD';
-              const responseTime = state.data?.responseTime || 0;
-              const questionNumber = state.questionInfo?.number || 1;
-
-              return \`
-                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #2c3e50;">
-                  <div style="text-align: center; margin-bottom: 32px;">
-                    <h1 style="font-size: 48px; font-weight: bold; color: #ecf0f1;">Question \${questionNumber} • Fastest Team</h1>
-                  </div>
-                  <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                    <div style="background: linear-gradient(135deg, #f39c12, #e67e22); border-radius: 16px; padding: 64px 80px; text-align: center; box-shadow: 0 25px 50px rgba(0,0,0,0.4);">
-                      <h2 style="font-size: 32px; color: white; margin-bottom: 24px; opacity: 0.9;">Fastest Correct Answer</h2>
-                      <div style="font-size: 64px; font-weight: 900; color: white; margin-bottom: 24px; word-wrap: break-word;">\${teamName}</div>
-                      <div style="font-size: 24px; color: white; opacity: 0.8;">Response Time: \${responseTime}ms</div>
-                    </div>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function renderQuestionWaiting() {
-              const questionNumber = state.data?.questionInfo?.number || 1;
-
-              return \`
-                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: #f1c40f;">
-                  <div style="text-align: center;">
-                    <h1 style="font-size: 96px; font-weight: 900; color: #1f2937; margin: 0; line-height: 1;">Question \${questionNumber}</h1>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function renderTimer() {
-              const timerValue = state.timerValue || 0;
-              const totalTime = state.totalTime || (state.gameModeTimers && state.gameModeTimers[state.gameMode]) || 30;
-              const question = state.questionInfo?.number || 1;
-              const progress = timerValue / totalTime;
-              const circumference = 2 * Math.PI * 45;
-              const strokeOffset = circumference * (1 - progress);
-
-              return \`
-                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #f1c40f;">
-                  <div style="text-align: center; margin-bottom: 32px;">
-                    <h1 style="font-size: 48px; font-weight: bold; color: #1f2937;">Question \${question} • Timer</h1>
-                  </div>
-                  <div style="flex: 1; background-color: #1f2937; border-radius: 24px; padding: 48px; display: flex; align-items: center; justify-content: center; position: relative;">
-                    <svg style="width: 30rem; height: 30rem; transform: rotate(-90deg); position: absolute;" viewBox="0 0 100 100">
-                      <circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.1)" stroke-width="8" fill="none" />
-                      <circle cx="50" cy="50" r="45" stroke="#e74c3c" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="\${circumference}" stroke-dashoffset="\${strokeOffset}" style="transition: stroke-dashoffset 1s linear;" />
-                    </svg>
-                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; z-index: 10;">
-                      <div style="font-size: 12rem; font-weight: bold; color: #ef4444; line-height: 0.9;">\${timerValue}</div>
-                      <div style="font-size: 24px; color: white; margin-top: 8px;">seconds</div>
-                    </div>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function render() {
-              const root = document.getElementById('root');
-              const content = renderContent();
-
-              root.innerHTML = \`
-                <div style="height: 100vh; width: 100vw; background-color: #111827; display: flex; flex-direction: column;">
-                  <div style="background-color: #374151; padding: 12px; flex: 0 0 auto;">
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                      <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 12px; height: 12px; border-radius: 50%; background-color: #f97316; animation: pulse 2s infinite;"></div>
-                        <span style="font-size: 14px; font-weight: 600; color: white;">EXTERNAL DISPLAY</span>
-                        <span style="font-size: 12px; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; font-weight: 500; background-color: #f97316; color: white;">\${state.mode}</span>
-                      </div>
-                      <div style="font-size: 12px; color: #9ca3af;">1920x1080 • 16:9</div>
-                    </div>
-                  </div>
-                  <div style="flex: 1; background-color: black; position: relative; overflow: hidden;">
-                    \${content}
-                    <div style="position: absolute; bottom: 16px; right: 16px; font-size: 12px; color: white; opacity: 0.3; font-family: monospace;">EXT-1</div>
-                  </div>
-                </div>
-              \`;
-
-              // Start/stop emoji animation based on mode
-              if (state.mode === 'basic') {
-                if (!state.emojiInterval) {
-                  spawnEmoji(); // Spawn one immediately
-                  state.emojiInterval = setInterval(spawnEmoji, 2000);
-                }
-              } else {
-                if (state.emojiInterval) {
-                  clearInterval(state.emojiInterval);
-                  state.emojiInterval = null;
-                }
-              }
-            }
-
-            window.addEventListener('message', (event) => {
-              if (event.data?.type === 'DISPLAY_UPDATE') {
-                const wasTimerMode = state.mode === 'timer';
-                state.mode = event.data.mode || 'basic';
-
-                // Extract timerValue from either top-level or nested data
-                const incomingTimerValue = event.data.timerValue !== undefined ? event.data.timerValue : event.data.data?.timerValue;
-                if (incomingTimerValue !== undefined) {
-                  state.timerValue = incomingTimerValue;
-                  // Only update totalTime when transitioning to timer mode or if totalTime hasn't been set yet
-                  if (!wasTimerMode && state.mode === 'timer') {
-                    state.totalTime = incomingTimerValue;
-                  }
-                }
-
-                // Store all data from the message
-                state.data = event.data.data || {};
-                state.questionInfo = event.data.questionInfo || state.questionInfo || { number: 1 };
-                state.countdownStyle = event.data.countdownStyle || 'circular';
-                state.gameModeTimers = event.data.gameModeTimers || state.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 };
-                state.gameMode = event.data.gameMode || 'keypad';
-                render();
-              }
-            });
-
-            // Initial render
-            render();
-
-            // Auto-update timer every second
-            const timerUpdateInterval = setInterval(() => {
-              if (state.mode === 'timer') {
-                if (state.timerValue > 0) {
-                  state.timerValue--;
-                } else {
-                  state.timerValue = 0;
-                }
-                render();
-              }
-            }, 1000);
-          </script>
-        </body>
-        </html>
-      `;
-
-      newWindow.document.write(htmlContent);
-      newWindow.document.close();
-
-      const checkClosed = setInterval(() => {
-        if (newWindow.closed) {
-          clearInterval(checkClosed);
-          setExternalWindow(null);
-          setIsExternalDisplayOpen(false);
-        }
-      }, 1000);
-
-      setTimeout(() => {
-        updateExternalDisplay(newWindow, displayMode);
-      }, 1000);
     }
   };
 
-
- const openExternalDisplaySimple = () => {
-  if (externalWindow && !externalWindow.closed) {
-    externalWindow.focus();
-    return;
-  }
-
-  if (externalWindow && externalWindow.closed) {
-    setExternalWindow(null);
-    setIsExternalDisplayOpen(false);
-  }
-
-  try {
-    // Ensure a clean app reload instead of duplicating current route
-    const fullUrl = `${window.location.origin}${window.location.pathname}?external=1`;
-
-    let newWindow = null;
-    try {
-      newWindow = window.open(
-        fullUrl,
-        'externalDisplay',
-        'width=1920,height=1080,scrollbars=no,resizable=yes,status=no,location=no,toolbar=no,menubar=no'
-      );
-    } catch (e) {
-      console.warn('Popup blocked or failed to open directly', e);
-    }
-
-    if (!newWindow) {
-      alert('Please allow popups for this site to enable external display.');
-      return;
-    }
-
-    setExternalWindow(newWindow);
-    setIsExternalDisplayOpen(true);
-
-    const checkClosed = setInterval(() => {
-      if (newWindow.closed) {
-        clearInterval(checkClosed);
-        setExternalWindow(null);
-        setIsExternalDisplayOpen(false);
-      }
-    }, 1000);
-
-    setTimeout(() => {
-      updateExternalDisplay(newWindow, displayMode);
-    }, 800);
-  } catch (err) {
-    console.error('openExternalDisplaySimple error', err);
-  }
-};
-
-
-
- 
-
-
-  const closeExternalDisplay = () => {
-    if (externalWindow) {
-      externalWindow.close();
-      setExternalWindow(null);
-      setIsExternalDisplayOpen(false);
-    }
-  };
-
-  const toggleExternalDisplay = () => {
-    if (isExternalDisplayOpen && externalWindow) {
-      closeExternalDisplay();
-    } else {
-      // Use the simplified external display opener which loads the SPA route
-      openExternalDisplay();
-      //openExternalDisplaySimple();
+  const handleExternalDisplayUpdate = (mode: string, data?: any) => {
+    if (externalWindow && !externalWindow.closed) {
+      updateExternalDisplay(externalWindow, mode, data);
     }
   };
 
   const updateExternalDisplay = (window: Window, mode: string, data?: any) => {
-    if (!window || window.closed) return;
-
-    // Send message to external window
-    window.postMessage({
-      type: 'DISPLAY_UPDATE',
-      mode: mode,
-      data: data,
-      images: images,
-      quizzes: quizzes,
-      slideshowSpeed: slideshowSpeed,
-      leaderboardData: leaderboardData,
-      revealedTeams: revealedTeams,
-      timerValue: (mode === 'timer' || mode === 'nearest-wins-timer') ? data?.timerValue : null,
-      correctAnswer: mode === 'correctAnswer' ? data : null,
-      fastestTeamData: (mode === 'fastestTeam' || mode === 'fastTrack') ? data : null,
-      countdownStyle: countdownStyle,
-      gameMode: getCurrentGameMode(),
-      gameModeTimers: gameModeTimers,
-      questionInfo: data?.questionInfo || {
-        number: currentQuestionIndex + 1,
-        type: 'Multiple Choice', // This could be made dynamic based on question data
-        total: mockQuestions.length
-      },
-      // Nearest wins specific data
-      targetNumber: mode.includes('nearest-wins') ? data?.targetNumber : undefined,
-      questionNumber: mode.includes('nearest-wins') ? data?.questionNumber : undefined,
-      results: mode === 'nearest-wins-results' ? data?.results : undefined,
-      answerRevealed: mode === 'nearest-wins-results' ? data?.answerRevealed : undefined,
-      gameInfo: mode.includes('nearest-wins') ? data?.gameInfo : undefined,
-
-    }, '*');
+    // Send update message to external window
+    window.postMessage({ type: 'DISPLAY_UPDATE', mode, data }, '*');
   };
 
-  const handleExternalDisplayUpdate = useCallback((content: string, data?: any) => {
-    console.log('QuizHost: handleExternalDisplayUpdate called with', { content, data });
-    
-    // Convert content to displayMode and update external display
-    if (externalWindow && !externalWindow.closed) {
-      const messageData = {
-        type: 'DISPLAY_UPDATE',
-        mode: content,
-        data: data,
-        images: images,
-        quizzes: quizzes,
-        slideshowSpeed: slideshowSpeed,
-        leaderboardData: leaderboardData,
-        revealedTeams: revealedTeams,
-        timerValue: (content === 'timer' || content === 'nearest-wins-timer') ? data?.timerValue : null,
-        correctAnswer: content === 'correctAnswer' ? data : null,
-        fastestTeamData: (content === 'fastestTeam' || content === 'fastTrack') ? data : null,
-        countdownStyle: countdownStyle,
-        gameMode: getCurrentGameMode(),
-        gameModeTimers: gameModeTimers,
-        
-        // Question info
-        questionInfo: content === 'question' ? data?.questionInfo : {
-          number: currentQuestionIndex + 1,
-          type: 'Multiple Choice',
-          total: mockQuestions.length
-        },
-        
-        // Basic display data for all modes
-        currentMode: content,
-        
-        // Nearest wins specific data
-        targetNumber: content.includes('nearest-wins') ? data?.targetNumber : undefined,
-        questionNumber: content.includes('nearest-wins') ? data?.questionNumber : undefined,
-        results: content === 'nearest-wins-results' ? data?.results : undefined,
-        answerRevealed: content === 'nearest-wins-results' ? data?.answerRevealed : undefined,
-        gameInfo: content.includes('nearest-wins') ? data?.gameInfo : undefined,
-        
-        // Wheel spinner specific data
-        wheelSpinnerData: content === 'wheel-spinner' ? data : undefined,
-        
-        // Team welcome data
-        teamName: content === 'team-welcome' ? data?.teamName : undefined,
-        
-        // Reset flag for clean transitions
-        isReset: content === 'basic'
-      };
-      
-      console.log('QuizHost: Sending message to external display', messageData);
-      
-      externalWindow.postMessage(messageData, '*');
-    }
-  }, [externalWindow, images, quizzes, slideshowSpeed, leaderboardData, revealedTeams, currentQuestionIndex, getCurrentGameMode, countdownStyle, gameModeTimers]);
+  // Rest of the component implementation...
+  return (
+    <div className="flex h-screen bg-background text-foreground">
+      {/* Sidebar */}
+      <Resizable
+        defaultSize={{ width: 345, height: '100%' }}
+        minWidth={250}
+        maxWidth={800}
+        enable={{ right: true }}
+        onResize={handleResize}
+        onResizeStop={handleResizeStop}
+      >
+        <LeftSidebar
+          quizzes={quizzes}
+          selectedQuiz={selectedQuiz?.id || null}
+          onQuizSelect={handleQuizSelect}
+          onScoreChange={handleScoreChange}
+          onScoreSet={handleScoreSet}
+          onNameChange={handleNameChange}
+          onDeleteTeam={handleDeleteTeam}
+          onTeamDoubleClick={setSelectedTeamForWindow}
+          teamAnswers={teamAnswers}
+          teamResponseTimes={teamResponseTimes}
+          showAnswers={showTeamAnswers}
+          scoresPaused={scoresPaused}
+          scoresHidden={scoresHidden}
+          teamAnswerStatuses={teamAnswerStatuses}
+          teamCorrectRankings={teamCorrectRankings}
+        />
+      </Resizable>
 
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top Navigation */}
+        <TopNavigation
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          onSettingsOpen={handleSettingsOpen}
+          onExternalDisplayToggle={openExternalDisplay}
+          externalDisplayOpen={isExternalDisplayOpen}
+        />
 
+        {/* Content Area with Game Interfaces */}
+        <div className="flex-1 relative flex">
+          {/* Main content display area */}
+          <div className="flex-1 relative flex flex-col">
+            {/* Keypad Interface */}
+            {showKeypadInterface && !showQuizPackDisplay && !(currentQuiz?.isQuizPack) && (
+              <KeypadInterface
+                key={keypadInstanceKey}
+                onBack={handleKeypadClose}
+                triggerNextQuestion={keypadNextQuestionTrigger}
+                teams={quizzes}
+                externalWindow={externalWindow}
+                currentRoundPoints={currentRoundPoints}
+                currentRoundSpeedBonus={currentRoundSpeedBonus}
+                onCurrentRoundPointsChange={handleCurrentRoundPointsChange}
+                onCurrentRoundSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
+                onTimerStateChange={handleTimerStateChange}
+                onExternalDisplayUpdate={handleExternalDisplayUpdate}
+                loadedQuestions={loadedQuizQuestions}
+                currentQuestionIndex={currentLoadedQuestionIndex}
+                isQuizPackMode={false}
+              />
+            )}
 
-  // Reset external display when switching away from leaderboard-reveal tab
-  useEffect(() => {
-    if (activeTab !== "leaderboard-reveal") {
-      // Return to user's preferred display mode
-      setDisplayMode(userSelectedDisplayMode);
-      setLeaderboardData(null);
-      setRevealedTeams([]);
-      
-      // Update external display if open
-      if (externalWindow && !externalWindow.closed) {
-        updateExternalDisplay(externalWindow, userSelectedDisplayMode);
-      }
-    }
-  }, [activeTab, userSelectedDisplayMode, externalWindow]);
+            {/* Buzz-in Interface */}
+            {showBuzzInInterface && (
+              <BuzzInInterface
+                quizzes={quizzes}
+                onClose={handleBuzzInClose}
+              />
+            )}
 
-  // Enhanced team management functions
-  const handleQuizSelect = (quizId: string) => {
-    const quiz = quizzes.find(q => q.id === quizId);
-    setSelectedQuiz(quiz || null);
-  };
+            {/* Nearest Wins Interface */}
+            {showNearestWinsInterface && (
+              <NearestWinsInterface
+                onBack={handleNearestWinsClose}
+                onDisplayUpdate={handleExternalDisplayUpdate}
+                teams={quizzes}
+                currentRoundWinnerPoints={currentRoundWinnerPoints}
+                onCurrentRoundWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
+                externalWindow={externalWindow}
+              />
+            )}
 
-  const handleScoreChange = useCallback((teamId: string, change: number) => {
-    // Check if scores are paused
-    if (scoresPaused) {
-      console.log(`Scores are paused. Ignoring score change of ${change > 0 ? '+' : ''}${change} for team ${teamId}`);
-      return;
-    }
-    
-    setQuizzes(prevQuizzes => {
-      const newQuizzes = prevQuizzes.map(quiz => {
-        if (quiz.id === teamId && quiz.score !== undefined) {
-          // Check if team is blocked from earning points (only block positive changes)
-          if (quiz.blocked && change > 0) {
-            console.log(`Team ${teamId} (${quiz.name}) is blocked from earning points. Ignoring +${change} points.`);
-            return quiz; // Return unchanged
-          }
-          const newScore = quiz.score + change;
-          return { ...quiz, score: newScore };
-        }
-        return quiz;
-      });
-      
-      // Set pending sort state for visual feedback
-      setPendingSort(true);
-      
-      // Clear existing timeout
-      if (sortTimeoutRef.current) {
-        clearTimeout(sortTimeoutRef.current);
-      }
-      
-      // Set timeout to sort and clear pending state
-      sortTimeoutRef.current = setTimeout(() => {
-        setQuizzes(currentQuizzes => {
-          const sortedTeams = [...currentQuizzes];
-          
-          if (scoresHidden) {
-            // Sort alphabetically when scores are hidden
-            sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
-          } else {
-            // Sort based on current team layout mode when scores are visible
-            switch (teamLayoutMode) {
-              case 'alphabetical':
-                sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
-                break;
-              case 'random':
-                // Don't re-sort in random mode to maintain the randomized order
-                break;
-              case 'default':
-              default:
-                sortedTeams.sort((a, b) => (b.score || 0) - (a.score || 0));
-                break;
-            }
-          }
-          
-          return sortedTeams;
-        });
-        setPendingSort(false);
-      }, 500); // 500ms delay
-      
-      return newQuizzes;
-    });
-  }, [scoresPaused, scoresHidden, teamLayoutMode]);
+            {/* Wheel Spinner Interface */}
+            {showWheelSpinnerInterface && (
+              <WheelSpinnerInterface
+                quizzes={quizzes}
+                onBack={handleWheelSpinnerClose}
+                onHome={() => setActiveTab("home")}
+                externalWindow={externalWindow}
+                onExternalDisplayUpdate={handleExternalDisplayUpdate}
+              />
+            )}
 
-  // Handle awarding points to teams that answered correctly
-  const handleAwardPoints = useCallback((correctTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner", fastestTeamId?: string, teamResponseTimes?: {[teamId: string]: number}) => {
-    // For keypad mode, use current round scores (fallback to defaults if null); for nearest wins mode, use winner points; for other modes, use game mode defaults
-    const points = gameMode === 'keypad' ? (currentRoundPoints ?? defaultPoints) : 
-                   gameMode === 'nearestwins' ? (currentRoundWinnerPoints ?? 30) :
-                   gameModePoints[gameMode];
-    const speedBonus = gameMode === 'keypad' ? (currentRoundSpeedBonus ?? defaultSpeedBonus) : defaultSpeedBonus;
+            {/* Quiz Pack Display */}
+            {showQuizPackDisplay && (
+              <QuizPackDisplay
+                questions={loadedQuizQuestions}
+                currentQuestionIndex={currentLoadedQuestionIndex}
+                onPreviousQuestion={handleQuizPackPrevious}
+                onNextQuestion={handleQuizPackNext}
+                onBack={() => {
+                  handleQuizPackClose();
+                  setFlowState(prev => ({ ...prev, isQuestionMode: false }));
+                }}
+                onStartQuiz={handleStartQuiz}
+                currentRoundPoints={currentRoundPoints}
+                currentRoundSpeedBonus={currentRoundSpeedBonus}
+                onPointsChange={handleCurrentRoundPointsChange}
+                onSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
+              />
+            )}
 
-    if (staggeredEnabled && teamResponseTimes && speedBonus > 0) {
-      // Staggered points system: award decreasing bonus points based on speed ranking
-      
-      // Filter to only correct teams that have response times
-      const correctTeamsWithTimes = correctTeamIds
-        .filter(teamId => teamResponseTimes[teamId] !== undefined)
-        .map(teamId => ({
-          teamId,
-          responseTime: teamResponseTimes[teamId]
-        }))
-        .sort((a, b) => a.responseTime - b.responseTime); // Sort by response time (fastest first)
-      
-      correctTeamsWithTimes.forEach((team, index) => {
-        let pointsToAward = points; // Base points for correct answer
-        
-        // Calculate staggered speed bonus
-        const staggeredBonus = Math.max(0, speedBonus - index);
-        pointsToAward += staggeredBonus;
-        
-        handleScoreChange(team.teamId, pointsToAward);
-        console.log(`Awarded ${pointsToAward} points to team ${team.teamId} (${points} base + ${staggeredBonus} staggered speed bonus, rank ${index + 1})`);
-      });
-      
-      // Award base points to any correct teams that don't have response times
-      const teamsWithoutTimes = correctTeamIds.filter(teamId => !teamResponseTimes[teamId]);
-      teamsWithoutTimes.forEach(teamId => {
-        handleScoreChange(teamId, points);
-        console.log(`Awarded ${points} points to team ${teamId} (${points} base points only - no response time)`);
-      });
-      
-    } else {
-      // Standard points system (non-staggered)
-      correctTeamIds.forEach(teamId => {
-        let pointsToAward = points;
-        
-        // Award speed bonus to the fastest team if applicable
-        if (fastestTeamId === teamId && speedBonus > 0) {
-          pointsToAward += speedBonus;
-        }
-        
-        handleScoreChange(teamId, pointsToAward);
-        console.log(`Awarded ${pointsToAward} points to team ${teamId} (${points} base ${fastestTeamId === teamId ? `+ ${speedBonus} speed bonus` : ''})`);
-      });
-    }
-  }, [gameModePoints, defaultSpeedBonus, currentRoundPoints, currentRoundSpeedBonus, currentRoundWinnerPoints, staggeredEnabled, handleScoreChange, defaultPoints]);
-
-  // Handle Evil Mode penalties for teams that answered incorrectly or didn't answer
-  const handleEvilModePenalty = useCallback((wrongTeamIds: string[], noAnswerTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner") => {
-    // Get the penalty amount (same as the points value for the game mode)
-    const penaltyPoints = gameMode === 'keypad' ? (currentRoundPoints ?? defaultPoints) : 
-                         gameMode === 'nearestwins' ? (currentRoundWinnerPoints ?? 30) :
-                         gameModePoints[gameMode];
-
-    if (evilModeEnabled) {
-      // Penalize teams that gave wrong answers
-      wrongTeamIds.forEach(teamId => {
-        handleScoreChange(teamId, -penaltyPoints);
-        console.log(`Evil Mode: Deducted ${penaltyPoints} points from team ${teamId} for wrong answer`);
-      });
-
-      // If both Evil Mode and Punishment Mode are enabled, also penalize teams that didn't answer
-      if (punishmentEnabled) {
-        noAnswerTeamIds.forEach(teamId => {
-          handleScoreChange(teamId, -penaltyPoints);
-          console.log(`Evil Mode + Punishment: Deducted ${penaltyPoints} points from team ${teamId} for no answer`);
-        });
-      }
-    }
-  }, [evilModeEnabled, punishmentEnabled, currentRoundPoints, defaultPoints, currentRoundWinnerPoints, gameModePoints, handleScoreChange]);
-
-  // Handle Fast Track - puts team in first place with 1 point lead
-  const handleFastTrack = useCallback((teamId: string) => {
-    // Check if scores are paused
-    if (scoresPaused) {
-      console.log(`Scores are paused. Ignoring Fast Track for team ${teamId}`);
-      return;
-    }
-    
-    setQuizzes(prevQuizzes => {
-      // Find the highest score
-      const highestScore = Math.max(...prevQuizzes.map(quiz => quiz.score || 0));
-      
-      // Set the fast tracked team's score to highest + 1
-      const newQuizzes = prevQuizzes.map(quiz => {
-        if (quiz.id === teamId) {
-          return { ...quiz, score: highestScore + 1 };
-        }
-        return quiz;
-      });
-      
-      // Set pending sort state for visual feedback
-      setPendingSort(true);
-      
-      // Clear existing timeout
-      if (sortTimeoutRef.current) {
-        clearTimeout(sortTimeoutRef.current);
-      }
-      
-      // Set timeout to sort and clear pending state
-      sortTimeoutRef.current = setTimeout(() => {
-        setQuizzes(currentQuizzes => {
-          const sortedTeams = [...currentQuizzes];
-          
-          if (scoresHidden) {
-            // Sort alphabetically when scores are hidden
-            sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
-          } else {
-            // Sort based on current team layout mode when scores are visible
-            switch (teamLayoutMode) {
-              case 'alphabetical':
-                sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
-                break;
-              case 'random':
-                // Don't re-sort in random mode to maintain the randomized order
-                break;
-              case 'default':
-              default:
-                sortedTeams.sort((a, b) => (b.score || 0) - (a.score || 0));
-                break;
-            }
-          }
-          
-          return sortedTeams;
-        });
-        setPendingSort(false);
-      }, 500); // 500ms delay
-      
-      return newQuizzes;
-    });
-  }, [scoresPaused, scoresHidden, teamLayoutMode]);
-
-  const handleScoreSet = (teamId: string, newScore: number) => {
-    // Check if scores are paused
-    if (scoresPaused) {
-      console.log(`Scores are paused. Ignoring score set to ${newScore} for team ${teamId}`);
-      return;
-    }
-    
-    setQuizzes(prevQuizzes => {
-      const newQuizzes = prevQuizzes.map(quiz => {
-        if (quiz.id === teamId) {
-          return { ...quiz, score: newScore };
-        }
-        return quiz;
-      });
-      
-      // Set pending sort state for visual feedback
-      setPendingSort(true);
-      
-      // Clear existing timeout
-      if (sortTimeoutRef.current) {
-        clearTimeout(sortTimeoutRef.current);
-      }
-      
-      // Set timeout to sort and clear pending state
-      sortTimeoutRef.current = setTimeout(() => {
-        setQuizzes(currentQuizzes => {
-          const sortedTeams = [...currentQuizzes];
-          
-          if (scoresHidden) {
-            // Sort alphabetically when scores are hidden
-            sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
-          } else {
-            // Sort based on current team layout mode when scores are visible
-            switch (teamLayoutMode) {
-              case 'alphabetical':
-                sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
-                break;
-              case 'random':
-                // Don't re-sort in random mode to maintain the randomized order
-                break;
-              case 'default':
-              default:
-                sortedTeams.sort((a, b) => (b.score || 0) - (a.score || 0));
-                break;
-            }
-          }
-          
-          return sortedTeams;
-        });
-        setPendingSort(false);
-      }, 500); // 500ms delay
-      
-      return newQuizzes;
-    });
-  };
-
-  const handleNameChange = (teamId: string, newName: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId ? { ...quiz, name: newName } : quiz
-      )
-    );
-  };
-
-  // Delete team functionality
-  const handleDeleteTeam = (teamId: string, teamName: string, score: number) => {
-    // If team has no points (score is 0), delete immediately
-    if (score === 0) {
-      setQuizzes(prevQuizzes => 
-        prevQuizzes.filter(quiz => quiz.id !== teamId)
-      );
-    } else {
-      // If team has points, show confirmation dialog
-      setTeamToDelete({ id: teamId, name: teamName, score });
-      setShowDeleteConfirm(true);
-    }
-  };
-
-  const confirmDeleteTeam = () => {
-    if (teamToDelete) {
-      setQuizzes(prevQuizzes => 
-        prevQuizzes.filter(quiz => quiz.id !== teamToDelete.id)
-      );
-      setTeamToDelete(null);
-      setShowDeleteConfirm(false);
-    }
-  };
-
-  const cancelDeleteTeam = () => {
-    setTeamToDelete(null);
-    setShowDeleteConfirm(false);
-  };
-
-  // Handle hiding/showing scores and positions
-  const handleToggleHideScores = () => {
-    setScoresHidden(prev => {
-      const newScoresHidden = !prev;
-      
-      // Re-sort teams based on new visibility state
-      setQuizzes(currentQuizzes => {
-        const sortedTeams = [...currentQuizzes];
-        if (newScoresHidden) {
-          // Sort alphabetically when scores are hidden
-          sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
-        } else {
-          // Sort by score (highest first) when scores are visible
-          sortedTeams.sort((a, b) => (b.score || 0) - (a.score || 0));
-        }
-        return sortedTeams;
-      });
-      
-      return newScoresHidden;
-    });
-  };
-
-  // Handle changing team layout mode - cycles through default -> alphabetical -> random
-  const handleChangeTeamLayout = () => {
-    setTeamLayoutMode(prevMode => {
-      let newMode: 'default' | 'alphabetical' | 'random';
-      
-      // Cycle through the modes
-      switch (prevMode) {
-        case 'default':
-          newMode = 'alphabetical';
-          break;
-        case 'alphabetical':
-          newMode = 'random';
-          break;
-        case 'random':
-          newMode = 'default';
-          break;
-        default:
-          newMode = 'default';
-      }
-      
-      // Re-sort teams based on new layout mode
-      setQuizzes(currentQuizzes => {
-        const sortedTeams = [...currentQuizzes];
-        
-        switch (newMode) {
-          case 'alphabetical':
-            sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
-            break;
-          case 'random':
-            // Fisher-Yates shuffle algorithm for proper randomization
-            for (let i = sortedTeams.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [sortedTeams[i], sortedTeams[j]] = [sortedTeams[j], sortedTeams[i]];
-            }
-            break;
-          case 'default':
-          default:
-            sortedTeams.sort((a, b) => (b.score || 0) - (a.score || 0));
-            break;
-        }
-        
-        return sortedTeams;
-      });
-      
-      return newMode;
-    });
-  };
-
-  // Handle team double-click to open team window
-  const handleTeamDoubleClick = (teamId: string) => {
-    setSelectedTeamForWindow(teamId);
-  };
-
-  // Handle closing team window
-  const handleCloseTeamWindow = () => {
-    setSelectedTeamForWindow(null);
-  };
-
-  // Handle team location change
-  const handleTeamLocationChange = (teamId: string, location: { x: number; y: number }) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId ? { ...quiz, location } : quiz
-      )
-    );
-  };
-
-  // Handle buzzer change
-  const handleBuzzerChange = (teamId: string, buzzerSound: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId ? { ...quiz, buzzerSound } : quiz
-      )
-    );
-  };
-
-  // Handle background color change
-  const handleBackgroundColorChange = (teamId: string, backgroundColor: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId ? { ...quiz, backgroundColor } : quiz
-      )
-    );
-  };
-
-  // Handle photo upload
-  const handlePhotoUpload = (teamId: string, photoUrl: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId ? { ...quiz, photoUrl } : quiz
-      )
-    );
-  };
-
-  // Handle kick team
-  const handleKickTeam = (teamId: string) => {
-    setQuizzes(prevQuizzes => prevQuizzes.filter(quiz => quiz.id !== teamId));
-  };
-
-  // Handle disconnect team
-  const handleDisconnectTeam = (teamId: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId 
-          ? { ...quiz, disconnected: true }
-          : quiz
-      )
-    );
-    console.log(`Team ${teamId} has been disconnected`);
-  };
-
-  // Handle reconnect team
-  const handleReconnectTeam = (teamId: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId 
-          ? { ...quiz, disconnected: false }
-          : quiz
-      )
-    );
-    console.log(`Team ${teamId} has been reconnected`);
-  };
-
-  // Handle block team
-  const handleBlockTeam = (teamId: string, blocked: boolean) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId 
-          ? { ...quiz, blocked: blocked }
-          : quiz
-      )
-    );
-    console.log(`Team ${teamId} has been ${blocked ? 'blocked' : 'unblocked'} from earning points`);
-  };
-
-  // Handle scramble keypad
-  const handleScrambleKeypad = (teamId: string) => {
-    console.log(`ðŸ”€ handleScrambleKeypad called for team ${teamId}`);
-    
-    setQuizzes(prevQuizzes => {
-      console.log('ðŸ”��� Previous quizzes state:', prevQuizzes.map(q => ({ id: q.id, name: q.name, scrambled: q.scrambled })));
-      
-      const targetTeam = prevQuizzes.find(q => q.id === teamId);
-      if (!targetTeam) {
-        console.error(`ðŸ”€ Team ${teamId} not found in quizzes array`);
-        return prevQuizzes;
-      }
-      
-      console.log(`ðŸ”€ Target team ${teamId} current scrambled state:`, targetTeam.scrambled);
-      
-      const updatedQuizzes = prevQuizzes.map(quiz => {
-        if (quiz.id === teamId) {
-          // Create a completely new object to ensure React detects the change
-          const newScrambledState = !quiz.scrambled;
-          console.log(`ðŸ”€ Updating team ${teamId} (${quiz.name}) scrambled from ${quiz.scrambled} to ${newScrambledState}`);
-          return { ...quiz, scrambled: newScrambledState };
-        }
-        return quiz;
-      });
-      
-      // Debug logging
-      const updatedTeam = updatedQuizzes.find(q => q.id === teamId);
-      console.log(`ðŸ”€ After update - team ${teamId} scrambled state:`, updatedTeam?.scrambled);
-      console.log('ðŸ”€ All teams scrambled states after update:', updatedQuizzes.map(q => ({ id: q.id, name: q.name, scrambled: q.scrambled })));
-      
-      return updatedQuizzes;
-    });
-  };
-
-  // Handle global scramble keypad for all teams
-  const handleGlobalScrambleKeypad = () => {
-    // Check current state of teams
-    const scrambledTeams = quizzes.filter(quiz => quiz.scrambled).length;
-    const totalTeams = quizzes.length;
-    
-    // If more than half are scrambled, unscramble all
-    // If half or less are scrambled, scramble all
-    const shouldScrambleAll = scrambledTeams <= totalTeams / 2;
-    
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => ({ ...quiz, scrambled: shouldScrambleAll }))
-    );
-    
-    console.log(`${shouldScrambleAll ? 'Scrambled' : 'Unscrambled'} all team keypads`);
-  };
-
-  // Handle pause scores toggle
-  const handlePauseScoresToggle = () => {
-    setScoresPaused(prev => {
-      const newState = !prev;
-      console.log(`Scores ${newState ? 'paused' : 'unpaused'} - team scores ${newState ? 'cannot' : 'can'} be changed`);
-      return newState;
-    });
-  };
-
-  // Handle hot swap
-  const handleHotSwap = (teamId: string) => {
-    console.log(`Hot swapping device for team ${teamId}`);
-    // This will be implemented when device connection logic is added
-    // For now, just log the action
-  };
-
-  // Clear all team scores
-  const handleClearScores = () => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => ({ ...quiz, score: 0 }))
-    );
-  };
-
-  // Empty lobby - delete all teams
-  const handleEmptyLobby = () => {
-    setQuizzes([]);
-  };
-
-  // Handle host location change
-  const handleHostLocationChange = (location: { x: number; y: number } | null) => {
-    setHostLocation(location);
-  };
-
-  // Handle clear all locations (teams + host)
-  const handleClearAllLocations = () => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => ({ ...quiz, location: undefined }))
-    );
-    setHostLocation(null);
-  };
-
-  // Determine primary button label based on flow state
-  const getPrimaryButtonLabel = (): string => {
-    const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
-    const hasPicture = hasQuestionImage(currentQuestion);
-
-    switch (flowState.flow) {
-      case 'ready':
-        return hasPicture ? 'Send Picture' : 'Send Question';
-      case 'sent-picture':
-        return 'Send Question';
-      case 'sent-question':
-        return 'Start Timer';
-      case 'running':
-      case 'timeup':
-        return 'Reveal Answer';
-      case 'revealed':
-        return 'Fastest Team';
-      case 'fastest':
-        return currentLoadedQuestionIndex < loadedQuizQuestions.length - 1 ? 'Next Question' : 'End Round';
-      case 'complete':
-        return 'End Round';
-      default:
-        return 'Continue';
-    }
-  };
-
-  const primaryButtonLabel = getPrimaryButtonLabel();
-
-  const renderTabContent = () => {
-    // Show team window when a team is double-clicked
-    if (selectedTeamForWindow) {
-      const team = quizzes.find(q => q.id === selectedTeamForWindow);
-      if (team) {
-        return (
-          <TeamWindow 
-            team={team} 
-            hostLocation={hostLocation}
-            onClose={handleCloseTeamWindow}
-            onLocationChange={handleTeamLocationChange}
-            onNameChange={handleNameChange}
-            onBuzzerChange={handleBuzzerChange}
-            onBackgroundColorChange={handleBackgroundColorChange}
-            onPhotoUpload={handlePhotoUpload}
-            onKickTeam={handleKickTeam}
-            onDisconnectTeam={handleDisconnectTeam}
-            onReconnectTeam={handleReconnectTeam}
-            onBlockTeam={handleBlockTeam}
-            onScrambleKeypad={handleScrambleKeypad}
-            onHotSwap={handleHotSwap}
-            onHostLocationChange={handleHostLocationChange}
-            onClearAllLocations={handleClearAllLocations}
-          />
-        );
-      }
-    }
-
-    // Show buzz-in display when active
-    if (showBuzzInMode && buzzInConfig) {
-      const teamData = quizzes.map(quiz => ({
-        id: quiz.id,
-        name: quiz.name,
-        color: getTeamColor(quiz.id)
-      }));
-      
-      return (
-        <div className="flex-1 overflow-hidden">
-          <BuzzInDisplay
-            mode={buzzInConfig.mode}
-            points={buzzInConfig.points}
-            soundCheck={buzzInConfig.soundCheck}
-            teams={teamData}
-            onEndRound={handleBuzzInEnd}
-          />
-        </div>
-      );
-    }
-
-    // Show quiz pack display in center when active
-    if (showQuizPackDisplay && flowState.isQuestionMode) {
-      const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
-
-      return (
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {/* Top draining timer bar (visible when question sent) */}
-          <TimerProgressBar
-            isVisible={flowState.flow === 'sent-question' || (flowState.flow as any) === 'running' || flowState.flow === 'timeup'}
-            timeRemaining={flowState.timeRemaining}
-            totalTime={flowState.totalTime}
-            position="top"
-          />
-
-          {/* Main question display */}
-          <QuestionPanel
-            question={currentQuestion}
-            questionNumber={currentLoadedQuestionIndex + 1}
-            totalQuestions={loadedQuizQuestions.length}
-            showAnswer={flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
-            answerText={currentQuestion?.answerText}
-            correctIndex={currentQuestion?.correctIndex}
-            onPrimaryAction={handlePrimaryAction}
-            flow={flowState.flow}
-            primaryLabel={primaryButtonLabel}
-          />
-        </div>
-      );
-    }
-
-    // Fallback to old QuizPackDisplay for config screen
-    else if (showQuizPackDisplay && !flowState.isQuestionMode) {
-      return (
-        <div className="flex-1 overflow-hidden h-full w-full flex">
-          <QuizPackDisplay
-            questions={loadedQuizQuestions}
-            currentQuestionIndex={currentLoadedQuestionIndex}
-            onPreviousQuestion={handleQuizPackPrevious}
-            onNextQuestion={handleQuizPackNext}
-            onBack={handleQuizPackClose}
-            totalTeams={quizzes.length}
-            onStartQuiz={handleStartQuiz}
-            onPointsChange={handleCurrentRoundPointsChange}
-            onSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
-          />
-        </div>
-      );
-    }
-
-    // Show keypad interface in center when active
-    // Keep it mounted even when fastest team display is shown so we can advance to next question
-    if (showKeypadInterface) {
-      return (
-        <div className="flex-1 relative min-h-0">
-          {/* Keypad interface - always rendered when active */}
-          <div className={showFastestTeamDisplay ? "invisible flex-1 overflow-hidden" : "flex-1 overflow-hidden"}>
-            <KeypadInterface
-              key={keypadInstanceKey}
-              onBack={handleKeypadClose}
-              onHome={() => setActiveTab("home")}
-              externalWindow={externalWindow}
-              onExternalDisplayUpdate={handleExternalDisplayUpdate}
-              teams={quizzes}
-              onTeamAnswerUpdate={handleTeamAnswerUpdate}
-              onTeamResponseTimeUpdate={handleTeamResponseTimeUpdate}
-              onAwardPoints={handleAwardPoints}
-              onEvilModePenalty={handleEvilModePenalty}
-              currentRoundPoints={currentRoundPoints}
-              currentRoundSpeedBonus={currentRoundSpeedBonus}
-              onCurrentRoundPointsChange={handleCurrentRoundPointsChange}
-              onCurrentRoundSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
-              onFastestTeamReveal={handleFastestTeamReveal}
-              triggerNextQuestion={keypadNextQuestionTrigger}
-              onAnswerStatusUpdate={handleTeamAnswerStatusUpdate}
-              onFastTrack={handleFastTrack}
-              loadedQuestions={loadedQuizQuestions}
-              currentQuestionIndex={currentLoadedQuestionIndex}
-              isQuizPackMode={isQuizPackMode}
-            />
-          </div>
-          
-          {/* Fastest team display - overlays keypad interface when shown */}
-          {showFastestTeamDisplay && (
-            <div className="absolute inset-0 z-10">
+            {/* Fastest Team Display */}
+            {showFastestTeamDisplay && fastestTeamData && (
               <FastestTeamDisplay
                 fastestTeam={fastestTeamData}
                 teams={quizzes}
                 hostLocation={hostLocation}
-                onClose={handleFastestTeamClose}
-                onFastestTeamLocationChange={handleTeamLocationChange}
-                onHostLocationChange={handleHostLocationChange}
-                onScrambleKeypad={handleScrambleKeypad}
-                onBlockTeam={handleBlockTeam}
+                onClose={() => {
+                  setShowFastestTeamDisplay(false);
+                  if (currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
+                    setCurrentLoadedQuestionIndex(prev => prev + 1);
+                    setFlowState(prev => ({ ...prev, flow: 'ready', pictureSent: false, questionSent: false }));
+                  } else {
+                    handleEndRound();
+                  }
+                }}
+                onFastestTeamLocationChange={(teamId, location) => {
+                  if (fastestTeamData && fastestTeamData.team.id === teamId) {
+                    setFastestTeamData(prev =>
+                      prev ? { ...prev, team: { ...prev.team, location } } : null
+                    );
+                  }
+                }}
+                onHostLocationChange={setHostLocation}
+                onScrambleKeypad={(teamId) => {
+                  const updatedQuizzes = quizzes.map(quiz =>
+                    quiz.id === teamId ? { ...quiz, scrambled: !(quiz.scrambled || false) } : quiz
+                  );
+                  setQuizzes(updatedQuizzes);
+                }}
+                onBlockTeam={(teamId, blocked) => {
+                  const updatedQuizzes = quizzes.map(quiz =>
+                    quiz.id === teamId ? { ...quiz, blocked } : quiz
+                  );
+                  setQuizzes(updatedQuizzes);
+                }}
+              />
+            )}
+
+            {/* Default display when no game is active */}
+            {!showKeypadInterface && !showBuzzInInterface && !showNearestWinsInterface && !showWheelSpinnerInterface && !showQuizPackDisplay && !showFastestTeamDisplay && (
+              <>
+                {activeTab === "livescreen" && <DisplayPreview displayMode={displayMode} images={images} />}
+                {activeTab === "home" && <QuestionDisplay question={currentQuestion} currentQuestionNumber={currentQuestionIndex + 1} totalQuestions={mockQuestions.length} timeRemaining={timeRemaining} onRevealAnswer={handleRevealAnswer} onNextQuestion={handleNextQuestion} showAnswer={showAnswer} />}
+                {activeTab === "teams" && <div className="w-full h-full flex items-center justify-center text-muted-foreground">Teams view</div>}
+              </>
+            )}
+          </div>
+
+          {/* Right Panel - Game Mode Buttons */}
+          {!showKeypadInterface && !showBuzzInInterface && !showNearestWinsInterface && !showWheelSpinnerInterface && !showQuizPackDisplay && !showFastestTeamDisplay && (
+            <div className="w-80 border-l border-border overflow-y-auto">
+              <RightPanel
+                quizzes={quizzes}
+                onKeypadClick={handleKeypadClick}
+                onBuzzInClick={handleBuzzInClick}
+                onWheelSpinnerClick={handleWheelSpinnerClick}
+                onNearestWinsClick={handleNearestWinsClick}
               />
             </div>
           )}
         </div>
-      );
-    }
-    
-    // Show fastest team display standalone if keypad interface is not active
-    if (showFastestTeamDisplay) {
-      return (
-        <div className="flex-1 overflow-hidden">
-          <FastestTeamDisplay
-            fastestTeam={fastestTeamData}
-            teams={quizzes}
-            hostLocation={hostLocation}
-            onClose={handleFastestTeamClose}
-            onScrambleKeypad={handleScrambleKeypad}
-            onBlockTeam={handleBlockTeam}
-          />
-        </div>
-      );
-    }
 
-    // Show buzz-in interface in center when active
-    if (showBuzzInInterface) {
-      return (
-        <div className="flex-1 overflow-hidden">
-          <BuzzInInterface 
-            quizzes={quizzes}
-            onClose={handleBuzzInClose}
-            onEndRound={handleEndRound}
-            onAwardPoints={handleAwardPoints}
-          />
-        </div>
-      );
-    }
-
-    // Show nearest wins interface in center when active
-    if (showNearestWinsInterface) {
-      return (
-        <div className="flex-1 overflow-hidden">
-          <NearestWinsInterface 
-            onBack={() => {
-              setShowNearestWinsInterface(false);
-              setActiveTab("home");
-            }}
-            onDisplayUpdate={handleExternalDisplayUpdate}
-            teams={quizzes}
-            onTeamAnswerUpdate={handleTeamAnswerUpdate}
-            onAwardPoints={handleAwardPoints}
-            currentRoundWinnerPoints={currentRoundWinnerPoints}
-            onCurrentRoundWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
-            externalWindow={externalWindow}
-          />
-        </div>
-      );
-    }
-
-    // Show wheel spinner interface in center when active
-    if (showWheelSpinnerInterface) {
-      return (
-        <div className="flex-1 overflow-hidden">
-          <WheelSpinnerInterface 
-            quizzes={quizzes}
-            onBack={handleWheelSpinnerClose}
-            onHome={() => setActiveTab("home")}
-            onAwardPoints={handleAwardPoints}
-            externalWindow={externalWindow}
-            onExternalDisplayUpdate={handleExternalDisplayUpdate}
-          />
-        </div>
-      );
-    }
-
-    // Show buzzers management in center when active
-    if (showBuzzersManagement) {
-      return (
-        <div className="flex-1 overflow-hidden">
-          <BuzzersManagement 
-            teams={quizzes}
-            onBuzzerChange={handleBuzzerChange}
-            onClose={handleCloseBuzzersManagement}
-            onShowTeamOnDisplay={handleShowTeamOnDisplay}
-          />
-        </div>
-      );
-    }
-
-    switch (activeTab) {
-      case "home":
-        return (
-          <div className="flex-1 overflow-hidden">
-            <QuestionDisplay
-              question={currentQuestion}
-              timeRemaining={timeRemaining}
-              showAnswer={showAnswer}
-              
-              onStart={handleStartTimer}
-              onReveal={handleRevealAnswer}
-              onNext={handleNextQuestion}
-              onReset={handleResetQuestion}
-              currentIndex={currentQuestionIndex}
-              totalQuestions={mockQuestions.length}
-            />
-          </div>
-        );
-      case "handset":
-        return (
-          <div className="flex-1 overflow-hidden">
-            <QuestionDisplay
-              question={currentQuestion}
-              timeRemaining={timeRemaining}
-              showAnswer={showAnswer}
-              
-              onStart={handleStartTimer}
-              onReveal={handleRevealAnswer}
-              onNext={handleNextQuestion}
-              onReset={handleResetQuestion}
-              currentIndex={currentQuestionIndex}
-              totalQuestions={mockQuestions.length}
-            />
-          </div>
-        );
-      case "leaderboard-reveal":
-        return (
-          <div className="flex-1 overflow-hidden">
-            <LeaderboardReveal 
-              quizzes={quizzes}
-              onExternalDisplayUpdate={handleExternalDisplayUpdate}
-            />
-          </div>
-        );
-      case "user-status":
-        return (
-          <div className="flex-1 overflow-hidden">
-            <UserStatusTab />
-          </div>
-        );
-      default:
-        return (
-          <div className="flex-1 overflow-hidden">
-            <QuestionDisplay
-              question={currentQuestion}
-              timeRemaining={timeRemaining}
-              showAnswer={showAnswer}
-              
-              onStart={handleStartTimer}
-              onReveal={handleRevealAnswer}
-              onNext={handleNextQuestion}
-              onReset={handleResetQuestion}
-              currentIndex={currentQuestionIndex}
-              totalQuestions={mockQuestions.length}
-            />
-          </div>
-        );
-    }
-  };
-
-  return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Main layout - Use theme-aware background */}
-      <div className="flex h-full">
-        {/* Left resizable sidebar */}
-        <Resizable
-          size={{ width: sidebarWidth, height: "100%" }}
-          onResize={handleResize}
-          onResizeStop={handleResizeStop}
-          minWidth={200}
-          maxWidth={600}
-          enable={{ 
-            top: false, 
-            right: true, 
-            bottom: false, 
-            left: false, 
-            topRight: false, 
-            bottomRight: false, 
-            bottomLeft: false, 
-            topLeft: false 
-          }}
-          handleStyles={{
-            right: {
-              background: 'transparent',
-              border: 'none',
-              width: '8px',
-              right: '-4px',
-              cursor: 'col-resize',
-            }
-          }}
-          className="flex-shrink-0"
-        >
-          <LeftSidebar
-            quizzes={quizzes}
-            selectedQuiz={selectedQuiz?.id || null}
-            onQuizSelect={handleQuizSelect}
-            onScoreChange={handleScoreChange}
-            onScoreSet={handleScoreSet}
-            onNameChange={handleNameChange}
-            onDeleteTeam={handleDeleteTeam}
-            onTeamDoubleClick={handleTeamDoubleClick}
-            teamAnswers={getCurrentGameMode() !== null ? teamAnswers : {}}
-            teamResponseTimes={getCurrentGameMode() !== null && (showTeamAnswers || Object.keys(teamResponseTimes).length > 0) ? teamResponseTimes : {}}
-            showAnswers={getCurrentGameMode() !== null && (showTeamAnswers || Object.keys(teamAnswers).length > 0 || Object.keys(teamResponseTimes).length > 0)}
-            scoresPaused={scoresPaused}
-            scoresHidden={scoresHidden}
-            teamAnswerStatuses={teamAnswerStatuses}
-            teamCorrectRankings={teamCorrectRankings}
-          />
-        </Resizable>
-
-        {/* Main content area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Top navigation - now on the right side */}
-          <TopNavigation
-            activeTab={selectedTeamForWindow ? "team-settings" as any : activeTab}
-            onTabChange={handleTabChange}
-            teamCount={participants.length}
-            displayMode={userSelectedDisplayMode}
-            onDisplayModeChange={handleDisplayModeChange}
-            onHandsetSettings={handleHandsetSettings}
-            onDisplaySettings={handleDisplaySettings}
-            isExternalDisplayOpen={isExternalDisplayOpen}
-            onExternalDisplayToggle={toggleExternalDisplay}
-            onSettingsOpen={handleSettingsOpen}
-            onPlayerDevicesSettings={handlePlayerDevicesSettings}
-            playerDevicesDisplayMode={playerDevicesDisplayMode}
-            onPlayerDevicesDisplayModeChange={handlePlayerDevicesDisplayModeChange}
-          />
-
-          {/* Content area with right panel */}
-          <div className="flex flex-1 min-h-0">
-            {/* Main content - theme-aware background */}
-            <div className="flex-1 bg-background min-w-0 flex flex-col">
-              {renderTabContent()}
-            </div>
-
-            {/* Right panel - fixed width - only show when no game modes are active and team window is closed and not in question mode */}
-            {!showKeypadInterface && !showBuzzInInterface && !showNearestWinsInterface && !showWheelSpinnerInterface && !showBuzzInMode && !showFastestTeamDisplay && !selectedTeamForWindow && !showBuzzersManagement && !(showQuizPackDisplay && flowState.isQuestionMode) && (
-              <div className="w-80 bg-background border-l border-border">
-                <RightPanel 
-                  quizzes={quizzes} 
-                  onKeypadClick={handleKeypadClick}
-                  onBuzzInClick={handleBuzzInClick}
-                  onBuzzInStart={handleBuzzInStart}
-                  onWheelSpinnerClick={handleWheelSpinnerClick}
-                  onNearestWinsClick={handleNearestWinsClick}
-                />
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Bottom Navigation */}
+        <StatusBar
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          teamCount={quizzes.length}
+          currentGameMode={getCurrentGameMode()}
+          currentRoundPoints={currentRoundPoints}
+          currentRoundSpeedBonus={currentRoundSpeedBonus}
+          onCurrentRoundPointsChange={handleCurrentRoundPointsChange}
+          onCurrentRoundSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
+          showKeypadInterface={showKeypadInterface}
+          showBuzzInInterface={showBuzzInInterface}
+          showNearestWinsInterface={showNearestWinsInterface}
+          showWheelSpinnerInterface={showWheelSpinnerInterface}
+          showBuzzInMode={showBuzzInMode}
+          showQuizPackDisplay={showQuizPackDisplay}
+          onEndRound={handleEndRound}
+          leftSidebarWidth={sidebarWidth}
+        />
       </div>
 
-      {/* Status bar */}
-      <StatusBar
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        teamCount={participants.length}
-        displayMode={userSelectedDisplayMode}
-        onDisplayModeChange={handleDisplayModeChange}
-        onHandsetSettings={handleHandsetSettings}
-        onDisplaySettings={handleDisplaySettings}
-        leftSidebarWidth={sidebarWidth}
-        currentGameMode={getCurrentGameMode()}
-        goWideEnabled={goWideEnabled}
-        evilModeEnabled={evilModeEnabled}
-        onGoWideToggle={handleGoWideToggle}
-        onEvilModeToggle={handleEvilModeToggle}
-        onClearScores={handleClearScores}
-        onEmptyLobby={handleEmptyLobby}
-        onGlobalScrambleKeypad={handleGlobalScrambleKeypad}
-        scoresPaused={scoresPaused}
-        onPauseScoresToggle={handlePauseScoresToggle}
-        scoresHidden={scoresHidden}
-        onToggleHideScores={handleToggleHideScores}
-        teamLayoutMode={teamLayoutMode}
-        onChangeTeamLayout={handleChangeTeamLayout}
-        teams={quizzes}
-        currentRoundPoints={currentRoundPoints}
-        currentRoundSpeedBonus={currentRoundSpeedBonus}
-        onCurrentRoundPointsChange={handleCurrentRoundPointsChange}
-        onCurrentRoundSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
-        currentRoundWinnerPoints={currentRoundWinnerPoints}
-        onCurrentRoundWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
-        showKeypadInterface={showKeypadInterface}
-        showBuzzInInterface={showBuzzInInterface}
-        showNearestWinsInterface={showNearestWinsInterface}
-        showWheelSpinnerInterface={showWheelSpinnerInterface}
-        showBuzzInMode={showBuzzInMode}
-        showQuizPackDisplay={showQuizPackDisplay && flowState.isQuestionMode}
-        onEndRound={handleEndRound}
-        onOpenBuzzersManagement={handleOpenBuzzersManagement}
-        hostControllerEnabled={hostControllerEnabled}
-        onToggleHostController={handleToggleHostController}
-        onPrimaryAction={handlePrimaryAction}
-        onSilentTimer={handleSilentTimer}
-        primaryButtonLabel={primaryButtonLabel}
-        flowState={flowState.flow}
-      />
-
-
-      {/* Modals and overlays */}
-      {showDisplaySettings && (
-        <DisplaySettings
-          images={images}
-          onImagesChange={handleImagesChange}
-          slideshowSpeed={slideshowSpeed}
-          onSpeedChange={handleSpeedChange}
-          onClose={() => setShowDisplaySettings(false)}
-        />
-      )}
-
-      {showPlayerDevicesSettings && (
-        <PlayerDevicesSettings
-          images={playerDevicesImages}
-          onImagesChange={handlePlayerDevicesImagesChange}
-          playerDevicesDisplayMode={playerDevicesDisplayMode}
-          onClose={() => setShowPlayerDevicesSettings(false)}
-        />
-      )}
-
-      {showSettings && (
-        <Settings 
-          isOpen={showSettings} 
-          onClose={() => setShowSettings(false)} 
-        />
-      )}
-
-      {/* Host Controller Code Popup */}
-      {showHostControllerCode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setShowHostControllerCode(false)}
-          />
-          
-          {/* Code Display Bubble */}
-          <div className="relative bg-card border-2 border-primary rounded-2xl shadow-2xl p-8 min-w-[300px]">
-            <div className="text-center space-y-4">
-              <h3 className="text-foreground font-semibold text-xl">Host Controller Code</h3>
-              <div className="bg-primary/10 border-2 border-primary rounded-lg p-6">
-                <p className="text-5xl font-mono font-bold text-primary tracking-widest">
-                  {hostControllerCode}
-                </p>
-              </div>
-              <p className="text-muted-foreground text-sm">
-                Share this code with the host controller device
-              </p>
-              <Button
-                onClick={() => setShowHostControllerCode(false)}
-                className="mt-4"
-                variant="outline"
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete confirmation dialog */}
+      {/* Delete Team Confirmation Dialog */}
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Team</AlertDialogTitle>
+            <AlertDialogTitle>Delete Team?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this team completely?
+              Are you sure you want to delete <strong>{teamToDelete?.name}</strong> (Score: {teamToDelete?.score})? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={cancelDeleteTeam}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteTeam} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete Team
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (teamToDelete) {
+                  setQuizzes(prevQuizzes =>
+                    prevQuizzes.filter(quiz => quiz.id !== teamToDelete.id)
+                  );
+                  setShowDeleteConfirm(false);
+                  setTeamToDelete(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Next Question Button - appears at bottom right when fastest team display is shown */}
-      {showFastestTeamDisplay && (
-        <div className="fixed bottom-20 right-6 z-50">
-          <Button 
-            className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
-            onClick={() => {
-              // Close fastest team display and trigger next question in KeypadInterface
-              setShowFastestTeamDisplay(false);
-              setKeypadNextQuestionTrigger(prev => prev + 1);
-              console.log('Next Question clicked - advancing to question type selection');
-            }}
-          >
-            Next Question
-            <ChevronRight className="h-6 w-6" />
-          </Button>
-        </div>
-      )}
-
     </div>
   );
 }

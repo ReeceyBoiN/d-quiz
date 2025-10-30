@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
-import { ChevronLeft, ChevronRight, Flag, Star, Zap, Grid3X3, Skull, ArrowLeft, Timer as TimerIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Star, Zap, Grid3X3, Skull, ArrowLeft, Timer as TimerIcon, Send, Eye } from "lucide-react";
 import { Slider } from "./ui/slider";
 import { Checkbox } from "./ui/checkbox";
 import { useSettings } from "../utils/SettingsContext";
@@ -28,6 +28,8 @@ interface QuizPackDisplayProps {
   onStartQuiz?: () => void; // Called when "START QUIZ" button is clicked
   onPointsChange?: (points: number) => void; // Callback when points slider changes
   onSpeedBonusChange?: (speedBonus: number) => void; // Callback when speed bonus slider changes
+  currentRoundPoints?: number | null; // Current points value from parent
+  currentRoundSpeedBonus?: number | null; // Current speed bonus value from parent
 }
 
 export function QuizPackDisplay({
@@ -40,7 +42,9 @@ export function QuizPackDisplay({
   onAwardPoints,
   onStartQuiz,
   onPointsChange,
-  onSpeedBonusChange
+  onSpeedBonusChange,
+  currentRoundPoints,
+  currentRoundSpeedBonus
 }: QuizPackDisplayProps) {
   const [currentScreen, setCurrentScreen] = useState<'config' | 'question'>('config');
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
@@ -50,6 +54,7 @@ export function QuizPackDisplay({
   const [localPoints, setLocalPoints] = useState<number | null>(null);
   const [localSpeedBonus, setLocalSpeedBonus] = useState<number | null>(null);
   const [autoDisableEnabled, setAutoDisableEnabled] = useState(false);
+  const [flowState, setFlowState] = useState<'ready' | 'sent-question' | 'running' | 'timeup' | 'revealed' | 'fastest'>('ready');
 
   const {
     defaultPoints,
@@ -66,9 +71,13 @@ export function QuizPackDisplay({
     voiceCountdown
   } = useSettings();
 
-  // Use local state if set, otherwise use defaults
-  const currentPoints = localPoints !== null ? localPoints : defaultPoints;
-  const currentSpeedBonus = localSpeedBonus !== null ? localSpeedBonus : defaultSpeedBonus;
+  // Use parent state if provided, otherwise local state, otherwise defaults
+  const currentPoints = currentRoundPoints !== null && currentRoundPoints !== undefined
+    ? currentRoundPoints
+    : (localPoints !== null ? localPoints : defaultPoints);
+  const currentSpeedBonus = currentRoundSpeedBonus !== null && currentRoundSpeedBonus !== undefined
+    ? currentRoundSpeedBonus
+    : (localSpeedBonus !== null ? localSpeedBonus : defaultSpeedBonus);
   const points = [currentPoints];
   const speedBonus = [currentSpeedBonus];
 
@@ -100,6 +109,7 @@ export function QuizPackDisplay({
           clearInterval(interval);
           setIsTimerRunning(false);
           setTimerFinished(true);
+          setFlowState('timeup');
           return 0;
         }
 
@@ -154,6 +164,52 @@ export function QuizPackDisplay({
     }
 
     return "Answer not available";
+  };
+
+  const getPrimaryActionButton = () => {
+    switch (flowState) {
+      case 'ready':
+        return { text: 'Send Question', icon: <Send className="w-5 h-5" /> };
+      case 'sent-question':
+        return { text: 'Start Timer', icon: <TimerIcon className="w-5 h-5" /> };
+      case 'running':
+      case 'timeup':
+        return { text: 'Reveal Answer', icon: <Eye className="w-5 h-5" /> };
+      case 'revealed':
+        return { text: 'Fastest Team', icon: <Zap className="w-5 h-5" /> };
+      case 'fastest':
+        const isLastQuestion = currentQuestionIndex >= totalQuestions - 1;
+        return { text: isLastQuestion ? 'End Round' : 'Next Question', icon: <ChevronRight className="w-5 h-5" /> };
+      default:
+        return { text: 'Send Question', icon: <Send className="w-5 h-5" /> };
+    }
+  };
+
+  const handlePrimaryAction = () => {
+    switch (flowState) {
+      case 'ready':
+        setFlowState('sent-question');
+        break;
+      case 'sent-question':
+        setFlowState('running');
+        handleStartTimer();
+        break;
+      case 'running':
+      case 'timeup':
+        setFlowState('revealed');
+        break;
+      case 'revealed':
+        setFlowState('fastest');
+        break;
+      case 'fastest':
+        if (currentQuestionIndex >= totalQuestions - 1) {
+          onBack();
+        } else {
+          onNextQuestion();
+          setFlowState('ready');
+        }
+        break;
+    }
   };
 
   const getMultipleChoiceOptions = (): Array<{ letter: string; text: string; isCorrect: boolean }> => {
@@ -409,13 +465,24 @@ export function QuizPackDisplay({
   return (
     <div className="w-full h-full bg-slate-800 text-white flex flex-col">
       {/* Top Header */}
-      <div className="bg-red-700 px-8 py-6 flex justify-between items-center border-b-4 border-red-900">
+      <div className="bg-red-700 px-8 py-6 flex justify-between items-center border-b-4 border-red-900 relative">
         <div className="text-3xl font-bold tracking-wide">
           Question {currentQuestionIndex + 1} of {totalQuestions}
         </div>
         <div className="text-3xl font-bold tracking-wide">
           {getQuestionTypeLabel(currentQuestion.type)}
         </div>
+
+        {/* Timer Progress Bar - Top Right */}
+        {isTimerRunning && (
+          <div className="absolute right-8 top-1/2 -translate-y-1/2 w-48">
+            <TimerProgressBar
+              timeRemaining={countdown || 0}
+              totalTime={gameModeTimers.keypad || 30}
+              isFinished={timerFinished}
+            />
+          </div>
+        )}
       </div>
 
       {/* Main Content */}
@@ -510,11 +577,17 @@ export function QuizPackDisplay({
         </div>
       </div>
 
-      {/* Bottom Navigation */}
-      <div className="bg-slate-700 border-t-2 border-slate-600 px-8 py-5 flex justify-between items-center gap-6">
+      {/* Bottom Navigation - Raised above StatusBar with z-index */}
+      <div className="bg-slate-700 border-t-2 border-slate-600 px-8 py-5 flex justify-between items-center gap-6 relative z-40 mb-16">
         <div className="flex gap-3">
           <Button
-            onClick={onPreviousQuestion}
+            onClick={() => {
+              setFlowState('ready');
+              setCountdown(null);
+              setIsTimerRunning(false);
+              setTimerFinished(false);
+              onPreviousQuestion();
+            }}
             disabled={isFirstQuestion}
             className={`flex items-center gap-2 px-5 py-2 rounded-md font-semibold transition-all ${
               isFirstQuestion
@@ -525,9 +598,15 @@ export function QuizPackDisplay({
             <ChevronLeft className="w-5 h-5" />
             Previous
           </Button>
-          
+
           <Button
-            onClick={onNextQuestion}
+            onClick={() => {
+              setFlowState('ready');
+              setCountdown(null);
+              setIsTimerRunning(false);
+              setTimerFinished(false);
+              onNextQuestion();
+            }}
             disabled={isLastQuestion}
             className={`flex items-center gap-2 px-5 py-2 rounded-md font-semibold transition-all ${
               isLastQuestion
@@ -540,39 +619,18 @@ export function QuizPackDisplay({
           </Button>
         </div>
 
-        <div className="flex gap-3">
-          <Button
-            onClick={toggleFlag}
-            className={`flex items-center gap-2 px-5 py-2 rounded-md font-semibold transition-all ${
-              isFlagged
-                ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                : 'bg-slate-600 hover:bg-slate-500 text-white'
-            }`}
-          >
-            <Flag className={`w-4 h-4 ${isFlagged ? 'fill-current' : ''}`} />
-            Flag
-          </Button>
-          
-          <Button
-            onClick={handleStartTimer}
-            disabled={isTimerRunning}
-            className={`flex items-center gap-2 px-6 py-2 rounded-md font-semibold transition-all ${
-              isTimerRunning
-                ? 'bg-slate-600 text-slate-500 cursor-not-allowed'
-                : 'bg-green-600 hover:bg-green-700 text-white'
-            }`}
-          >
-            <TimerIcon className="w-4 h-4" />
-            Start Timer
-          </Button>
-          
-          <Button
-            onClick={onBack}
-            className="px-6 py-2 rounded-md font-semibold bg-slate-600 hover:bg-slate-500 text-white transition-all"
-          >
-            Exit Quiz
-          </Button>
-        </div>
+        <Button
+          onClick={handlePrimaryAction}
+          disabled={isTimerRunning && flowState === 'running'}
+          className={`flex items-center gap-3 px-8 py-6 rounded-lg font-semibold transition-all text-lg ${
+            isTimerRunning && flowState === 'running'
+              ? 'bg-slate-600 text-slate-500 cursor-not-allowed'
+              : 'bg-[#3498db] hover:bg-[#2980b9] text-white hover:scale-105 active:scale-95 shadow-lg'
+          }`}
+        >
+          {getPrimaryActionButton().icon}
+          {getPrimaryActionButton().text}
+        </Button>
       </div>
     </div>
   );

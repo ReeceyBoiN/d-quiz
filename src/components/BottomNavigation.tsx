@@ -401,9 +401,9 @@ export function StatusBar({
   const [showTeamPhotosPopup, setShowTeamPhotosPopup] = useState(false);
   
   return (
-    <div 
-      className="fixed bottom-0 right-0 bg-sidebar-accent border-t border-sidebar-border px-4 py-2 h-[60px] flex items-center z-30 transition-[left] duration-0"
-      style={{ left: `${leftSidebarWidth}px` }}
+    <div
+      className="fixed bottom-0 left-0 right-0 bg-sidebar-accent border-t border-sidebar-border px-4 py-2 h-[60px] flex items-center z-30 transition-[left] duration-0"
+      style={{ left: `${leftSidebarWidth}px`, right: '0px' }}
     >
       {/* END ROUND button - show when any game interface is active */}
       {(showKeypadInterface || showBuzzInInterface || showNearestWinsInterface || showWheelSpinnerInterface || showBuzzInMode || showQuizPackDisplay) && (

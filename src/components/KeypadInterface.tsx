@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Star, Zap, Grid3X3, Skull, ArrowLeft, Type, BarChart3, Hash, Timer, Eye, RotateCcw, CheckCircle } from "lucide-react";
@@ -140,7 +140,13 @@ export function KeypadInterface({
   
   // Get keypad design from settings context
   const { keypadDesign } = useSettings();
-  
+
+  // Track if we've already auto-started quiz pack mode to prevent re-triggering
+  const autoStartTriggeredRef = useRef(false);
+
+  // Track timer interval to prevent multiple timers from running
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Keypad Design Configurations mapped to settings values
   const keypadDesigns = {
     "neon-glow": {
@@ -260,20 +266,9 @@ export function KeypadInterface({
     // Clear any pending simulation timeouts
     simulationTimeouts.forEach(timeout => clearTimeout(timeout));
     setSimulationTimeouts([]);
-    
-    // Clear parent component state as well
-    if (onTeamAnswerUpdate) {
-      onTeamAnswerUpdate({});
-    }
-    if (onTeamResponseTimeUpdate) {
-      onTeamResponseTimeUpdate({});
-    }
-    if (onAnswerStatusUpdate) {
-      onAnswerStatusUpdate(null, null);
-    }
-    if (onTimerLockChange) {
-      onTimerLockChange(false);
-    }
+
+    // Note: Parent callbacks will be called by useEffect hooks when state changes
+    // We don't call them here to avoid updating parent during child render
   }, []); // Empty dependency array means this runs once on mount
 
   // Update currentLoadedQuestion when loaded questions or index changes
@@ -283,14 +278,58 @@ export function KeypadInterface({
     }
   }, [loadedQuestions, currentQuestionIndex]);
 
-  // Auto-start quiz pack mode
+  // Notify parent of team answer updates when state changes
   useEffect(() => {
-    if (isQuizPackMode && currentScreen === 'config' && loadedQuestions && loadedQuestions.length > 0) {
-      // Call handleStartRound - it will use the current closure values
-      // We don't include handleStartRound in deps to avoid circular dependency during initialization
-      handleStartRound();
+    if (onTeamAnswerUpdate) {
+      onTeamAnswerUpdate(teamAnswers);
     }
-  }, [isQuizPackMode, currentScreen, loadedQuestions]);
+  }, [teamAnswers, onTeamAnswerUpdate]);
+
+  // Notify parent of team response time updates when state changes
+  useEffect(() => {
+    if (onTeamResponseTimeUpdate) {
+      onTeamResponseTimeUpdate(teamAnswerTimes);
+    }
+  }, [teamAnswerTimes, onTeamResponseTimeUpdate]);
+
+  // Notify parent when timer lock state changes
+  useEffect(() => {
+    if (onTimerLockChange) {
+      onTimerLockChange(timerLocked);
+    }
+  }, [timerLocked, onTimerLockChange]);
+
+  // Notify parent about timer state changes during countdown
+  useEffect(() => {
+    if (isTimerRunning && countdown !== null && onTimerStateChange) {
+      onTimerStateChange(true, countdown, gameModeTimers.keypad);
+    }
+  }, [countdown, isTimerRunning, onTimerStateChange, gameModeTimers.keypad]);
+
+  // Update external display when countdown changes
+  useEffect(() => {
+    if (isTimerRunning && countdown !== null && externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+      onExternalDisplayUpdate('timer', {
+        timerValue: countdown < 0 ? 0 : countdown,
+        questionInfo: {
+          number: currentQuestion,
+          type: questionType === 'letters' ? 'Letters Question' :
+                questionType === 'multiple-choice' ? 'Multiple Choice' :
+                questionType === 'numbers' ? 'Numbers Question' : 'Question',
+          total: 0
+        },
+        gameMode: 'keypad'
+      });
+    }
+  }, [countdown, isTimerRunning, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType]);
+
+  // Reset external display when timer finishes
+  useEffect(() => {
+    if (timerFinished && externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+      onExternalDisplayUpdate('basic');
+    }
+  }, [timerFinished, externalWindow, onExternalDisplayUpdate]);
+
 
   // Helper function to get the correct answer (either from user input or pre-loaded data)
   const getCorrectAnswer = useCallback(() => {
@@ -477,6 +516,9 @@ export function KeypadInterface({
     }
   }, [loadedQuestions, currentQuestionIndex, externalWindow, onExternalDisplayUpdate, currentQuestion, handleQuestionTypeSelect]);
 
+  // NOTE: Auto-start for quiz pack mode is handled by QuizPackDisplay calling handleStartRound
+  // We removed auto-triggering here to prevent render conflicts with parent component
+
   const handleBackFromQuestionTypes = () => {
     setCurrentScreen('config');
   };
@@ -493,12 +535,6 @@ export function KeypadInterface({
     setSequenceCompleted(false);
     setTimerFinished(false);
     setTimerLocked(false); // Reset timer lock when going back
-
-    // Notify parent component about timer lock reset
-    if (onTimerLockChange) {
-      onTimerLockChange(false);
-    }
-
     setAnswerRevealed(false);
     setFastestTeamRevealed(false);
     setTeamAnswers({});
@@ -547,14 +583,6 @@ export function KeypadInterface({
     setTeamAnswerTimes({});
     setIsSimulated(false);
 
-    // Clear parent component state as well
-    if (onTeamAnswerUpdate) {
-      onTeamAnswerUpdate({});
-    }
-    if (onTeamResponseTimeUpdate) {
-      onTeamResponseTimeUpdate({});
-    }
-
     // Clear any existing timeouts
     simulationTimeouts.forEach(timeout => clearTimeout(timeout));
     setSimulationTimeouts([]);
@@ -600,36 +628,18 @@ export function KeypadInterface({
 
         // Update team answers state by adding this team's answer
         setTeamAnswers(prevAnswers => {
-          const updatedAnswers = {
+          return {
             ...prevAnswers,
             [team.id]: randomAnswer
           };
-
-          // Notify parent component of team answer updates immediately
-          if (onTeamAnswerUpdate) {
-            queueMicrotask(() => {
-              onTeamAnswerUpdate(updatedAnswers);
-            });
-          }
-
-          return updatedAnswers;
         });
 
         // Update team answer times (store in milliseconds for precise calculation)
         setTeamAnswerTimes(prevTimes => {
-          const updatedTimes = {
+          return {
             ...prevTimes,
             [team.id]: answerTime
           };
-
-          // Notify parent component of response time updates
-          if (onTeamResponseTimeUpdate) {
-            queueMicrotask(() => {
-              onTeamResponseTimeUpdate(updatedTimes);
-            });
-          }
-
-          return updatedTimes;
         });
 
         // Mark as simulated when at least one team has answered
@@ -640,20 +650,22 @@ export function KeypadInterface({
     });
 
     setSimulationTimeouts(newTimeouts);
-  }, [teams, questionType, onTeamAnswerUpdate, onTeamResponseTimeUpdate, timerLocked]);
+  }, [teams, questionType, timerLocked]);
 
   const handleStartTimer = useCallback(() => {
     // Can now start timer without requiring an answer first
     const timerLength = gameModeTimers.keypad;
+
+    // Clear any previous timer to prevent duplicate timers
+    if (timerRef.current !== null) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
     setTotalTimerLength(timerLength); // Set total timer length for progress bar
     setIsTimerRunning(true);
     setTimerFinished(false);
     setTimerLocked(false); // Unlock timer when starting
-
-    // Notify parent component about timer lock reset
-    if (onTimerLockChange) {
-      onTimerLockChange(false);
-    }
 
     setCountdown(timerLength);
 
@@ -696,26 +708,6 @@ export function KeypadInterface({
 
         const newValue = prev - 1;
 
-        // Notify parent about timer state change
-        if (onTimerStateChange) {
-          onTimerStateChange(true, newValue, gameModeTimers.keypad);
-        }
-
-        // Update external display with new timer value
-        if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
-          onExternalDisplayUpdate('timer', {
-            timerValue: newValue < 0 ? 0 : newValue,
-            questionInfo: {
-              number: currentQuestion,
-              type: questionType === 'letters' ? 'Letters Question' :
-                    questionType === 'multiple-choice' ? 'Multiple Choice' :
-                    questionType === 'numbers' ? 'Numbers Question' : 'Question',
-              total: 0
-            },
-            gameMode: 'keypad'
-          });
-        }
-
         // Use text-to-speech for countdown - only at 5-second intervals
         // Check newValue instead of prev to stay in sync after initial announcement
         if (voiceCountdown && newValue > 0 && newValue < timerLength) {
@@ -731,16 +723,12 @@ export function KeypadInterface({
 
         if (newValue < 0) {
           clearInterval(timer);
+          timerRef.current = null;
           setIsTimerRunning(false);
           setCountdown(null);
 
           // Lock the timer to prevent any further submissions
           setTimerLocked(true);
-
-          // Notify parent component about timer lock
-          if (onTimerLockChange) {
-            onTimerLockChange(true);
-          }
 
           // Clear all pending simulation timeouts to prevent late submissions
           simulationTimeouts.forEach(timeout => clearTimeout(timeout));
@@ -764,17 +752,15 @@ export function KeypadInterface({
           console.log("Timer finished for question", currentQuestion, "with answer:", answer);
           setTimerFinished(true);
 
-          // Reset external display to basic mode when timer finishes
-          if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
-            onExternalDisplayUpdate('basic');
-          }
-
           return null;
         }
 
         return newValue;
       });
     }, 1000);
+
+    // Store timer reference for cleanup
+    timerRef.current = timer;
   }, [gameModeTimers, onTimerLockChange, onTimerStateChange, simulateTeamAnswers, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType, voiceCountdown, currentScreen, selectedLetter, selectedAnswers]);
 
   const handleShowResults = useCallback(() => {
@@ -943,11 +929,6 @@ export function KeypadInterface({
     setTimerFinished(false);
     setTimerLocked(false); // Reset timer lock for next question
 
-    // Notify parent component about timer lock reset
-    if (onTimerLockChange) {
-      onTimerLockChange(false);
-    }
-
     setAnswerRevealed(false); // Reset answer revelation state
     setFastestTeamRevealed(false); // Reset fastest team revelation state
     setTeamAnswers({}); // Reset team answers
@@ -956,18 +937,12 @@ export function KeypadInterface({
     setCurrentScreen('question-types');
     setQuestionType(null);
 
-    // Clear parent component state as well
-    if (onTeamAnswerUpdate) {
-      onTeamAnswerUpdate({});
-    }
-    if (onTeamResponseTimeUpdate) {
-      onTeamResponseTimeUpdate({});
-    }
-
-    // Clear team answer statuses for next question
-    if (onAnswerStatusUpdate) {
-      onAnswerStatusUpdate(null, null);
-    }
+    // Clear team answer statuses for next question (defer to avoid update during render)
+    setTimeout(() => {
+      if (onAnswerStatusUpdate) {
+        onAnswerStatusUpdate(null, null);
+      }
+    }, 0);
 
     // No need to reset points - they remain available for the current round
 
@@ -1011,18 +986,13 @@ export function KeypadInterface({
     // No need to reset points - parent component handles score management
     
     // Clear parent component state as well
-    if (onTeamAnswerUpdate) {
-      onTeamAnswerUpdate({});
-    }
-    if (onTeamResponseTimeUpdate) {
-      onTeamResponseTimeUpdate({});
-    }
-    
-    // Clear team answer statuses when going home
-    if (onAnswerStatusUpdate) {
-      onAnswerStatusUpdate(null, null);
-    }
-    
+    // Clear team answer statuses when going home (defer to avoid update during render)
+    setTimeout(() => {
+      if (onAnswerStatusUpdate) {
+        onAnswerStatusUpdate(null, null);
+      }
+    }, 0);
+
     if (onHome) {
       onHome();
     }
@@ -1053,18 +1023,6 @@ export function KeypadInterface({
   // Remove auto-reveal functionality - answers should only be revealed when manually clicked
 
   // Update parent component when team answers change
-  useEffect(() => {
-    if (onTeamAnswerUpdate && Object.keys(teamAnswers).length > 0) {
-      onTeamAnswerUpdate(teamAnswers);
-    }
-  }, [teamAnswers, onTeamAnswerUpdate]);
-
-  // Update parent component when team response times change
-  useEffect(() => {
-    if (onTeamResponseTimeUpdate && Object.keys(teamAnswerTimes).length > 0) {
-      onTeamResponseTimeUpdate(teamAnswerTimes);
-    }
-  }, [teamAnswerTimes, onTeamResponseTimeUpdate]);
 
   // Cleanup simulation timeouts when component unmounts or screen changes
   useEffect(() => {
@@ -1731,48 +1689,46 @@ export function KeypadInterface({
         </div>
 
         {/* Question Type Buttons */}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex gap-6 w-full max-w-4xl">
-            {/* Letters Question */}
-            <Button
-              onClick={() => handleQuestionTypeSelect('letters')}
-              className="flex-1 h-48 bg-[#3498db] hover:bg-[#2980b9] text-white flex flex-col items-center justify-center gap-4 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
-            >
-              <Type className="h-16 w-16" />
-              <div className="text-2xl font-bold">Letters Question</div>
-              <div className="text-sm opacity-90">Answer with letters A-Z</div>
-            </Button>
+        <div className="flex gap-6 w-full pt-4">
+          {/* Letters Question */}
+          <Button
+            onClick={() => handleQuestionTypeSelect('letters')}
+            className="flex-1 h-48 bg-[#3498db] hover:bg-[#2980b9] text-white flex flex-col items-center justify-center gap-4 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
+          >
+            <Type className="h-16 w-16" />
+            <div className="text-2xl font-bold">Letters Question</div>
+            <div className="text-sm opacity-90">Answer with letters A-Z</div>
+          </Button>
 
-            {/* Multiple Choice Question */}
-            <Button
-              onClick={() => handleQuestionTypeSelect('multiple-choice')}
-              className="flex-1 h-48 bg-[#27ae60] hover:bg-[#229954] text-white flex flex-col items-center justify-center gap-4 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
-            >
-              <BarChart3 className="h-16 w-16" />
-              <div className="text-2xl font-bold">Multiple Choice Question</div>
-              <div className="text-sm opacity-90">Choose from multiple options</div>
-            </Button>
+          {/* Multiple Choice Question */}
+          <Button
+            onClick={() => handleQuestionTypeSelect('multiple-choice')}
+            className="flex-1 h-48 bg-[#27ae60] hover:bg-[#229954] text-white flex flex-col items-center justify-center gap-4 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
+          >
+            <BarChart3 className="h-16 w-16" />
+            <div className="text-2xl font-bold">Multiple Choice Question</div>
+            <div className="text-sm opacity-90">Choose from multiple options</div>
+          </Button>
 
-            {/* Numbers Question */}
-            <Button
-              onClick={() => handleQuestionTypeSelect('numbers')}
-              className="flex-1 h-48 bg-[#f39c12] hover:bg-[#e67e22] text-white flex flex-col items-center justify-center gap-4 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
-            >
-              <Hash className="h-16 w-16" />
-              <div className="text-2xl font-bold">Numbers Question</div>
-              <div className="text-sm opacity-90">Answer with numbers 0-9</div>
-            </Button>
+          {/* Numbers Question */}
+          <Button
+            onClick={() => handleQuestionTypeSelect('numbers')}
+            className="flex-1 h-48 bg-[#f39c12] hover:bg-[#e67e22] text-white flex flex-col items-center justify-center gap-4 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
+          >
+            <Hash className="h-16 w-16" />
+            <div className="text-2xl font-bold">Numbers Question</div>
+            <div className="text-sm opacity-90">Answer with numbers 0-9</div>
+          </Button>
 
-            {/* Sequence Question */}
-            <Button
-              onClick={() => handleQuestionTypeSelect('sequence')}
-              className="flex-1 h-48 bg-[#8e44ad] hover:bg-[#7d3c98] text-white flex flex-col items-center justify-center gap-4 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
-            >
-              <RotateCcw className="h-16 w-16" />
-              <div className="text-2xl font-bold">Sequence Question</div>
-              <div className="text-sm opacity-90">Order items in sequence</div>
-            </Button>
-          </div>
+          {/* Sequence Question */}
+          <Button
+            onClick={() => handleQuestionTypeSelect('sequence')}
+            className="flex-1 h-48 bg-[#8e44ad] hover:bg-[#7d3c98] text-white flex flex-col items-center justify-center gap-4 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
+          >
+            <RotateCcw className="h-16 w-16" />
+            <div className="text-2xl font-bold">Sequence Question</div>
+            <div className="text-sm opacity-90">Order items in sequence</div>
+          </Button>
         </div>
       </div>
     );
@@ -2070,7 +2026,6 @@ export function KeypadInterface({
             </Button>
             <h2 className="text-3xl font-semibold text-white">Question {currentQuestion} Results</h2>
           </div>
-
         </div>
 
         <div className="flex-1 flex items-center justify-center">
@@ -2092,8 +2047,6 @@ export function KeypadInterface({
                 </div>
               </div>
             </div>
-
-
 
             {/* Answer display box - transforms from selected to correct when revealed */}
             <div className={`mb-6 p-4 rounded-lg ${
@@ -2120,7 +2073,7 @@ export function KeypadInterface({
             </div>
 
             {/* Finish Round Button - Centered */}
-            <div className="flex justify-center">
+            <div className="flex justify-center mt-8">
               <Button
                 onClick={() => setCurrentScreen('config')}
                 variant="outline"

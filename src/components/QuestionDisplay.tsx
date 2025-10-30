@@ -107,8 +107,19 @@ export function QuestionDisplay({
           
           <Button
             className="bg-[#4A90E2] hover:bg-[#3498db] text-white py-3 text-base font-semibold transition-all duration-200 hover:scale-105 shadow-md"
-            onClick={() => {
-              if (quizFileInputRef.current) quizFileInputRef.current.click();
+            onClick={async () => {
+              try {
+                const w = typeof window !== 'undefined' ? (window as any) : undefined;
+                if (w?.api?.files?.openFromFile) {
+                  // Electron app: open OS file explorer
+                  await w.api.files.openFromFile();
+                } else {
+                  // Fallback for browser: open file dialog
+                  if (quizFileInputRef.current) quizFileInputRef.current.click();
+                }
+              } catch (err) {
+                console.error('Failed to open file explorer:', err);
+              }
             }}
           >
             Open From File
