@@ -1419,7 +1419,7 @@ export function QuizHost() {
             const emojis = [
               '🎯','🎪','🎉','🏆','⭐','💫','🎊','🎈','🎺','🧠','🎨','🎭','🎸','🎲','🎳','🎮',
               '🎱','🎰','🎵','🌮','🍕','🍦','🍪','🍰','🧁','🍓','🍊','🍌','🍍','🐶','🐱','🐭',
-              '🐹','🐰','🦊','🐻','🐨','🐯','🌸','🌺','🌻','🌷','🌹','🌵','🌲','🌳','🍀','🍃',
+              '🐹','🐰','🦊','🐻','����','🐯','🌸','🌺','🌻','🌷','🌹','🌵','🌲','🌳','🍀','🍃',
               '✨','🌙','☀️','🌤️','⛅','🌦️','❄️','🚀','🛸','🎡','🎢','🎠','🔥','💖','🌈','⚡'
             ];
 
@@ -1445,6 +1445,14 @@ export function QuizHost() {
 
               if (state.mode === 'timer') {
                 return renderTimer();
+              } else if (state.mode === 'question') {
+                return renderQuestion();
+              } else if (state.mode === 'correctAnswer') {
+                return renderCorrectAnswer();
+              } else if (state.mode === 'fastestTeam') {
+                return renderFastestTeam();
+              } else if (state.mode === 'questionWaiting') {
+                return renderQuestionWaiting();
               } else {
                 return renderBasic();
               }
@@ -1493,6 +1501,98 @@ export function QuizHost() {
                       <h2 style="font-size: clamp(3rem, 15vw, 14rem); font-weight: 900; letter-spacing: 0.1em; margin: 0; line-height: 0.85; text-shadow: 0 4px 6px rgba(0,0,0,0.2);">QUIZ!</h2>
                       \${decorativeHTML}
                     </div>
+                  </div>
+                </div>
+              \`;
+            }
+
+            function renderQuestion() {
+              const question = state.data?.text || 'No question';
+              const options = state.data?.options || [];
+              const questionNumber = state.questionInfo?.number || 1;
+
+              const optionsHTML = options.map((option, idx) => {
+                return '<div style="background-color: #3498db; color: white; padding: 16px 24px; border-radius: 8px; margin: 8px 0; font-size: 20px; font-weight: 500;">' + option + '</div>';
+              }).join('');
+
+              return \`
+                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #2c3e50;">
+                  <div style="text-align: center; margin-bottom: 32px;">
+                    <h1 style="font-size: 48px; font-weight: bold; color: #ecf0f1;">Question \${questionNumber}</h1>
+                  </div>
+                  <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; justify-content: center;">
+                    <div style="background-color: #34495e; border-radius: 16px; padding: 48px; margin-bottom: 32px;">
+                      <h2 style="font-size: 36px; font-weight: 600; color: #ecf0f1; text-align: center; margin-bottom: 24px; word-wrap: break-word;">\${question}</h2>
+                      \${optionsHTML ? '<div style="margin-top: 32px;">' + optionsHTML + '</div>' : ''}
+                    </div>
+                  </div>
+                </div>
+              \`;
+            }
+
+            function renderCorrectAnswer() {
+              const answer = state.data?.correctAnswer || 'No answer';
+              const questionNumber = state.questionInfo?.number || 1;
+              const stats = state.data?.stats || { correct: 0, wrong: 0, noAnswer: 0 };
+
+              return \`
+                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #2c3e50;">
+                  <div style="text-align: center; margin-bottom: 32px;">
+                    <h1 style="font-size: 48px; font-weight: bold; color: #ecf0f1;">Question \${questionNumber} • Answer Revealed</h1>
+                  </div>
+                  <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
+                    <div style="background-color: #34495e; border-radius: 16px; padding: 48px; margin-bottom: 32px; text-align: center;">
+                      <h2 style="font-size: 32px; color: #95a5a6; margin-bottom: 16px;">The Correct Answer Is:</h2>
+                      <div style="font-size: 48px; font-weight: bold; color: #f39c12; word-wrap: break-word;">\${answer}</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                      <div style="background-color: #27ae60; border-radius: 12px; padding: 24px; text-align: center;">
+                        <div style="font-size: 36px; font-weight: bold; color: white;">\${stats.correct}</div>
+                        <div style="font-size: 16px; color: rgba(255,255,255,0.8); margin-top: 8px;">Teams Correct</div>
+                      </div>
+                      <div style="background-color: #e74c3c; border-radius: 12px; padding: 24px; text-align: center;">
+                        <div style="font-size: 36px; font-weight: bold; color: white;">\${stats.wrong}</div>
+                        <div style="font-size: 16px; color: rgba(255,255,255,0.8); margin-top: 8px;">Teams Wrong</div>
+                      </div>
+                      <div style="background-color: #95a5a6; border-radius: 12px; padding: 24px; text-align: center;">
+                        <div style="font-size: 36px; font-weight: bold; color: white;">\${stats.noAnswer}</div>
+                        <div style="font-size: 16px; color: rgba(255,255,255,0.8); margin-top: 8px;">No Answer</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              \`;
+            }
+
+            function renderFastestTeam() {
+              const team = state.data?.fastestTeam;
+              const teamName = team?.name || 'TBD';
+              const responseTime = state.data?.responseTime || 0;
+              const questionNumber = state.questionInfo?.number || 1;
+
+              return \`
+                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #2c3e50;">
+                  <div style="text-align: center; margin-bottom: 32px;">
+                    <h1 style="font-size: 48px; font-weight: bold; color: #ecf0f1;">Question \${questionNumber} • Fastest Team</h1>
+                  </div>
+                  <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="background: linear-gradient(135deg, #f39c12, #e67e22); border-radius: 16px; padding: 64px 80px; text-align: center; box-shadow: 0 25px 50px rgba(0,0,0,0.4);">
+                      <h2 style="font-size: 32px; color: white; margin-bottom: 24px; opacity: 0.9;">Fastest Correct Answer</h2>
+                      <div style="font-size: 64px; font-weight: 900; color: white; margin-bottom: 24px; word-wrap: break-word;">\${teamName}</div>
+                      <div style="font-size: 24px; color: white; opacity: 0.8;">Response Time: \${responseTime}ms</div>
+                    </div>
+                  </div>
+                </div>
+              \`;
+            }
+
+            function renderQuestionWaiting() {
+              const questionNumber = state.data?.questionInfo?.number || 1;
+
+              return \`
+                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: #f1c40f;">
+                  <div style="text-align: center;">
+                    <h1 style="font-size: 96px; font-weight: 900; color: #1f2937; margin: 0; line-height: 1;">Question \${questionNumber}</h1>
                   </div>
                 </div>
               \`;
@@ -1564,15 +1664,21 @@ export function QuizHost() {
 
             window.addEventListener('message', (event) => {
               if (event.data?.type === 'DISPLAY_UPDATE') {
+                const wasTimerMode = state.mode === 'timer';
                 state.mode = event.data.mode || 'basic';
 
                 // Extract timerValue from either top-level or nested data
                 const incomingTimerValue = event.data.timerValue !== undefined ? event.data.timerValue : event.data.data?.timerValue;
                 if (incomingTimerValue !== undefined) {
                   state.timerValue = incomingTimerValue;
-                  state.totalTime = incomingTimerValue; // When timer starts, timerValue is the total time
+                  // Only update totalTime when transitioning to timer mode or if totalTime hasn't been set yet
+                  if (!wasTimerMode && state.mode === 'timer') {
+                    state.totalTime = incomingTimerValue;
+                  }
                 }
 
+                // Store all data from the message
+                state.data = event.data.data || {};
                 state.questionInfo = event.data.questionInfo || state.questionInfo || { number: 1 };
                 state.countdownStyle = event.data.countdownStyle || 'circular';
                 state.gameModeTimers = event.data.gameModeTimers || state.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 };
@@ -2258,7 +2364,7 @@ export function QuizHost() {
     console.log(`ðŸ”€ handleScrambleKeypad called for team ${teamId}`);
     
     setQuizzes(prevQuizzes => {
-      console.log('ðŸ”€ Previous quizzes state:', prevQuizzes.map(q => ({ id: q.id, name: q.name, scrambled: q.scrambled })));
+      console.log('ðŸ”��� Previous quizzes state:', prevQuizzes.map(q => ({ id: q.id, name: q.name, scrambled: q.scrambled })));
       
       const targetTeam = prevQuizzes.find(q => q.id === teamId);
       if (!targetTeam) {

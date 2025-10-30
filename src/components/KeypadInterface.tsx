@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Star, Zap, Grid3X3, Skull, ArrowLeft, Type, BarChart3, Hash, Timer, Eye, RotateCcw, CheckCircle } from "lucide-react";
@@ -86,8 +86,8 @@ export function KeypadInterface({
   
   // Use current round scores from props (convert to arrays for slider compatibility)
   // Once current round scores are set, they stay independent of default changes
-  const points = [currentRoundPoints !== null ? currentRoundPoints : defaultPoints];
-  const speedBonus = [currentRoundSpeedBonus !== null ? currentRoundSpeedBonus : defaultSpeedBonus];
+  const points = useMemo(() => [currentRoundPoints !== null ? currentRoundPoints : defaultPoints], [currentRoundPoints, defaultPoints]);
+  const speedBonus = useMemo(() => [currentRoundSpeedBonus !== null ? currentRoundSpeedBonus : defaultSpeedBonus], [currentRoundSpeedBonus, defaultSpeedBonus]);
   const [bonusType, setBonusType] = useState<"fixed" | "sliding">("fixed");
   // goWideEnabled and evilModeEnabled now come from settings context
   const [noAnswerPenalty, setNoAnswerPenalty] = useState(false);
@@ -286,9 +286,21 @@ export function KeypadInterface({
   // Auto-start quiz pack mode
   useEffect(() => {
     if (isQuizPackMode && currentScreen === 'config' && loadedQuestions && loadedQuestions.length > 0) {
+      // Call handleStartRound - it will use the current closure values
+      // We don't include handleStartRound in deps to avoid circular dependency during initialization
       handleStartRound();
     }
   }, [isQuizPackMode, currentScreen, loadedQuestions]);
+
+  // Helper function to get the correct answer (either from user input or pre-loaded data)
+  const getCorrectAnswer = useCallback(() => {
+    if (isQuizPackMode && currentLoadedQuestion?.answerText) {
+      return currentLoadedQuestion.answerText;
+    }
+    return questionType === 'letters' ? selectedLetter :
+           questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
+           questionType === 'numbers' ? numbersAnswer : null;
+  }, [isQuizPackMode, currentLoadedQuestion?.answerText, questionType, selectedLetter, selectedAnswers, numbersAnswer]);
 
   // Calculate actual results based on team answers and correct answer
   const calculateAnswerStats = useCallback(() => {
@@ -308,7 +320,7 @@ export function KeypadInterface({
 
     teams.forEach(team => {
       const teamAnswer = teamAnswers[team.id];
-      
+
       if (!teamAnswer || teamAnswer.trim() === '') {
         noAnswer++;
       } else if (questionType === 'letters' && teamAnswer === correctAnswer) {
@@ -323,7 +335,7 @@ export function KeypadInterface({
     });
 
     return { correct, wrong, noAnswer };
-  }, [teamAnswers, teams, questionType, selectedLetter, selectedAnswers, numbersAnswer, isQuizPackMode, currentQuestionIndex]);
+  }, [teamAnswers, teams, questionType, getCorrectAnswer]);
 
   // Find the fastest team that answered correctly
   const getFastestCorrectTeam = useCallback(() => {
@@ -366,7 +378,7 @@ export function KeypadInterface({
       team: fastestTeam,
       responseTime: fastestTime
     };
-  }, [teamAnswers, teamAnswerTimes, teams, questionType, selectedLetter, selectedAnswers, numbersAnswer, isQuizPackMode, currentLoadedQuestion]);
+  }, [teamAnswers, teamAnswerTimes, teams, questionType, getCorrectAnswer]);
 
   // Helper function to get the question type label
   const getQuestionTypeLabel = (type: string | null): string => {
@@ -390,17 +402,7 @@ export function KeypadInterface({
     }
   };
 
-  // Helper function to get the correct answer (either from user input or pre-loaded data)
-  const getCorrectAnswer = () => {
-    if (isQuizPackMode && currentLoadedQuestion?.answerText) {
-      return currentLoadedQuestion.answerText;
-    }
-    return questionType === 'letters' ? selectedLetter :
-           questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
-           questionType === 'numbers' ? numbersAnswer : null;
-  };
-
-  const handleQuestionTypeSelect = (type: 'letters' | 'multiple-choice' | 'numbers' | 'sequence') => {
+  const handleQuestionTypeSelect = useCallback((type: 'letters' | 'multiple-choice' | 'numbers' | 'sequence') => {
     setQuestionType(type);
 
     // Setup sequence game items if it's a sequence question with loaded data
@@ -438,9 +440,9 @@ export function KeypadInterface({
       evilModeEnabled,
       questionType: type
     });
-  };
+  }, [currentLoadedQuestion, isQuizPackMode, points, speedBonus, bonusType, goWideEnabled, evilModeEnabled]);
 
-  const handleStartRound = () => {
+  const handleStartRound = useCallback(() => {
     // If we have loaded questions, auto-detect the question type and skip question-types screen
     if (loadedQuestions && loadedQuestions.length > 0 && currentQuestionIndex >= 0 && currentQuestionIndex < loadedQuestions.length) {
       const question = loadedQuestions[currentQuestionIndex];
@@ -473,7 +475,7 @@ export function KeypadInterface({
         }
       });
     }
-  };
+  }, [loadedQuestions, currentQuestionIndex, externalWindow, onExternalDisplayUpdate, currentQuestion, handleQuestionTypeSelect]);
 
   const handleBackFromQuestionTypes = () => {
     setCurrentScreen('config');
@@ -538,44 +540,146 @@ export function KeypadInterface({
     setSequenceCompleted(false);
   };
 
-  const handleStartTimer = () => {
+  // Function to simulate team answers with staggered timing
+  const simulateTeamAnswers = useCallback(() => {
+    // Clear any existing team answers and timeouts
+    setTeamAnswers({});
+    setTeamAnswerTimes({});
+    setIsSimulated(false);
+
+    // Clear parent component state as well
+    if (onTeamAnswerUpdate) {
+      onTeamAnswerUpdate({});
+    }
+    if (onTeamResponseTimeUpdate) {
+      onTeamResponseTimeUpdate({});
+    }
+
+    // Clear any existing timeouts
+    simulationTimeouts.forEach(timeout => clearTimeout(timeout));
+    setSimulationTimeouts([]);
+
+    // Generate random delays for each team (between 0 and 9 seconds)
+    const newTimeouts: NodeJS.Timeout[] = [];
+    const startTime = Date.now();
+
+    teams.forEach(team => {
+      const randomDelay = Math.floor(Math.random() * 9000); // 0-9000ms delay
+
+      const timeout = setTimeout(() => {
+        // Check if timer is locked before allowing submission
+        if (timerLocked) {
+          console.log(`Team ${team.name} tried to submit after timer ended - submission blocked`);
+          return;
+        }
+
+        let randomAnswer = '';
+
+        if (questionType === 'letters') {
+          // For letters questions, pick from available letter options
+          const letterRows = [
+            ['A', 'B', 'C', 'D'],
+            ['E', 'F', 'G', 'H'],
+            ['I', 'J', 'K', 'L'],
+            ['M', 'N', 'O', 'P'],
+            ['R', 'S', 'T', 'U'],
+            ['QV', 'W', 'Y', 'XZ']
+          ];
+          const allLetters = letterRows.flat();
+          randomAnswer = allLetters[Math.floor(Math.random() * allLetters.length)];
+        } else if (questionType === 'multiple-choice') {
+          // For multiple choice, pick from A-F
+          const choices = ['A', 'B', 'C', 'D', 'E', 'F'];
+          randomAnswer = choices[Math.floor(Math.random() * choices.length)];
+        } else if (questionType === 'numbers') {
+          // For numbers questions, pick random number 0-100000
+          randomAnswer = Math.floor(Math.random() * 100001).toString();
+        }
+
+        const answerTime = Date.now() - startTime;
+
+        // Update team answers state by adding this team's answer
+        setTeamAnswers(prevAnswers => {
+          const updatedAnswers = {
+            ...prevAnswers,
+            [team.id]: randomAnswer
+          };
+
+          // Notify parent component of team answer updates immediately
+          if (onTeamAnswerUpdate) {
+            queueMicrotask(() => {
+              onTeamAnswerUpdate(updatedAnswers);
+            });
+          }
+
+          return updatedAnswers;
+        });
+
+        // Update team answer times (store in milliseconds for precise calculation)
+        setTeamAnswerTimes(prevTimes => {
+          const updatedTimes = {
+            ...prevTimes,
+            [team.id]: answerTime
+          };
+
+          // Notify parent component of response time updates
+          if (onTeamResponseTimeUpdate) {
+            queueMicrotask(() => {
+              onTeamResponseTimeUpdate(updatedTimes);
+            });
+          }
+
+          return updatedTimes;
+        });
+
+        // Mark as simulated when at least one team has answered
+        setIsSimulated(true);
+      }, randomDelay);
+
+      newTimeouts.push(timeout);
+    });
+
+    setSimulationTimeouts(newTimeouts);
+  }, [teams, questionType, onTeamAnswerUpdate, onTeamResponseTimeUpdate, timerLocked]);
+
+  const handleStartTimer = useCallback(() => {
     // Can now start timer without requiring an answer first
     const timerLength = gameModeTimers.keypad;
     setTotalTimerLength(timerLength); // Set total timer length for progress bar
     setIsTimerRunning(true);
     setTimerFinished(false);
     setTimerLocked(false); // Unlock timer when starting
-    
+
     // Notify parent component about timer lock reset
     if (onTimerLockChange) {
       onTimerLockChange(false);
     }
-    
+
     setCountdown(timerLength);
-    
+
     // Notify parent about timer state
     if (onTimerStateChange) {
       onTimerStateChange(true, timerLength, timerLength);
     }
-    
+
     // Simulate team answers when timer starts
     simulateTeamAnswers();
-    
+
     // Send timer to external display if available
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
-      onExternalDisplayUpdate('timer', { 
+      onExternalDisplayUpdate('timer', {
         timerValue: timerLength,
         questionInfo: {
           number: currentQuestion,
-          type: questionType === 'letters' ? 'Letters Question' : 
-                questionType === 'multiple-choice' ? 'Multiple Choice' : 
+          type: questionType === 'letters' ? 'Letters Question' :
+                questionType === 'multiple-choice' ? 'Multiple Choice' :
                 questionType === 'numbers' ? 'Numbers Question' : 'Question',
           total: 0
         },
         gameMode: 'keypad'
       });
     }
-    
+
     // Announce the starting time immediately if voice countdown is enabled
     if (voiceCountdown && timerLength % 5 === 0) {
       const utterance = new SpeechSynthesisUtterance(timerLength.toString());
@@ -584,34 +688,34 @@ export function KeypadInterface({
       utterance.volume = 1;
       speechSynthesis.speak(utterance);
     }
-    
+
     // Start the countdown
     const timer = setInterval(() => {
       setCountdown(prev => {
         if (prev === null) return null;
-        
+
         const newValue = prev - 1;
-        
+
         // Notify parent about timer state change
         if (onTimerStateChange) {
           onTimerStateChange(true, newValue, gameModeTimers.keypad);
         }
-        
+
         // Update external display with new timer value
         if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
-          onExternalDisplayUpdate('timer', { 
+          onExternalDisplayUpdate('timer', {
             timerValue: newValue < 0 ? 0 : newValue,
             questionInfo: {
               number: currentQuestion,
-              type: questionType === 'letters' ? 'Letters Question' : 
-                    questionType === 'multiple-choice' ? 'Multiple Choice' : 
+              type: questionType === 'letters' ? 'Letters Question' :
+                    questionType === 'multiple-choice' ? 'Multiple Choice' :
                     questionType === 'numbers' ? 'Numbers Question' : 'Question',
               total: 0
             },
             gameMode: 'keypad'
           });
         }
-        
+
         // Use text-to-speech for countdown - only at 5-second intervals
         // Check newValue instead of prev to stay in sync after initial announcement
         if (voiceCountdown && newValue > 0 && newValue < timerLength) {
@@ -624,24 +728,24 @@ export function KeypadInterface({
             speechSynthesis.speak(utterance);
           }
         }
-        
+
         if (newValue < 0) {
           clearInterval(timer);
           setIsTimerRunning(false);
           setCountdown(null);
-          
+
           // Lock the timer to prevent any further submissions
           setTimerLocked(true);
-          
+
           // Notify parent component about timer lock
           if (onTimerLockChange) {
             onTimerLockChange(true);
           }
-          
+
           // Clear all pending simulation timeouts to prevent late submissions
           simulationTimeouts.forEach(timeout => clearTimeout(timeout));
           setSimulationTimeouts([]);
-          
+
           // Say "Time's up!" at the end - only if voice countdown is enabled
           if (voiceCountdown) {
             const finalUtterance = new SpeechSynthesisUtterance("Time's up!");
@@ -650,62 +754,51 @@ export function KeypadInterface({
             finalUtterance.volume = 1;
             speechSynthesis.speak(finalUtterance);
           }
-          
+
           // Log the appropriate answer based on current screen
-          const answer = currentScreen === 'letters-game' 
-            ? selectedLetter 
+          const answer = currentScreen === 'letters-game'
+            ? selectedLetter
             : currentScreen === 'multiple-choice-game'
               ? selectedAnswers.join(', ')
               : 'unknown';
           console.log("Timer finished for question", currentQuestion, "with answer:", answer);
           setTimerFinished(true);
-          
+
           // Reset external display to basic mode when timer finishes
           if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
             onExternalDisplayUpdate('basic');
           }
-          
+
           return null;
         }
-        
+
         return newValue;
       });
     }, 1000);
-  };
+  }, [gameModeTimers, onTimerLockChange, onTimerStateChange, simulateTeamAnswers, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType, voiceCountdown, currentScreen, selectedLetter, selectedAnswers]);
 
   const handleShowResults = useCallback(() => {
-    // In quiz pack mode, we always have an answer, so we can always show results
-    const hasAnswer = isQuizPackMode || (currentScreen === 'letters-game'
-      ? selectedLetter
-      : currentScreen === 'multiple-choice-game'
-        ? selectedAnswers.length > 0
-        : currentScreen === 'numbers-game'
-          ? numbersAnswer && numbersAnswerConfirmed
-          : false);
+    setCurrentScreen('results');
 
-    if (hasAnswer) {
-      setCurrentScreen('results');
-      
-      // Send placeholder to external display (don't reveal answer yet)
-      if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
-        const stats = calculateAnswerStats();
-        onExternalDisplayUpdate('correctAnswer', { 
-          correctAnswer: 'The correct answer is...',
-          question: `Question ${currentQuestion}`,
-          questionType: questionType,
-          revealed: false,
-          stats: stats,
-          questionInfo: {
-            number: currentQuestion,
-            type: questionType === 'letters' ? 'Letters Question' : 
-                  questionType === 'multiple-choice' ? 'Multiple Choice' : 
-                  questionType === 'numbers' ? 'Numbers Question' : 'Question',
-            total: 0
-          }
-        });
-      }
+    // Send placeholder to external display (don't reveal answer yet)
+    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+      const stats = calculateAnswerStats();
+      onExternalDisplayUpdate('correctAnswer', {
+        correctAnswer: 'The correct answer is...',
+        question: `Question ${currentQuestion}`,
+        questionType: questionType,
+        revealed: false,
+        stats: stats,
+        questionInfo: {
+          number: currentQuestion,
+          type: questionType === 'letters' ? 'Letters Question' :
+                questionType === 'multiple-choice' ? 'Multiple Choice' :
+                questionType === 'numbers' ? 'Numbers Question' : 'Question',
+          total: 0
+        }
+      });
     }
-  }, [currentScreen, selectedLetter, selectedAnswers, numbersAnswer, numbersAnswerConfirmed, externalWindow, onExternalDisplayUpdate, calculateAnswerStats, currentQuestion, questionType]);
+  }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, currentQuestion, questionType]);
 
   // Add function to handle revealing the correct answer
   const handleRevealAnswer = useCallback(() => {
@@ -777,7 +870,7 @@ export function KeypadInterface({
         }
       });
     }
-  }, [externalWindow, onExternalDisplayUpdate, questionType, selectedLetter, selectedAnswers, numbersAnswer, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes, isQuizPackMode, currentLoadedQuestion]);
+  }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes, getCorrectAnswer]);
 
   // Add function to handle revealing the fastest team
   const handleRevealFastestTeam = useCallback(() => {
@@ -839,109 +932,7 @@ export function KeypadInterface({
     }
   }, [externalWindow, onExternalDisplayUpdate, getFastestCorrectTeam, currentQuestion, questionType, onFastestTeamReveal, onFastTrack]);
 
-  // Function to simulate team answers with staggered timing
-  const simulateTeamAnswers = useCallback(() => {
-    // Clear any existing team answers and timeouts
-    setTeamAnswers({});
-    setTeamAnswerTimes({});
-    setIsSimulated(false);
-    
-    // Clear parent component state as well
-    if (onTeamAnswerUpdate) {
-      onTeamAnswerUpdate({});
-    }
-    if (onTeamResponseTimeUpdate) {
-      onTeamResponseTimeUpdate({});
-    }
-    
-    // Clear any existing timeouts
-    simulationTimeouts.forEach(timeout => clearTimeout(timeout));
-    setSimulationTimeouts([]);
-    
-    // Generate random delays for each team (between 0 and 9 seconds)
-    const newTimeouts: NodeJS.Timeout[] = [];
-    const startTime = Date.now();
-    
-    teams.forEach(team => {
-      const randomDelay = Math.floor(Math.random() * 9000); // 0-9000ms delay
-      
-      const timeout = setTimeout(() => {
-        // Check if timer is locked before allowing submission
-        if (timerLocked) {
-          console.log(`Team ${team.name} tried to submit after timer ended - submission blocked`);
-          return;
-        }
-        
-        let randomAnswer = '';
-        
-        if (questionType === 'letters') {
-          // For letters questions, pick from available letter options
-          const letterRows = [
-            ['A', 'B', 'C', 'D'],
-            ['E', 'F', 'G', 'H'],
-            ['I', 'J', 'K', 'L'],
-            ['M', 'N', 'O', 'P'],
-            ['R', 'S', 'T', 'U'],
-            ['QV', 'W', 'Y', 'XZ']
-          ];
-          const allLetters = letterRows.flat();
-          randomAnswer = allLetters[Math.floor(Math.random() * allLetters.length)];
-        } else if (questionType === 'multiple-choice') {
-          // For multiple choice, pick from A-F
-          const choices = ['A', 'B', 'C', 'D', 'E', 'F'];
-          randomAnswer = choices[Math.floor(Math.random() * choices.length)];
-        } else if (questionType === 'numbers') {
-          // For numbers questions, pick random number 0-100000
-          randomAnswer = Math.floor(Math.random() * 100001).toString();
-        }
-        
-        const answerTime = Date.now() - startTime;
-        
-        // Update team answers state by adding this team's answer
-        setTeamAnswers(prevAnswers => {
-          const updatedAnswers = {
-            ...prevAnswers,
-            [team.id]: randomAnswer
-          };
-          
-          // Notify parent component of team answer updates immediately
-          if (onTeamAnswerUpdate) {
-            queueMicrotask(() => {
-              onTeamAnswerUpdate(updatedAnswers);
-            });
-          }
-          
-          return updatedAnswers;
-        });
-        
-        // Update team answer times (store in milliseconds for precise calculation)
-        setTeamAnswerTimes(prevTimes => {
-          const updatedTimes = {
-            ...prevTimes,
-            [team.id]: answerTime
-          };
-          
-          // Notify parent component of response time updates
-          if (onTeamResponseTimeUpdate) {
-            queueMicrotask(() => {
-              onTeamResponseTimeUpdate(updatedTimes);
-            });
-          }
-          
-          return updatedTimes;
-        });
-        
-        // Mark as simulated when at least one team has answered
-        setIsSimulated(true);
-      }, randomDelay);
-      
-      newTimeouts.push(timeout);
-    });
-    
-    setSimulationTimeouts(newTimeouts);
-  }, [teams, questionType, onTeamAnswerUpdate, onTeamResponseTimeUpdate, simulationTimeouts]);
-
-  const handleNextQuestion = () => {
+  const handleNextQuestion = useCallback(() => {
     // Reset all states for next question
     const nextQuestionNumber = currentQuestion + 1;
     setCurrentQuestion(nextQuestionNumber);
@@ -951,12 +942,12 @@ export function KeypadInterface({
     setNumbersAnswerConfirmed(false);
     setTimerFinished(false);
     setTimerLocked(false); // Reset timer lock for next question
-    
+
     // Notify parent component about timer lock reset
     if (onTimerLockChange) {
       onTimerLockChange(false);
     }
-    
+
     setAnswerRevealed(false); // Reset answer revelation state
     setFastestTeamRevealed(false); // Reset fastest team revelation state
     setTeamAnswers({}); // Reset team answers
@@ -964,7 +955,7 @@ export function KeypadInterface({
     setIsSimulated(false); // Reset simulation state
     setCurrentScreen('question-types');
     setQuestionType(null);
-    
+
     // Clear parent component state as well
     if (onTeamAnswerUpdate) {
       onTeamAnswerUpdate({});
@@ -972,14 +963,14 @@ export function KeypadInterface({
     if (onTeamResponseTimeUpdate) {
       onTeamResponseTimeUpdate({});
     }
-    
+
     // Clear team answer statuses for next question
     if (onAnswerStatusUpdate) {
       onAnswerStatusUpdate(null, null);
     }
-    
+
     // No need to reset points - they remain available for the current round
-    
+
     // Send questionWaiting to external display for next question
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
       onExternalDisplayUpdate('questionWaiting', {
@@ -990,14 +981,14 @@ export function KeypadInterface({
         }
       });
     }
-  };
+  }, [currentQuestion, onTimerLockChange, onTeamAnswerUpdate, onTeamResponseTimeUpdate, onAnswerStatusUpdate, externalWindow, onExternalDisplayUpdate]);
 
   // Watch for external trigger to advance to next question
   useEffect(() => {
     if (triggerNextQuestion > 0) {
       handleNextQuestion();
     }
-  }, [triggerNextQuestion]);
+  }, [triggerNextQuestion, handleNextQuestion]);
 
   // Add home navigation to any nested screen
   const handleHomeNavigation = () => {
@@ -1039,7 +1030,7 @@ export function KeypadInterface({
 
   // Auto-advance to results screen when timer finishes and answer is selected
   useEffect(() => {
-    if (timerFinished) {
+    if (timerFinished && currentScreen !== 'results') {
       const hasAnswer = currentScreen === 'letters-game'
         ? selectedLetter
         : currentScreen === 'multiple-choice-game'
@@ -1048,18 +1039,16 @@ export function KeypadInterface({
             ? numbersAnswer && numbersAnswerConfirmed
             : currentScreen === 'sequence-game'
               ? selectedSequence.length > 0
-              : false;
+              : currentScreen === 'quiz-pack-question'
+                ? true
+                : false;
 
       if (hasAnswer) {
-        // Auto-advance to results after a brief delay to let users see the timer finished
-        const timer = setTimeout(() => {
-          handleShowResults();
-        }, 1500); // 1.5 second delay before auto-advancing
-
-        return () => clearTimeout(timer);
+        // Immediately transition to results screen
+        handleShowResults();
       }
     }
-  }, [timerFinished, selectedLetter, selectedAnswers, numbersAnswer, numbersAnswerConfirmed, selectedSequence, currentScreen, handleShowResults]);
+  }, [timerFinished, currentScreen, handleShowResults]);
 
   // Remove auto-reveal functionality - answers should only be revealed when manually clicked
 
@@ -1120,7 +1109,7 @@ export function KeypadInterface({
       // Only trigger if spacebar is pressed and not in an input field
       if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
         e.preventDefault();
-        
+
         // Results screen - multi-state button
         if (currentScreen === 'results') {
           if (!answerRevealed) {
@@ -1140,7 +1129,7 @@ export function KeypadInterface({
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentScreen, isTimerRunning, timerFinished, answerRevealed, fastestTeamRevealed]);
+  }, [currentScreen, isTimerRunning, timerFinished, answerRevealed, fastestTeamRevealed, handleRevealAnswer, handleRevealFastestTeam, handleNextQuestion, handleStartTimer, getFastestCorrectTeam]);
 
   // Update parent component when response times change
   useEffect(() => {
@@ -1148,6 +1137,13 @@ export function KeypadInterface({
       onTeamResponseTimeUpdate(teamAnswerTimes);
     }
   }, [teamAnswerTimes, onTeamResponseTimeUpdate]);
+
+  // Auto-show results when timer finishes in quiz pack question mode
+  useEffect(() => {
+    if (timerFinished && currentScreen === 'quiz-pack-question') {
+      handleShowResults();
+    }
+  }, [timerFinished, currentScreen, handleShowResults]);
 
   // Letters Question Game Screen
   if (currentScreen === 'letters-game') {
@@ -1189,7 +1185,7 @@ export function KeypadInterface({
         {showDebugPanel && (
           <div className="mb-6 bg-gray-800 rounded-xl p-4 border-2 border-gray-600">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-white">🎨 Keypad Design Debug Panel</h3>
+              <h3 className="text-xl font-bold text-white">�� Keypad Design Debug Panel</h3>
               <Button
                 onClick={() => setShowDebugPanel(false)}
                 variant="ghost"
@@ -1521,7 +1517,7 @@ export function KeypadInterface({
                         : 'bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white border-2 border-orange-400 shadow-lg shadow-orange-500/30'
                     }`}
                   >
-                    ⌫
+                    ��
                   </Button>
                 </div>
               </div>
@@ -1992,13 +1988,6 @@ export function KeypadInterface({
     </div>
     );
   }
-
-  // Auto-show results when timer finishes in quiz pack question mode
-  useEffect(() => {
-    if (timerFinished && currentScreen === 'quiz-pack-question') {
-      handleShowResults();
-    }
-  }, [timerFinished, currentScreen]);
 
   // Quiz Pack Question Screen
   if (currentScreen === 'quiz-pack-question') {
