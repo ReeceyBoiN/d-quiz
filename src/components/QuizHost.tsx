@@ -990,7 +990,7 @@ export function QuizHost() {
   // Helper function to determine current game mode
   const getCurrentGameMode = (): "keypad" | "buzzin" | "nearestwins" | "wheelspinner" | null => {
     if (showKeypadInterface) return "keypad";
-    if (showQuizPackDisplay && flowState.isQuestionMode) return "keypad"; // Quiz packs use keypad-style controls
+    if (showQuizPackDisplay) return "keypad"; // Quiz packs use keypad-style controls (both config and question modes)
     if (showBuzzInInterface || showBuzzInMode) return "buzzin";
     if (showNearestWinsInterface) return "nearestwins";
     if (showWheelSpinnerInterface) return "wheelspinner";
@@ -1304,7 +1304,15 @@ export function QuizHost() {
     loadImages();
   }, []);
 
-  // Reset current round scores when default settings change
+  // Initialize current round scores with defaults when quiz pack is loaded
+  useEffect(() => {
+    if (showQuizPackDisplay) {
+      setCurrentRoundPoints(defaultPoints);
+      setCurrentRoundSpeedBonus(defaultSpeedBonus);
+    }
+  }, [showQuizPackDisplay, defaultPoints, defaultSpeedBonus]);
+
+  // Also reset current round scores when default settings change
   useEffect(() => {
     setCurrentRoundPoints(defaultPoints);
     setCurrentRoundSpeedBonus(defaultSpeedBonus);

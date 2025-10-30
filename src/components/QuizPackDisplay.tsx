@@ -202,8 +202,11 @@ export function QuizPackDisplay({
                 <Slider
                   value={points}
                   onValueChange={(value) => {
-                    if (value[0] !== points[0] && onPointsChange) {
-                      onPointsChange(value[0]);
+                    if (value[0] !== points[0]) {
+                      setLocalPoints(value[0]);
+                      if (onPointsChange) {
+                        onPointsChange(value[0]);
+                      }
                     }
                   }}
                   max={10}
@@ -232,8 +235,11 @@ export function QuizPackDisplay({
                 <Slider
                   value={speedBonus}
                   onValueChange={(value) => {
-                    if (value[0] !== speedBonus[0] && onSpeedBonusChange) {
-                      onSpeedBonusChange(value[0]);
+                    if (value[0] !== speedBonus[0]) {
+                      setLocalSpeedBonus(value[0]);
+                      if (onSpeedBonusChange) {
+                        onSpeedBonusChange(value[0]);
+                      }
                     }
                   }}
                   max={10}
