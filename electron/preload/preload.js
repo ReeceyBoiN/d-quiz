@@ -44,6 +44,13 @@ contextBridge.exposeInMainWorld('api', {
     ws: () => process.env.BACKEND_WS,
   },
 
+  // --- External Display ---
+  externalDisplay: {
+    open: () => invoke('app/open-external-display'),
+    close: () => invoke('app/close-external-display'),
+    update: (data) => send('external-display/update', data),
+  },
+
   // --- 🔹 IPC event helpers (for external display, etc.) ---
   ipc: {
     send,   // fire-and-forget

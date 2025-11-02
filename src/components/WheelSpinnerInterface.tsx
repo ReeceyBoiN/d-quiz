@@ -21,7 +21,6 @@ interface WheelSpinnerInterfaceProps {
   onBack: () => void;
   onHome: () => void;
   onAwardPoints?: (correctTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner", fastestTeamId?: string) => void; // Award points callback
-  externalWindow?: Window | null; // External display window
   onExternalDisplayUpdate?: (mode: string, data?: any) => void; // External display update callback
 }
 
@@ -44,7 +43,7 @@ const COLORS = [
   '#ff5722', '#8e44ad', '#795548', '#ff9800', '#4caf50'
 ];
 
-export function WheelSpinnerInterface({ quizzes, onBack, onHome, onAwardPoints, externalWindow, onExternalDisplayUpdate }: WheelSpinnerInterfaceProps) {
+export function WheelSpinnerInterface({ quizzes, onBack, onHome, onAwardPoints, onExternalDisplayUpdate }: WheelSpinnerInterfaceProps) {
   const [contentType, setContentType] = useState<WheelContentType>('teams');
   const [wheelItems, setWheelItems] = useState<WheelItem[]>([]);
   const [customPointValues, setCustomPointValues] = useState<number[]>([50, 100, 150, 200, 250, 300, 350, 400, 450, 500]);
@@ -132,7 +131,7 @@ export function WheelSpinnerInterface({ quizzes, onBack, onHome, onAwardPoints, 
         onExternalDisplayUpdate('basic');
       }
     };
-  }, [externalWindow, onExternalDisplayUpdate]);
+  }, [onExternalDisplayUpdate]);
 
   // Spacebar shortcut for spinning the wheel
   useEffect(() => {

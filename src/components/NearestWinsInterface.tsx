@@ -15,10 +15,9 @@ interface NearestWinsInterfaceProps {
   currentRoundWinnerPoints?: number | null; // Winner points from bottom navigation
   onCurrentRoundWinnerPointsChange?: (winnerPoints: number) => void; // Handler for winner points changes
   onTimerLockChange?: (isLocked: boolean) => void; // Timer lock state callback
-  externalWindow?: Window | null; // External display window
 }
 
-export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTeamAnswerUpdate, onAwardPoints, currentRoundWinnerPoints, onCurrentRoundWinnerPointsChange, onTimerLockChange, externalWindow }: NearestWinsInterfaceProps) {
+export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTeamAnswerUpdate, onAwardPoints, currentRoundWinnerPoints, onCurrentRoundWinnerPointsChange, onTimerLockChange }: NearestWinsInterfaceProps) {
   const { nearestWinsTimer, gameModePoints, voiceCountdown, keypadDesign } = useSettings();
 
   // Wrapper function to clear team answers when going back
@@ -335,9 +334,7 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
     console.log('NearestWins: Starting timer and sending initial display update', {
       nearestWinsTimer,
       initialTimerValue: nearestWinsTimer,
-      displayData: initialDisplayData,
-      externalWindow: !!externalWindow,
-      windowClosed: externalWindow ? externalWindow.closed : 'no window'
+      displayData: initialDisplayData
     });
     
     // Announce the starting time immediately if voice countdown is enabled
@@ -353,12 +350,8 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
     simulateTeamAnswers();
     
     // Update external display to show timer immediately with full timer value
-    if (externalWindow && !externalWindow.closed) {
-      console.log('NearestWins: Actually sending INITIAL timer update to external display');
-      onDisplayUpdate('nearest-wins-timer', initialDisplayData);
-    } else {
-      console.log('NearestWins: NOT sending INITIAL timer update - external window not available or closed');
-    }
+    console.log('NearestWins: Sending INITIAL timer update to external display');
+    onDisplayUpdate('nearest-wins-timer', initialDisplayData);
   };
 
   // Simulate team answers for nearest wins with staggered timing
@@ -503,20 +496,14 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
       console.log('NearestWins: Sending timer update to external display', {
         countdown,
         totalTime: nearestWinsTimer,
-        displayData,
-        externalWindow: !!externalWindow,
-        windowClosed: externalWindow ? externalWindow.closed : 'no window'
+        displayData
       });
-      
+
       // Update display immediately for timer updates
-      if (externalWindow && !externalWindow.closed) {
-        console.log('NearestWins: Actually sending timer update to external display');
-        onDisplayUpdate('nearest-wins-timer', displayData);
-      } else {
-        console.log('NearestWins: NOT sending timer update - external window not available or closed');
-      }
+      console.log('NearestWins: Sending timer update to external display');
+      onDisplayUpdate('nearest-wins-timer', displayData);
     }
-  }, [countdown, isTimerRunning, targetNumber[0], tolerance[0], nearestWinsTimer, onDisplayUpdate, externalWindow]);
+  }, [countdown, isTimerRunning, targetNumber[0], tolerance[0], nearestWinsTimer, onDisplayUpdate]);
 
   // Memoize results calculation to prevent infinite loops
   const calculatedResults = useMemo(() => {

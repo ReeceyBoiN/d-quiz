@@ -21,7 +21,6 @@ interface LoadedQuestion {
 interface KeypadInterfaceProps {
   onBack: () => void;
   onHome?: () => void; // Add home navigation prop
-  externalWindow?: Window | null; // External display window
   onExternalDisplayUpdate?: (mode: string, data?: any) => void; // External display update function
   teams?: Array<{id: string, name: string, score?: number}>; // Teams data for simulation
   onTeamAnswerUpdate?: (answers: {[teamId: string]: string}) => void; // Team answer update callback
@@ -46,7 +45,6 @@ interface KeypadInterfaceProps {
 export function KeypadInterface({
   onBack,
   onHome,
-  externalWindow,
   onExternalDisplayUpdate,
   teams = [],
   onTeamAnswerUpdate,
@@ -308,7 +306,7 @@ export function KeypadInterface({
 
   // Update external display when countdown changes
   useEffect(() => {
-    if (isTimerRunning && countdown !== null && externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+    if (isTimerRunning && countdown !== null && onExternalDisplayUpdate) {
       onExternalDisplayUpdate('timer', {
         timerValue: countdown < 0 ? 0 : countdown,
         questionInfo: {
@@ -321,14 +319,14 @@ export function KeypadInterface({
         gameMode: 'keypad'
       });
     }
-  }, [countdown, isTimerRunning, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType]);
+  }, [countdown, isTimerRunning, onExternalDisplayUpdate, currentQuestion, questionType]);
 
   // Reset external display when timer finishes
   useEffect(() => {
-    if (timerFinished && externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+    if (timerFinished && onExternalDisplayUpdate) {
       onExternalDisplayUpdate('basic');
     }
-  }, [timerFinished, externalWindow, onExternalDisplayUpdate]);
+  }, [timerFinished, onExternalDisplayUpdate]);
 
 
   // Helper function to get the correct answer (either from user input or pre-loaded data)
@@ -505,7 +503,7 @@ export function KeypadInterface({
     }
 
     // Send questionWaiting to external display when starting round
-    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+    if (onExternalDisplayUpdate) {
       onExternalDisplayUpdate('questionWaiting', {
         questionInfo: {
           number: currentQuestion,
@@ -514,7 +512,7 @@ export function KeypadInterface({
         }
       });
     }
-  }, [loadedQuestions, currentQuestionIndex, externalWindow, onExternalDisplayUpdate, currentQuestion, handleQuestionTypeSelect]);
+  }, [loadedQuestions, currentQuestionIndex, onExternalDisplayUpdate, currentQuestion, handleQuestionTypeSelect]);
 
   // NOTE: Auto-start for quiz pack mode is handled by QuizPackDisplay calling handleStartRound
   // We removed auto-triggering here to prevent render conflicts with parent component
@@ -678,7 +676,7 @@ export function KeypadInterface({
     simulateTeamAnswers();
 
     // Send timer to external display if available
-    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+    if (onExternalDisplayUpdate) {
       onExternalDisplayUpdate('timer', {
         timerValue: timerLength,
         questionInfo: {
@@ -761,13 +759,13 @@ export function KeypadInterface({
 
     // Store timer reference for cleanup
     timerRef.current = timer;
-  }, [gameModeTimers, onTimerLockChange, onTimerStateChange, simulateTeamAnswers, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType, voiceCountdown, currentScreen, selectedLetter, selectedAnswers]);
+  }, [gameModeTimers, onTimerLockChange, onTimerStateChange, simulateTeamAnswers, onExternalDisplayUpdate, currentQuestion, questionType, voiceCountdown, currentScreen, selectedLetter, selectedAnswers]);
 
   const handleShowResults = useCallback(() => {
     setCurrentScreen('results');
 
     // Send placeholder to external display (don't reveal answer yet)
-    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+    if (onExternalDisplayUpdate) {
       const stats = calculateAnswerStats();
       onExternalDisplayUpdate('correctAnswer', {
         correctAnswer: 'The correct answer is...',
@@ -784,7 +782,7 @@ export function KeypadInterface({
         }
       });
     }
-  }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, currentQuestion, questionType]);
+  }, [onExternalDisplayUpdate, calculateAnswerStats, currentQuestion, questionType]);
 
   // Add function to handle revealing the correct answer
   const handleRevealAnswer = useCallback(() => {
@@ -835,7 +833,7 @@ export function KeypadInterface({
     }
     
     // Send correct answer to external display with stats
-    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+    if (onExternalDisplayUpdate) {
       const answer = getCorrectAnswer() || 'Unknown';
       const stats = calculateAnswerStats();
       const fastestTeam = getFastestCorrectTeam();
@@ -856,7 +854,7 @@ export function KeypadInterface({
         }
       });
     }
-  }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes, getCorrectAnswer]);
+  }, [onExternalDisplayUpdate, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes, getCorrectAnswer]);
 
   // Add function to handle revealing the fastest team
   const handleRevealFastestTeam = useCallback(() => {
@@ -870,7 +868,7 @@ export function KeypadInterface({
     }
     
     // Send fastest team reveal to external display
-    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+    if (onExternalDisplayUpdate) {
       onExternalDisplayUpdate('fastestTeam', {
         fastestTeam: fastestTeamData ? fastestTeamData.team : null,
         responseTime: fastestTeamData ? fastestTeamData.responseTime : null,
@@ -883,7 +881,7 @@ export function KeypadInterface({
         }
       });
     }
-  }, [externalWindow, onExternalDisplayUpdate, getFastestCorrectTeam, currentQuestion, questionType, onFastestTeamReveal]);
+  }, [onExternalDisplayUpdate, getFastestCorrectTeam, currentQuestion, questionType, onFastestTeamReveal]);
 
   // Add function to handle Fast Track - puts team in first place with 1 point lead
   const handleFastTrack = useCallback(() => {
@@ -902,7 +900,7 @@ export function KeypadInterface({
     }
     
     // Send FAST TRACK reveal to external display with special flag
-    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+    if (onExternalDisplayUpdate) {
       onExternalDisplayUpdate('fastTrack', {
         fastestTeam: fastestTeamData ? fastestTeamData.team : null,
         responseTime: fastestTeamData ? fastestTeamData.responseTime : null,
@@ -916,7 +914,7 @@ export function KeypadInterface({
         }
       });
     }
-  }, [externalWindow, onExternalDisplayUpdate, getFastestCorrectTeam, currentQuestion, questionType, onFastestTeamReveal, onFastTrack]);
+  }, [onExternalDisplayUpdate, getFastestCorrectTeam, currentQuestion, questionType, onFastestTeamReveal, onFastTrack]);
 
   const handleNextQuestion = useCallback(() => {
     // Reset all states for next question
@@ -947,7 +945,7 @@ export function KeypadInterface({
     // No need to reset points - they remain available for the current round
 
     // Send questionWaiting to external display for next question
-    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+    if (onExternalDisplayUpdate) {
       onExternalDisplayUpdate('questionWaiting', {
         questionInfo: {
           number: nextQuestionNumber,
@@ -956,7 +954,7 @@ export function KeypadInterface({
         }
       });
     }
-  }, [currentQuestion, onTimerLockChange, onTeamAnswerUpdate, onTeamResponseTimeUpdate, onAnswerStatusUpdate, externalWindow, onExternalDisplayUpdate]);
+  }, [currentQuestion, onTimerLockChange, onTeamAnswerUpdate, onTeamResponseTimeUpdate, onAnswerStatusUpdate, onExternalDisplayUpdate]);
 
   // Watch for external trigger to advance to next question
   useEffect(() => {
@@ -1143,7 +1141,7 @@ export function KeypadInterface({
         {showDebugPanel && (
           <div className="mb-6 bg-gray-800 rounded-xl p-4 border-2 border-gray-600">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-white">�� Keypad Design Debug Panel</h3>
+              <h3 className="text-xl font-bold text-white">��� Keypad Design Debug Panel</h3>
               <Button
                 onClick={() => setShowDebugPanel(false)}
                 variant="ghost"

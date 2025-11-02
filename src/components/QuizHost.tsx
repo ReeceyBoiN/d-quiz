@@ -205,7 +205,6 @@ export function QuizHost() {
   const [timerTotalTime, setTimerTotalTime] = useState(10);
 
   // External display popup window state
-  const [externalWindow, setExternalWindow] = useState<Window | null>(null);
   const [isExternalDisplayOpen, setIsExternalDisplayOpen] = useState(false);
   
   // Sidebar width state for status bar positioning
@@ -316,6 +315,52 @@ export function QuizHost() {
   const [showBuzzersManagement, setShowBuzzersManagement] = useState(false);
 
   // Game mode configuration state is now handled by settings context
+
+  // Handle external display update via IPC
+  const handleExternalDisplayUpdate = async (
+    mode: "basic" | "slideshow" | "scores" | "leaderboard-intro" | "leaderboard-reveal" |
+          "timer" | "correctAnswer" | "fastestTeam" | "question" | "picture" | "endRound",
+    extraData: any = {}
+  ) => {
+    if (!isExternalDisplayOpen || !window.api?.externalDisplay?.update) return;
+
+    const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex] || null;
+
+    const payload = {
+      mode,
+      quizzes,
+      leaderboardData,
+      revealedTeams,
+      questionInfo: currentQuestion
+        ? {
+            id: currentQuestion.id,
+            number: currentLoadedQuestionIndex + 1,
+            text: currentQuestion.question,
+            options: currentQuestion.options,
+            correctIndex: currentQuestion.correctAnswer,
+            total: loadedQuizQuestions.length,
+          }
+        : null,
+      timerValue: flowState.timeRemaining,
+      correctAnswer: currentQuestion
+        ? currentQuestion.options[currentQuestion.correctAnswer]
+        : null,
+      answerRevealed: showAnswer,
+      countdownStyle,
+      gameModeTimers,
+      fastestTeamData,
+      slideshowSpeed,
+      ...extraData,
+    };
+
+    try {
+      console.log("[ExternalDisplay] →", mode, payload);
+      await window.api.externalDisplay.update(payload);
+    } catch (err) {
+      console.error("[ExternalDisplay] Failed to update:", err);
+    }
+  };
+
 
   // Handle team score changes
   const handleScoreChange = useCallback((teamId: string, amount: number) => {
@@ -580,30 +625,24 @@ export function QuizHost() {
 
   // Handle END ROUND button - navigate to home and play explosion sound or end quiz pack
   const handleEndRound = () => {
-    // If in quiz pack question mode, reset flow state
     if (showQuizPackDisplay && flowState.isQuestionMode) {
-      setFlowState(prev => ({
-        ...prev,
-        isQuestionMode: false,
-        flow: 'idle',
-      }));
+      setFlowState(prev => ({ ...prev, isQuestionMode: false, flow: 'idle' }));
       timer.stop();
+      if (isExternalDisplayOpen) handleExternalDisplayUpdate("basic");
       return;
     }
-    // Play explosion sound effect for regular game modes
+
     playExplosionSound();
-    
-    // Close all game modes
     closeAllGameModes();
-    
-    // Navigate back to home screen
     setActiveTab("home");
-    
-    // Reset external display to basic mode if it's open
-    if (externalWindow && !externalWindow.closed) {
-      updateExternalDisplay(externalWindow, "basic");
+
+    if (isExternalDisplayOpen) {
+      handleExternalDisplayUpdate("endRound", {
+        message: "Round Complete! 🎉",
+      });
     }
   };
+
 
   // Handle team answer updates from game interfaces
   const handleTeamAnswerUpdate = useCallback((answers: {[teamId: string]: string}) => {
@@ -714,148 +753,86 @@ export function QuizHost() {
 
     switch (flowState.flow) {
       case 'ready': {
-        // Send picture (if available) or go straight to question
         if (hasQuestionImage(currentQuestion)) {
           sendPictureToPlayers(currentQuestion.imageDataUrl);
-          // Also send to external display using proper message format
-          if (externalWindow && !externalWindow.closed) {
-            externalWindow.postMessage(
-              { type: 'DISPLAY_UPDATE', mode: 'picture', data: { image: currentQuestion.imageDataUrl } },
-              '*'
-            );
-          }
-          setFlowState(prev => ({
-            ...prev,
-            flow: 'sent-picture',
-            pictureSent: true,
-          }));
+          handleExternalDisplayUpdate('picture', { image: currentQuestion.imageDataUrl });
+          setFlowState(prev => ({ ...prev, flow: 'sent-picture', pictureSent: true }));
         } else {
-          // No picture, send question directly
           sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
-          if (externalWindow && !externalWindow.closed) {
-            externalWindow.postMessage(
-              { type: 'DISPLAY_UPDATE', mode: 'question', data: { text: currentQuestion.q, options: currentQuestion.options, type: currentQuestion.type } },
-              '*'
-            );
-          }
-          setFlowState(prev => ({
-            ...prev,
-            flow: 'sent-question',
-            questionSent: true,
-          }));
+          handleExternalDisplayUpdate('question', {
+            text: currentQuestion.q,
+            options: currentQuestion.options,
+            type: currentQuestion.type,
+          });
+          setFlowState(prev => ({ ...prev, flow: 'sent-question', questionSent: true }));
         }
         break;
       }
 
       case 'sent-picture': {
-        // Send question after picture
         sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
-        if (externalWindow && !externalWindow.closed) {
-          externalWindow.postMessage(
-            { type: 'DISPLAY_UPDATE', mode: 'question', data: { text: currentQuestion.q, options: currentQuestion.options, type: currentQuestion.type } },
-            '*'
-          );
-        }
-        setFlowState(prev => ({
-          ...prev,
-          flow: 'sent-question',
-          questionSent: true,
-        }));
+        handleExternalDisplayUpdate('question', {
+          text: currentQuestion.q,
+          options: currentQuestion.options,
+          type: currentQuestion.type,
+        });
+        setFlowState(prev => ({ ...prev, flow: 'sent-question', questionSent: true }));
         break;
       }
 
       case 'sent-question': {
-        // Start audible timer
         sendTimerToPlayers(flowState.totalTime, false);
-        if (externalWindow && !externalWindow.closed) {
-          externalWindow.postMessage(
-            {
-              type: 'DISPLAY_UPDATE',
-              mode: 'timer',
-              data: {
-                timerValue: flowState.totalTime,
-                seconds: flowState.totalTime
-              },
-              questionInfo: {
-                number: currentQuestionIndex + 1,
-                type: 'Question',
-                total: mockQuestions.length
-              },
-              gameModeTimers: gameModeTimers,
-              countdownStyle: countdownStyle
-            },
-            '*'
-          );
-        }
-        setFlowState(prev => ({
-          ...prev,
-          flow: 'running',
-        }));
+        handleExternalDisplayUpdate('timer', {
+          timerValue: flowState.totalTime,
+          questionInfo: {
+            number: currentLoadedQuestionIndex + 1,
+            total: loadedQuizQuestions.length,
+          },
+        });
+        setFlowState(prev => ({ ...prev, flow: 'running' }));
         break;
       }
 
       case 'running':
       case 'timeup': {
-        // Stop timer and reveal answer
         timer.stop();
-        if (externalWindow && !externalWindow.closed) {
-          externalWindow.postMessage(
-            { type: 'DISPLAY_UPDATE', mode: 'correctAnswer', data: { answer: currentQuestion.answerText, correctIndex: currentQuestion.correctIndex, type: currentQuestion.type } },
-            '*'
-          );
-        }
         sendRevealToPlayers(currentQuestion.answerText, currentQuestion.correctIndex, currentQuestion.type);
-        setFlowState(prev => ({
-          ...prev,
-          flow: 'revealed',
-        }));
+        handleExternalDisplayUpdate('correctAnswer', {
+          correctAnswer: currentQuestion.answerText,
+          correctIndex: currentQuestion.correctIndex,
+        });
+        setFlowState(prev => ({ ...prev, flow: 'revealed' }));
         break;
       }
 
       case 'revealed': {
-        // Show fastest team view
-        if (externalWindow && !externalWindow.closed) {
-          externalWindow.postMessage(
-            { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1 } },
-            '*'
-          );
-        }
         sendFastestToDisplay('TBD', currentLoadedQuestionIndex + 1);
-        setFlowState(prev => ({
-          ...prev,
-          flow: 'fastest',
-        }));
+        handleExternalDisplayUpdate('fastestTeam', {
+          question: currentLoadedQuestionIndex + 1,
+        });
+        setFlowState(prev => ({ ...prev, flow: 'fastest' }));
         break;
       }
 
       case 'fastest': {
-        // Move to next question or end round
         if (currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
           setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex + 1);
           sendNextQuestion();
-          // Flow state will be reset by the effect
         } else {
-          setFlowState(prev => ({
-            ...prev,
-            flow: 'complete',
-          }));
           sendEndRound();
-          if (externalWindow && !externalWindow.closed) {
-            externalWindow.postMessage({ type: 'END_ROUND' }, '*');
-          }
+          handleExternalDisplayUpdate('endRound', {
+            message: "End of Round!",
+          });
+          setFlowState(prev => ({ ...prev, flow: 'complete' }));
         }
         break;
       }
 
       case 'complete': {
-        // End round - return to home
         setShowQuizPackDisplay(false);
-        setFlowState(prev => ({
-          ...prev,
-          isQuestionMode: false,
-          flow: 'idle',
-        }));
+        setFlowState(prev => ({ ...prev, isQuestionMode: false, flow: 'idle' }));
         setActiveTab("home");
+        handleExternalDisplayUpdate("basic");
         break;
       }
 
@@ -867,27 +844,25 @@ export function QuizHost() {
     flowState.totalTime,
     currentLoadedQuestionIndex,
     loadedQuizQuestions,
-    externalWindow,
+    isExternalDisplayOpen,
     timer,
   ]);
+
 
   /**
    * Silent timer handler - starts timer without audio.
    */
   const handleSilentTimer = useCallback(() => {
     sendTimerToPlayers(flowState.totalTime, true);
-    if (externalWindow && !externalWindow.closed) {
-      externalWindow.postMessage(
-        { type: 'TIMER', data: { seconds: flowState.totalTime } },
-        '*'
-      );
+    if (isExternalDisplayOpen) {
+      handleExternalDisplayUpdate('timer', { seconds: flowState.totalTime });
     }
     setFlowState(prev => ({
       ...prev,
       flow: 'running',
       answerSubmitted: 'silent',
     }));
-  }, [flowState.totalTime, externalWindow]);
+  }, [flowState.totalTime, isExternalDisplayOpen, handleExternalDisplayUpdate]);
 
   /**
    * Start quiz handler - called when "START QUIZ" is clicked in config screen.
@@ -1291,31 +1266,60 @@ export function QuizHost() {
   const handleRevealAnswer = () => {
     setShowAnswer(true);
     setIsQuizActive(false);
-    // Save current response times when revealing answer
     setLastResponseTimes(prev => ({ ...prev, ...teamResponseTimes }));
-  };
 
-  const handleNextQuestion = () => {
-    if (currentQuestionIndex < mockQuestions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-      setTimeRemaining(mockQuestions[currentQuestionIndex + 1].timeLimit);
-      setShowAnswer(false);
-      setIsQuizActive(false);
-      // Clear response times for new question
-      setTeamResponseTimes({});
-      setLastResponseTimes({});
-    }
+    updateExternalDisplayMode("correctAnswer", {
+      correctAnswer:
+        loadedQuizQuestions[currentLoadedQuestionIndex]?.options?.[
+          loadedQuizQuestions[currentLoadedQuestionIndex]?.correctAnswer
+        ],
+      answerRevealed: true,
+    });
   };
 
   const handleStartTimer = () => {
     setIsQuizActive(true);
-    setTimeRemaining(currentQuestion.timeLimit);
+    setTimeRemaining(flowState.totalTime);
     setShowAnswer(false);
-    setShowTeamAnswers(true); // Enable answer display when timer starts
-    // Clear response times when starting timer for new question
+    setShowTeamAnswers(true);
     setTeamResponseTimes({});
     setLastResponseTimes({});
+
+    // Send to external display
+    updateExternalDisplayMode("timer", {
+      timerValue: flowState.totalTime,
+    });
   };
+
+  const handleNextQuestion = () => {
+    if (currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
+      const nextIndex = currentLoadedQuestionIndex + 1;
+      setCurrentLoadedQuestionIndex(nextIndex);
+      setTimeRemaining(loadedQuizQuestions[nextIndex].timeLimit);
+      setShowAnswer(false);
+      setIsQuizActive(false);
+      setTeamResponseTimes({});
+      setLastResponseTimes({});
+
+      updateExternalDisplayMode(userSelectedDisplayMode || "basic", {
+        questionInfo: loadedQuizQuestions[nextIndex],
+      });
+    }
+  };
+
+  const handleLeaderboardIntro = () => {
+    setDisplayMode("leaderboard-intro");
+    updateExternalDisplayMode("leaderboard-intro", { leaderboardData });
+  };
+
+  const handleLeaderboardReveal = () => {
+    setDisplayMode("leaderboard-reveal");
+    updateExternalDisplayMode("leaderboard-reveal", {
+      leaderboardData,
+      revealedTeams,
+    });
+  };
+
 
   const handleResetQuestion = () => {
     setTimeRemaining(currentQuestion.timeLimit);
@@ -1327,27 +1331,72 @@ export function QuizHost() {
   };
 
   const handleDisplayModeChange = (mode: "basic" | "slideshow" | "scores" | "leaderboard-intro" | "leaderboard-reveal" | "timer" | "correctAnswer") => {
+    console.log('DISPLAY MODE IS:', displayMode);
+    console.log('Changing display mode to:', mode);
     setDisplayMode(mode);
     
     // Remember user's preference for non-leaderboard modes
     if (mode === "basic" || mode === "slideshow" || mode === "scores") {
       setUserSelectedDisplayMode(mode);
     }
-    
-    // Update external display if open
-    if (externalWindow && !externalWindow.closed) {
-      updateExternalDisplay(externalWindow, mode);
+
+    updateExternalDisplayMode();
+  };
+
+  const handleDisplayModeChangeClickButton = () => {
+    const modes: ("basic" | "slideshow" | "scores")[] = ["basic", "slideshow", "scores"];
+    const currentIndex = modes.indexOf(displayMode as any);
+    const nextMode = currentIndex === -1
+      ? modes[0]
+      : modes[(currentIndex + 1) % modes.length];
+
+    handleDisplayModeChange(nextMode);
+  };
+
+
+  const updateExternalDisplayMode = async (
+    modeOverride?: "basic" | "slideshow" | "scores" | "leaderboard-intro" | "leaderboard-reveal" | "timer" | "correctAnswer",
+    extraData: any = {}
+  ) => {
+    const modeToSend = modeOverride || displayMode;
+
+    console.log("[ExternalDisplay] Updating to:", modeToSend);
+
+    if (isExternalDisplayOpen && window.api?.externalDisplay?.update) {
+      try {
+        await window.api.externalDisplay.update({
+          mode: modeToSend,
+          quizzes, // live team data
+          leaderboardData,
+          revealedTeams,
+          questionInfo: loadedQuizQuestions[currentLoadedQuestionIndex] || null,
+          timerValue: flowState.timeRemaining,
+          correctAnswer:
+            loadedQuizQuestions[currentLoadedQuestionIndex]?.options?.[
+              loadedQuizQuestions[currentLoadedQuestionIndex]?.correctAnswer
+            ] || null,
+          answerRevealed: showAnswer,
+          gameMode: "keypad",
+          countdownStyle,
+          slideshowSpeed,
+          gameModeTimers,
+          fastestTeamData,
+          ...extraData,
+        });
+      } catch (error) {
+        console.error("[ExternalDisplay] Failed to update:", error);
+      }
     }
   };
 
-  const handleImagesChange = (newImages: StoredImage[]) => {
-    setImages(newImages);
-    
-    // Update external display if open
-    if (externalWindow && !externalWindow.closed) {
-      updateExternalDisplay(externalWindow, displayMode);
+  useEffect(() => {
+    if (isExternalDisplayOpen && flowState.flow === "running") {
+      handleExternalDisplayUpdate("timer", {
+        timerValue: flowState.timeRemaining,
+      });
     }
-  };
+  }, [flowState.timeRemaining]);
+
 
   // Load images from persistent storage on component mount
   useEffect(() => {
@@ -1448,48 +1497,30 @@ export function QuizHost() {
     setShowSettings(true);
   };
 
-  const handleSpeedChange = (speed: number) => {
-    setSlideshowSpeed(speed);
-    
-    // Update external display if open
-    if (externalWindow && !externalWindow.closed) {
-      updateExternalDisplay(externalWindow, displayMode);
+  const openExternalDisplay = async () => {
+    if (isExternalDisplayOpen) {
+      return; // Already open
+    }
+
+    try {
+      if (window.api?.externalDisplay?.open) {
+        await window.api.externalDisplay.open();
+        setIsExternalDisplayOpen(true);
+      }
+    } catch (error) {
+      console.error('Failed to open external display:', error);
     }
   };
 
-  const openExternalDisplay = () => {
-    if (externalWindow && !externalWindow.closed) {
-      externalWindow.focus();
-      return;
+  const closeExternalDisplay = async () => {
+    try {
+      if (window.api?.externalDisplay?.close) {
+        await window.api.externalDisplay.close();
+        setIsExternalDisplayOpen(false);
+      }
+    } catch (error) {
+      console.error('Failed to close external display:', error);
     }
-
-    // Clear if previously closed
-    if (externalWindow && externalWindow.closed) {
-      setExternalWindow(null);
-      setIsExternalDisplayOpen(false);
-    }
-
-    const newWindow = window.open(
-      'about:blank',
-      'externalDisplay',
-      'width=1920,height=1080,scrollbars=no,resizable=yes,status=no,location=no,toolbar=no,menubar=no'
-    );
-
-    if (newWindow) {
-      setExternalWindow(newWindow);
-      setIsExternalDisplayOpen(true);
-    }
-  };
-
-  const handleExternalDisplayUpdate = (mode: string, data?: any) => {
-    if (externalWindow && !externalWindow.closed) {
-      updateExternalDisplay(externalWindow, mode, data);
-    }
-  };
-
-  const updateExternalDisplay = (window: Window, mode: string, data?: any) => {
-    // Send update message to external window
-    window.postMessage({ type: 'DISPLAY_UPDATE', mode, data }, '*');
   };
 
   // Rest of the component implementation...
@@ -1532,6 +1563,7 @@ export function QuizHost() {
           onTabChange={handleTabChange}
           onSettingsOpen={handleSettingsOpen}
           onExternalDisplayToggle={openExternalDisplay}
+          onDisplayModeChange={handleDisplayModeChangeClickButton}
           externalDisplayOpen={isExternalDisplayOpen}
         />
 
@@ -1546,7 +1578,6 @@ export function QuizHost() {
                 onBack={handleKeypadClose}
                 triggerNextQuestion={keypadNextQuestionTrigger}
                 teams={quizzes}
-                externalWindow={externalWindow}
                 currentRoundPoints={currentRoundPoints}
                 currentRoundSpeedBonus={currentRoundSpeedBonus}
                 onCurrentRoundPointsChange={handleCurrentRoundPointsChange}
@@ -1575,7 +1606,6 @@ export function QuizHost() {
                 teams={quizzes}
                 currentRoundWinnerPoints={currentRoundWinnerPoints}
                 onCurrentRoundWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
-                externalWindow={externalWindow}
               />
             )}
 
@@ -1585,7 +1615,6 @@ export function QuizHost() {
                 quizzes={quizzes}
                 onBack={handleWheelSpinnerClose}
                 onHome={() => setActiveTab("home")}
-                externalWindow={externalWindow}
                 onExternalDisplayUpdate={handleExternalDisplayUpdate}
               />
             )}

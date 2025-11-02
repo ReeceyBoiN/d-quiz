@@ -1,7 +1,22 @@
-const { BrowserWindow } = require('electron');
+const { BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
 let externalWindow = null;
+
+function getExternalWindow() {
+  return externalWindow;
+}
+
+function setExternalWindow(window) {
+  externalWindow = window;
+}
+
+function closeExternalWindow() {
+  if (externalWindow && !externalWindow.isDestroyed()) {
+    externalWindow.close();
+    externalWindow = null;
+  }
+}
 
 function createMainWindow() {
   const isDev = !!process.env.VITE_DEV_SERVER_URL; // true if Vite dev server running
@@ -73,4 +88,4 @@ function createExternalWindow() {
   return externalWindow;
 }
 
-module.exports = { createMainWindow, createExternalWindow };
+module.exports = { createMainWindow, createExternalWindow, getExternalWindow, setExternalWindow, closeExternalWindow };
