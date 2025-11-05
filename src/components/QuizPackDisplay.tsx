@@ -28,6 +28,8 @@ interface QuizPackDisplayProps {
   onStartQuiz?: () => void; // Called when "START QUIZ" button is clicked
   onPointsChange?: (points: number) => void; // Callback when points slider changes
   onSpeedBonusChange?: (speedBonus: number) => void; // Callback when speed bonus slider changes
+  currentRoundPoints?: number | null; // Current points from parent
+  currentRoundSpeedBonus?: number | null; // Current speed bonus from parent
 }
 
 export function QuizPackDisplay({
@@ -40,7 +42,9 @@ export function QuizPackDisplay({
   onAwardPoints,
   onStartQuiz,
   onPointsChange,
-  onSpeedBonusChange
+  onSpeedBonusChange,
+  currentRoundPoints,
+  currentRoundSpeedBonus
 }: QuizPackDisplayProps) {
   const [currentScreen, setCurrentScreen] = useState<'config' | 'question'>('config');
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
@@ -66,9 +70,13 @@ export function QuizPackDisplay({
     voiceCountdown
   } = useSettings();
 
-  // Use local state if set, otherwise use defaults
-  const currentPoints = localPoints !== null ? localPoints : defaultPoints;
-  const currentSpeedBonus = localSpeedBonus !== null ? localSpeedBonus : defaultSpeedBonus;
+  // Use parent props if available, then local state, then defaults
+  const currentPoints = currentRoundPoints !== null && currentRoundPoints !== undefined
+    ? currentRoundPoints
+    : (localPoints !== null ? localPoints : defaultPoints);
+  const currentSpeedBonus = currentRoundSpeedBonus !== null && currentRoundSpeedBonus !== undefined
+    ? currentRoundSpeedBonus
+    : (localSpeedBonus !== null ? localSpeedBonus : defaultSpeedBonus);
   const points = [currentPoints];
   const speedBonus = [currentSpeedBonus];
 

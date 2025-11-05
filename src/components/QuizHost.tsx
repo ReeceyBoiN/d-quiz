@@ -2580,6 +2580,8 @@ export function QuizHost() {
             onStartQuiz={handleStartQuiz}
             onPointsChange={handleCurrentRoundPointsChange}
             onSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
+            currentRoundPoints={currentRoundPoints}
+            currentRoundSpeedBonus={currentRoundSpeedBonus}
           />
         </div>
       );
