@@ -7,7 +7,7 @@
     "dev": "npx -y vite@6.3.5",
     "start": "cross-env VITE_DEV_SERVER_URL=http://localhost:3001 electron .",
     "dev:vite": "vite",
-    "dev:electron": "wait-on http://localhost:3001 && cross-env VITE_DEV_SERVER_URL=http://localhost:3001 nodemon --watch electron --delay 500ms --exec \"electron .\"",
+    "dev:electron": "wait-on http://localhost:3000 && cross-env VITE_DEV_SERVER_URL=http://localhost:3000 nodemon --watch electron --delay 500ms --exec \"electron .\"",
     "dev:browser": "vite",
     "build": "vite build",
     "build:renderer": "vite build",

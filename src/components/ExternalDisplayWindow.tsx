@@ -61,46 +61,81 @@ export function ExternalDisplayWindow() {
   };
 
   useEffect(() => {
-    const handleExternalDisplayUpdate = (data: any) => {
-      console.log('External display received update:', data);
-      const newMode = data.mode || 'basic';
-      setDisplayData(prevData => {
-        if ((newMode === 'timer' || newMode === 'correctAnswer' || newMode === 'questionWaiting') && prevData.mode !== newMode) {
-          setDynamicBackgroundColor(getRandomDynamicColor());
-        }
-        return {
-          mode: newMode,
-          previousMode: (newMode === 'timer' || newMode === 'correctAnswer') ? prevData.mode : newMode,
-          images: data.images || [],
-          quizzes: data.quizzes || [],
-          slideshowSpeed: data.slideshowSpeed || 5,
-          leaderboardData: data.leaderboardData || null,
-          revealedTeams: data.revealedTeams || [],
-          timerValue: data.timerValue || null,
-          correctAnswer: data.correctAnswer || null,
-          questionInfo: data.questionInfo || null,
-          fastestTeamData: data.fastestTeamData || null,
-          gameInfo: data.gameInfo || null,
-          targetNumber: data.targetNumber || null,
-          answerRevealed: data.answerRevealed || false,
-          results: data.results || null,
-          nearestWinsData: data.nearestWinsData || null,
-          wheelSpinnerData: data.wheelSpinnerData || null,
-          countdownStyle: data.countdownStyle || prevData.countdownStyle || 'circular',
-          gameMode: data.gameMode || prevData.gameMode || 'keypad',
-          gameModeTimers: data.gameModeTimers || prevData.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 },
-          teamName: data.teamName || null,
-          data: data.data || null
-        };
-      });
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'DISPLAY_UPDATE') {
+        const newMode = event.data.mode || 'basic';
+        setDisplayData(prevData => {
+          if ((newMode === 'timer' || newMode === 'correctAnswer' || newMode === 'questionWaiting') && prevData.mode !== newMode) {
+            setDynamicBackgroundColor(getRandomDynamicColor());
+          }
+          return {
+            mode: newMode,
+            previousMode: (newMode === 'timer' || newMode === 'correctAnswer') ? prevData.mode : newMode,
+            images: event.data.images || [],
+            quizzes: event.data.quizzes || [],
+            slideshowSpeed: event.data.slideshowSpeed || 5,
+            leaderboardData: event.data.leaderboardData || null,
+            revealedTeams: event.data.revealedTeams || [],
+            timerValue: event.data.timerValue || null,
+            correctAnswer: event.data.correctAnswer || null,
+            questionInfo: event.data.questionInfo || null,
+            fastestTeamData: event.data.fastestTeamData || null,
+            gameInfo: event.data.gameInfo || null,
+            targetNumber: event.data.targetNumber || null,
+            answerRevealed: event.data.answerRevealed || false,
+            results: event.data.results || null,
+            nearestWinsData: event.data.nearestWinsData || null,
+            wheelSpinnerData: event.data.wheelSpinnerData || null,
+            countdownStyle: event.data.countdownStyle || prevData.countdownStyle || 'circular',
+            gameMode: event.data.gameMode || prevData.gameMode || 'keypad',
+            gameModeTimers: event.data.gameModeTimers || prevData.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 },
+            teamName: (event.data.data && event.data.data.teamName) || event.data.teamName || null,
+            data: event.data.data || null
+          };
+        });
+      }
     };
 
+    window.addEventListener('message', handleMessage);
+
     let removeIpcListener: (() => void) | undefined;
-    if (isElectron && window.api?.ipc?.on) {
-      removeIpcListener = window.api.ipc.on("external-display/update", handleExternalDisplayUpdate);
+    if (isElectron) {
+      removeIpcListener = window.api?.ipc.on("external-display/update", (data) => {
+        const newMode = data.mode || 'basic';
+        setDisplayData(prevData => {
+          if ((newMode === 'timer' || newMode === 'correctAnswer' || newMode === 'questionWaiting') && prevData.mode !== newMode) {
+            setDynamicBackgroundColor(getRandomDynamicColor());
+          }
+          return {
+            mode: newMode,
+            previousMode: (newMode === 'timer' || newMode === 'correctAnswer') ? prevData.mode : newMode,
+            images: data.images || [],
+            quizzes: data.quizzes || [],
+            slideshowSpeed: data.slideshowSpeed || 5,
+            leaderboardData: data.leaderboardData || null,
+            revealedTeams: data.revealedTeams || [],
+            timerValue: data.timerValue || null,
+            correctAnswer: data.correctAnswer || null,
+            questionInfo: data.questionInfo || null,
+            fastestTeamData: data.fastestTeamData || null,
+            gameInfo: data.gameInfo || null,
+            targetNumber: data.targetNumber || null,
+            answerRevealed: data.answerRevealed || false,
+            results: data.results || null,
+            nearestWinsData: data.nearestWinsData || null,
+            wheelSpinnerData: data.wheelSpinnerData || null,
+            countdownStyle: data.countdownStyle || prevData.countdownStyle || 'circular',
+            gameMode: data.gameMode || prevData.gameMode || 'keypad',
+            gameModeTimers: data.gameModeTimers || prevData.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 },
+            teamName: (data.data && data.data.teamName) || data.teamName || null,
+            data: data.data || null
+          };
+        });
+      });
     }
 
     return () => {
+      window.removeEventListener('message', handleMessage);
       if (removeIpcListener) removeIpcListener();
     };
   }, []);

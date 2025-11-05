@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
-const { createMainWindow, createExternalWindow, getExternalWindow, closeExternalWindow } = require('./windows');
+const { createMainWindow, createExternalWindow } = require('./windows');
 const { applySecurity } = require('./security');
 const { createIpcRouter } = require('../ipc/ipcRouter');
 const { startBackend } = require('../backend/server');
@@ -43,20 +43,6 @@ async function boot() {
     createExternalWindow();
     return { ok: true };
   });
-  router.mount('app/close-external-display', async () => {
-    closeExternalWindow();
-    return { ok: true };
-  });
-
-  // Forward external display updates from main to external window
-  ipcMain.on('external-display/update', (event, data) => {
-    console.log('Main process received external-display/update:', data);
-    const externalWin = getExternalWindow();
-    if (externalWin && !externalWin.isDestroyed()) {
-      externalWin.webContents.send('external-display/update', data);
-    }
-  });
-
   router.mount('app/ready', async () => ({ ok: true, version: app.getVersion() }));
   router.mount('quiz/start', require('../modules/quizEngine').startQuiz);
   router.mount('quiz/score', require('../modules/scoring').scoreAttempt);
