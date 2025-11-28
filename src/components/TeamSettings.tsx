@@ -142,9 +142,9 @@ export function TeamSettings({ team, onClose, onTeamUpdate, onKickTeam, onScramb
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold text-foreground">Team Settings</h1>
-            <Badge 
-              variant="outline" 
-              className="text-lg px-3 py-1"
+            <Badge
+              variant="outline"
+              className="text-lg px-3 py-1 emoji emoji-font"
               style={{ backgroundColor: selectedColor, color: 'white' }}
             >
               {team.icon} #{team.id}

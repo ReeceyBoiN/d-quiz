@@ -164,7 +164,15 @@
   }
   
   /* Comprehensive emoji rendering support */
-  .emoji, [class*="emoji"], div:has(emoji), 
+  .emoji {
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Android Emoji", sans-serif !important;
+    font-feature-settings: "liga" off !important;
+    font-variant-emoji: emoji !important;
+    -webkit-font-feature-settings: "liga" off !important;
+    -moz-font-feature-settings: "liga" off !important;
+  }
+
+  .emoji, [class*="emoji"], div:has(emoji),
   *:has(🎯), *:has(🎪), *:has(🎉), *:has(🏆), *:has(⭐), *:has(💫), *:has(🎊), *:has(🎈),
   *:has(🎺), *:has(🐼), *:has(🎨), *:has(🎭), *:has(🎸), *:has(🎲), *:has(🎳), *:has(🎮),
   *:has(🎱), *:has(🎰), *:has(🎵), *:has(🌮), *:has(🍕), *:has(🍦), *:has(🍪), *:has(🍰),

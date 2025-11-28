@@ -21,7 +21,14 @@ function loadEvents(wss) {
 
 async function startBackend({ port = 4310 } = {}) {
   const app = express();
-  app.use(express.json());
+
+  // Ensure UTF-8 charset for all responses
+  app.use((req, res, next) => {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    next();
+  });
+
+  app.use(express.json({ charset: 'utf-8' }));
 
   loadEndpoints(app);
 

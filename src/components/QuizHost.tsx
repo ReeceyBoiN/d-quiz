@@ -85,6 +85,16 @@ interface Quiz {
   scrambled?: boolean; // Whether the team's keypad is scrambled
 }
 
+const fixEmojiString = (str: string | undefined): string => {
+  if (!str) return '👤';
+  const correctionMap: {[key: string]: string} = {};
+  correctionMap['â­'] = '⭐';
+  correctionMap['ðŸŽª'] = '🎪';
+  correctionMap['ðŸŽ‰'] = '🎉';
+  correctionMap['ðŸ†'] = '🏆';
+  return correctionMap[str] || str;
+};
+
 const mockQuestions: Question[] = [
   {
     id: 1,
@@ -1398,7 +1408,7 @@ export function QuizHost() {
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             html, body { height: 100%; width: 100%; }
-            body { background: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+            body { background: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"; overflow: hidden; }
             @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
             @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
             @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -1412,12 +1422,16 @@ export function QuizHost() {
               z-index: 100;
               pointer-events: none;
               user-select: none;
+              font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+              font-variant-emoji: emoji;
             }
             .decorative-icon {
               position: absolute;
               font-size: 2.5rem;
               filter: drop-shadow(0 4px 6px rgba(0,0,0,0.12));
               animation: bounce 2s infinite;
+              font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+              font-variant-emoji: emoji;
             }
           </style>
         </head>
@@ -1427,7 +1441,7 @@ export function QuizHost() {
             const emojis = [
               '🎯','🎪','🎉','🏆','⭐','💫','🎊','🎈','🎺','🧠','🎨','🎭','🎸','🎲','🎳','🎮',
               '🎱','🎰','🎵','🌮','🍕','🍦','🍪','🍰','🧁','🍓','🍊','🍌','🍍','🐶','🐱','🐭',
-              '🐹','🐰','🦊','🐻','����','🐯','🌸','🌺','🌻','🌷','🌹','🌵','🌲','🌳','🍀','🍃',
+              '🐹','🐰','🦊','🐻','����','🐯','🌸','🌺','����','🌷','🌹','🌵','🌲','🌳','🍀','🍃',
               '✨','🌙','☀️','🌤️','⛅','🌦️','❄️','🚀','🛸','🎡','🎢','🎠','🔥','💖','🌈','⚡'
             ];
 

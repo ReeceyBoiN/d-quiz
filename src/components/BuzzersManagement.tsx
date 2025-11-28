@@ -255,7 +255,18 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
                     />
                   ) : (
                     <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center border-2 border-border">
-                      <span className="text-xl">{team.icon || "👤"}</span>
+                      <span
+                        className="text-xl"
+                        style={{
+                          fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
+                        }}
+                      >
+                        {(() => {
+                          const icon = team.icon || '👤';
+                          const corrections: {[k: string]: string} = {'â­': '⭐', 'ðŸŽª': '🎪', 'ðŸŽ‰': '🎉', 'ðŸ†': '🏆', 'ðŸ\'«': '👫', 'ðŸŽŠ': '🎊', 'ï¿½ï¿½ï¿½ï¿½': '🎸', 'ðŸŽ¯': '🎯', 'âœ¨': '✨'};
+                          return corrections[icon] || icon;
+                        })()}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -273,12 +284,27 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
                     value={team.buzzerSound || "classic"}
                     onValueChange={(value) => onBuzzerChange(team.id, value)}
                   >
-                    <SelectTrigger className="w-full h-9">
+                    <SelectTrigger
+                      className="w-full h-9"
+                      style={{
+                        fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
+                      }}
+                    >
                       <SelectValue placeholder="Select buzzer sound" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent
+                      style={{
+                        fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
+                      }}
+                    >
                       {buzzerSounds.map((sound) => (
-                        <SelectItem key={sound.value} value={sound.value}>
+                        <SelectItem
+                          key={sound.value}
+                          value={sound.value}
+                          style={{
+                            fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
+                          }}
+                        >
                           {sound.label}
                         </SelectItem>
                       ))}

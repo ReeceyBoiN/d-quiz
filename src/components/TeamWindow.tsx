@@ -237,7 +237,7 @@ export function TeamWindow({
           {/* Left side - Team Icon */}
           <div className="flex items-center gap-3 flex-1">
             {team.icon && (
-              <span className="text-3xl">{team.icon}</span>
+              <span className="text-3xl emoji emoji-font">{team.icon}</span>
             )}
           </div>
           
@@ -549,12 +549,12 @@ export function TeamWindow({
                     value={team.buzzerSound || "classic"}
                     onValueChange={(value) => onBuzzerChange?.(team.id, value)}
                   >
-                    <SelectTrigger id="buzzer-sound">
+                    <SelectTrigger id="buzzer-sound" className="emoji emoji-font">
                       <SelectValue placeholder="Select buzzer sound" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="emoji emoji-font">
                       {buzzerSounds.map((sound) => (
-                        <SelectItem key={sound.value} value={sound.value}>
+                        <SelectItem key={sound.value} value={sound.value} className="emoji emoji-font">
                           {sound.label}
                         </SelectItem>
                       ))}
@@ -572,12 +572,12 @@ export function TeamWindow({
                     value={team.backgroundColor || "clear"}
                     onValueChange={(value) => onBackgroundColorChange?.(team.id, value === "clear" ? "" : value)}
                   >
-                    <SelectTrigger id="background-color">
+                    <SelectTrigger id="background-color" className="emoji emoji-font">
                       <SelectValue placeholder="Select background color" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="emoji emoji-font">
                       {backgroundColors.map((color) => (
-                        <SelectItem key={color.value} value={color.value}>
+                        <SelectItem key={color.value} value={color.value} className="emoji emoji-font">
                           {color.label}
                         </SelectItem>
                       ))}

@@ -139,17 +139,22 @@ export function QuizController({ onOpenPopout }: QuizControllerProps) {
 
   const openPopout = () => {
     const popout = window.open(
-      `data:text/html,${encodeURIComponent(`
+      `data:text/html;charset=utf-8,${encodeURIComponent(`
         <!DOCTYPE html>
         <html>
           <head>
+            <meta charset="UTF-8" />
             <title>Quiz Display</title>
             <style>
-              body { 
-                margin: 0; 
-                padding: 0; 
+              body {
+                margin: 0;
+                padding: 0;
                 overflow: hidden;
-                font-family: system-ui, -apple-system, sans-serif;
+                font-family: system-ui, -apple-system, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+              }
+              .emoji {
+                font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+                font-variant-emoji: emoji;
               }
               #root { 
                 width: 100vw; 
