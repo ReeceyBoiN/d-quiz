@@ -203,7 +203,24 @@ export function QuizHost() {
   // External display popup window state
   const [externalWindow, setExternalWindow] = useState<Window | null>(null);
   const [isExternalDisplayOpen, setIsExternalDisplayOpen] = useState(false);
-  
+
+  // Helper function to send messages to external display (handles both Electron and browser)
+  const sendToExternalDisplay = (messageData: any) => {
+    if (!externalWindow) return;
+
+    const isElectronWindow = (externalWindow as any)._isElectronWindow;
+
+    if (isElectronWindow) {
+      // Send via IPC for Electron windows
+      (window as any).api?.ipc?.send('external-display/update', messageData);
+    } else {
+      // Send via postMessage for browser windows
+      if (!(externalWindow as any).closed) {
+        externalWindow.postMessage(messageData, '*');
+      }
+    }
+  };
+
   // Sidebar width state for status bar positioning
   const [sidebarWidth, setSidebarWidth] = useState(345); // Match the defaultSize width
   
@@ -912,10 +929,9 @@ export function QuizHost() {
         if (hasQuestionImage(currentQuestion)) {
           sendPictureToPlayers(currentQuestion.imageDataUrl);
           // Also send to external display using proper message format
-          if (externalWindow && !externalWindow.closed) {
-            externalWindow.postMessage(
-              { type: 'DISPLAY_UPDATE', mode: 'picture', data: { image: currentQuestion.imageDataUrl } },
-              '*'
+          if (externalWindow) {
+            sendToExternalDisplay(
+              { type: 'DISPLAY_UPDATE', mode: 'picture', data: { image: currentQuestion.imageDataUrl } }
             );
           }
           setFlowState(prev => ({
@@ -926,10 +942,9 @@ export function QuizHost() {
         } else {
           // No picture, send question directly
           sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
-          if (externalWindow && !externalWindow.closed) {
-            externalWindow.postMessage(
-              { type: 'DISPLAY_UPDATE', mode: 'question', data: { text: currentQuestion.q, options: currentQuestion.options, type: currentQuestion.type } },
-              '*'
+          if (externalWindow) {
+            sendToExternalDisplay(
+              { type: 'DISPLAY_UPDATE', mode: 'question', data: { text: currentQuestion.q, options: currentQuestion.options, type: currentQuestion.type } }
             );
           }
           setFlowState(prev => ({
@@ -944,10 +959,9 @@ export function QuizHost() {
       case 'sent-picture': {
         // Send question after picture
         sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
-        if (externalWindow && !externalWindow.closed) {
-          externalWindow.postMessage(
-            { type: 'DISPLAY_UPDATE', mode: 'question', data: { text: currentQuestion.q, options: currentQuestion.options, type: currentQuestion.type } },
-            '*'
+        if (externalWindow) {
+          sendToExternalDisplay(
+            { type: 'DISPLAY_UPDATE', mode: 'question', data: { text: currentQuestion.q, options: currentQuestion.options, type: currentQuestion.type } }
           );
         }
         setFlowState(prev => ({
@@ -961,8 +975,8 @@ export function QuizHost() {
       case 'sent-question': {
         // Start audible timer
         sendTimerToPlayers(flowState.totalTime, false);
-        if (externalWindow && !externalWindow.closed) {
-          externalWindow.postMessage(
+        if (externalWindow) {
+          sendToExternalDisplay(
             {
               type: 'DISPLAY_UPDATE',
               mode: 'timer',
@@ -977,8 +991,7 @@ export function QuizHost() {
               },
               gameModeTimers: gameModeTimers,
               countdownStyle: countdownStyle
-            },
-            '*'
+            }
           );
         }
         setFlowState(prev => ({
@@ -992,10 +1005,9 @@ export function QuizHost() {
       case 'timeup': {
         // Stop timer and reveal answer
         timer.stop();
-        if (externalWindow && !externalWindow.closed) {
-          externalWindow.postMessage(
-            { type: 'DISPLAY_UPDATE', mode: 'correctAnswer', data: { answer: currentQuestion.answerText, correctIndex: currentQuestion.correctIndex, type: currentQuestion.type } },
-            '*'
+        if (externalWindow) {
+          sendToExternalDisplay(
+            { type: 'DISPLAY_UPDATE', mode: 'correctAnswer', data: { answer: currentQuestion.answerText, correctIndex: currentQuestion.correctIndex, type: currentQuestion.type } }
           );
         }
         sendRevealToPlayers(currentQuestion.answerText, currentQuestion.correctIndex, currentQuestion.type);
@@ -1008,10 +1020,9 @@ export function QuizHost() {
 
       case 'revealed': {
         // Show fastest team view
-        if (externalWindow && !externalWindow.closed) {
-          externalWindow.postMessage(
-            { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1 } },
-            '*'
+        if (externalWindow) {
+          sendToExternalDisplay(
+            { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1 } }
           );
         }
         sendFastestToDisplay('TBD', currentLoadedQuestionIndex + 1);
@@ -1034,8 +1045,8 @@ export function QuizHost() {
             flow: 'complete',
           }));
           sendEndRound();
-          if (externalWindow && !externalWindow.closed) {
-            externalWindow.postMessage({ type: 'END_ROUND' }, '*');
+          if (externalWindow) {
+            sendToExternalDisplay({ type: 'END_ROUND' });
           }
         }
         break;
@@ -1070,10 +1081,9 @@ export function QuizHost() {
    */
   const handleSilentTimer = useCallback(() => {
     sendTimerToPlayers(flowState.totalTime, true);
-    if (externalWindow && !externalWindow.closed) {
-      externalWindow.postMessage(
-        { type: 'TIMER', data: { seconds: flowState.totalTime } },
-        '*'
+    if (externalWindow) {
+      sendToExternalDisplay(
+        { type: 'TIMER', data: { seconds: flowState.totalTime } }
       );
     }
     setFlowState(prev => ({
@@ -1598,7 +1608,7 @@ export function QuizHost() {
     }
   };
 
-  const openExternalDisplay = () => {
+  const openExternalDisplay = async () => {
     if (externalWindow && !externalWindow.closed) {
       externalWindow.focus();
       return;
@@ -1610,70 +1620,47 @@ export function QuizHost() {
       setIsExternalDisplayOpen(false);
     }
 
-    const newWindow = window.open(
-      'about:blank',
-      'externalDisplay',
-      'width=1920,height=1080,scrollbars=no,resizable=yes,status=no,location=no,toolbar=no,menubar=no'
-    );
+    // Check if we're in Electron
+    const isElectron = Boolean((window as any).api);
 
-    if (newWindow) {
-      setExternalWindow(newWindow);
-      setIsExternalDisplayOpen(true);
+    if (isElectron) {
+      // In Electron: use IPC to create the external window in the main process
+      try {
+        await (window as any).api.ipc.invoke('app/open-external-display');
+        // Use a special marker object to indicate we're using Electron's external window
+        // The actual window is managed by Electron main process
+        setExternalWindow({ _isElectronWindow: true } as any);
+        setIsExternalDisplayOpen(true);
 
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>Quiz External Display</title>
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            html, body { height: 100%; width: 100%; }
-            body { background: #111827; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"; overflow: hidden; }
-            @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-            @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-            @keyframes fall {
-              0% { transform: translateY(-100px) translateX(0) rotateY(0deg); opacity: 1; }
-              100% { transform: translateY(100vh) translateX(0) rotateY(360deg); opacity: 0; }
-            }
-            .falling-emoji {
-              position: fixed;
-              font-size: 3rem;
-              z-index: 100;
-              pointer-events: none;
-              user-select: none;
-              font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-              font-variant-emoji: emoji;
-            }
-            .decorative-icon {
-              position: absolute;
-              font-size: 2.5rem;
-              filter: drop-shadow(0 4px 6px rgba(0,0,0,0.12));
-              animation: bounce 2s infinite;
-              font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-              font-variant-emoji: emoji;
-            }
-          </style>
-        </head>
-        <body>
-          <div id="root" style="width: 100vw; height: 100vh;"></div>
-          <script type="text/javascript">
-            // External display handler
-          </script>
-        </body>
-        </html>
-      `;
-
-      newWindow.document.write(htmlContent);
-      newWindow.document.close();
-
-      setTimeout(() => {
-        updateExternalDisplay(newWindow, displayMode);
-      }, 800);
+        // Wait for the external display window to load and set up listeners
+        setTimeout(() => {
+          updateExternalDisplay({ _isElectronWindow: true } as any, displayMode);
+        }, 800);
+      } catch (error) {
+        console.error('Failed to open external display:', error);
+        alert('Failed to open external display window.');
+      }
     } else {
-      alert('Please allow popups for this site to enable external display.');
+      // In browser: use window.open with the app URL
+      const appUrl = window.location.origin + '?external=1';
+
+      const newWindow = window.open(
+        appUrl,
+        'externalDisplay',
+        'width=1920,height=1080,scrollbars=no,resizable=yes,status=no,location=no,toolbar=no,menubar=no'
+      );
+
+      if (newWindow) {
+        setExternalWindow(newWindow);
+        setIsExternalDisplayOpen(true);
+
+        // Wait for the external display app to load and set up its message listener
+        setTimeout(() => {
+          updateExternalDisplay(newWindow, displayMode);
+        }, 800);
+      } else {
+        alert('Please allow popups for this site to enable external display.');
+      }
     }
   };
 
@@ -1716,7 +1703,10 @@ export function QuizHost() {
 
   const closeExternalDisplay = () => {
     if (externalWindow) {
-      externalWindow.close();
+      // Only call .close() on browser windows, not on Electron marker objects
+      if (!(externalWindow as any)._isElectronWindow && typeof (externalWindow as any).close === 'function') {
+        externalWindow.close();
+      }
       setExternalWindow(null);
       setIsExternalDisplayOpen(false);
     }
@@ -1733,10 +1723,12 @@ export function QuizHost() {
   };
 
   const updateExternalDisplay = (window: Window, mode: string, data?: any) => {
-    if (!window || window.closed) return;
+    if (!window) return;
 
-    // Send message to external window
-    window.postMessage({
+    // Check if this is an Electron window marker
+    const isElectronWindow = (window as any)._isElectronWindow;
+
+    const messageData = {
       type: 'DISPLAY_UPDATE',
       mode: mode,
       data: data,
@@ -1761,14 +1753,27 @@ export function QuizHost() {
       results: mode === 'nearest-wins-results' ? data?.results : undefined,
       answerRevealed: mode === 'nearest-wins-results' ? data?.answerRevealed : undefined,
       gameInfo: mode.includes('nearest-wins') ? data?.gameInfo : undefined,
+    };
 
-    }, '*');
+    if (isElectronWindow) {
+      // Send via IPC for Electron windows
+      (window as any).api?.ipc?.send('external-display/update', messageData);
+    } else {
+      // Send via postMessage for browser windows
+      if (!window.closed) {
+        window.postMessage(messageData, '*');
+      }
+    }
   };
 
   const handleExternalDisplayUpdate = useCallback((content: string, data?: any) => {
     console.log('QuizHost: handleExternalDisplayUpdate called with', { content, data });
-    
-    if (externalWindow && !externalWindow.closed) {
+
+    // Check if external window exists (either Electron or browser)
+    const isElectronWindow = externalWindow && (externalWindow as any)._isElectronWindow;
+    const isBrowserWindow = externalWindow && !isElectronWindow && !(externalWindow as any).closed;
+
+    if (externalWindow && (isElectronWindow || isBrowserWindow)) {
       const messageData = {
         type: 'DISPLAY_UPDATE',
         mode: content,
@@ -1784,31 +1789,37 @@ export function QuizHost() {
         countdownStyle: countdownStyle,
         gameMode: getCurrentGameMode(),
         gameModeTimers: gameModeTimers,
-        
+
         questionInfo: content === 'question' ? data?.questionInfo : {
           number: currentQuestionIndex + 1,
           type: 'Multiple Choice',
           total: mockQuestions.length
         },
-        
+
         currentMode: content,
-        
+
         targetNumber: content.includes('nearest-wins') ? data?.targetNumber : undefined,
         questionNumber: content.includes('nearest-wins') ? data?.questionNumber : undefined,
         results: content === 'nearest-wins-results' ? data?.results : undefined,
         answerRevealed: content === 'nearest-wins-results' ? data?.answerRevealed : undefined,
         gameInfo: content.includes('nearest-wins') ? data?.gameInfo : undefined,
-        
+
         wheelSpinnerData: content === 'wheel-spinner' ? data : undefined,
-        
+
         teamName: content === 'team-welcome' ? data?.teamName : undefined,
-        
+
         isReset: content === 'basic'
       };
-      
+
       console.log('QuizHost: Sending message to external display', messageData);
-      
-      externalWindow.postMessage(messageData, '*');
+
+      if (isElectronWindow) {
+        // Send via IPC for Electron windows
+        (window as any).api?.ipc?.send('external-display/update', messageData);
+      } else if (isBrowserWindow) {
+        // Send via postMessage for browser windows
+        externalWindow.postMessage(messageData, '*');
+      }
     }
   }, [externalWindow, images, quizzes, slideshowSpeed, leaderboardData, revealedTeams, currentQuestionIndex, getCurrentGameMode, countdownStyle, gameModeTimers]);
 

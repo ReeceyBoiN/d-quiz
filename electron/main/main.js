@@ -93,6 +93,15 @@ async function boot() {
     createExternalWindow();
     return { ok: true };
   });
+
+  // Forward external display updates from renderer to external window
+  // This allows the renderer to send updates via IPC which are forwarded to the external window's webContents
+  ipcMain.on('external-display/update', (event, messageData) => {
+    if (global.externalWindow && global.externalWindow.webContents) {
+      global.externalWindow.webContents.send('external-display/update', messageData);
+      log.info('Forwarded external-display/update to external window');
+    }
+  });
   router.mount('app/ready', async () => ({ ok: true, version: app.getVersion() }));
   router.mount('quiz/start', require('../modules/quizEngine').startQuiz);
   router.mount('quiz/score', require('../modules/scoring').scoreAttempt);

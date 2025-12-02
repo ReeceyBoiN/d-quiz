@@ -68,7 +68,11 @@ function createExternalWindow() {
 
   externalWindow.on('closed', () => {
     externalWindow = null;
+    global.externalWindow = null;
   });
+
+  // Store in global scope so main.js can access it for IPC forwarding
+  global.externalWindow = externalWindow;
 
   return externalWindow;
 }
