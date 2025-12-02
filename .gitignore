@@ -17,3 +17,6 @@ win-unpacked/
 # Don't ignore .exe or archives — they're handled by Git LFS
 
 # Reece actually has no idea what he's doing, this was written by Reece lmao
+PopQuiz.exe
+popquiz-0.1.0-x64.nsis.7z
+builder.config.json
