@@ -19,11 +19,17 @@ function applySecurity() {
   });
   app.whenReady().then(() => {
     session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
+      // Extract the backend URL from environment variables to include in CSP
+      const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:4310';
+      const backendHost = new URL(backendUrl).host;
+      const wsBackendHost = `ws://${backendHost}`;
+      const httpBackendHost = `http://${backendHost}`;
+
       cb({
         responseHeaders: {
           ...details.responseHeaders,
           'Content-Security-Policy': [
-            "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:*"
+            `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* ${httpBackendHost} ${wsBackendHost} http://192.168.*:* ws://192.168.*:* http://10.*:* ws://10.*:*`
           ]
         }
       });

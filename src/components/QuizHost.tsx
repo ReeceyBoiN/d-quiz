@@ -36,7 +36,7 @@ import { useQuizData } from "../utils/QuizDataContext";
 import { useTimer } from "../hooks/useTimer";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage } from "../state/flowState";
-import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay } from "../network/wsHost";
+import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage } from "../network/wsHost";
 import { Resizable } from "re-resizable";
 import { Button } from "./ui/button";
 import { ChevronRight } from "lucide-react";
@@ -163,22 +163,8 @@ export function QuizHost() {
   const [activeTab, setActiveTab] = useState<"teams" | "livescreen" | "handset" | "leaderboard" | "leaderboard-reveal" | "home" | "user-status">("home"); // Start with home tab (quiz pack selection)
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
 
-  // Teams state with 9 teams featuring Muslim names and random scores
-  const [quizzes, setQuizzes] = useState<Quiz[]>(() => {
-    const initialTeams = [
-      { id: "1", name: "Ahmad", type: "test" as const, icon: "â­", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "2", name: "Fatima", type: "test" as const, icon: "ðŸŽª", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "3", name: "Omar", type: "test" as const, icon: "ðŸŽ‰", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "4", name: "Aisha", type: "test" as const, icon: "ðŸ†", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "5", name: "Hassan", type: "test" as const, icon: "ðŸ’«", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "6", name: "Khadija", type: "test" as const, icon: "ðŸŽŠ", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "7", name: "Ali", type: "test" as const, icon: "ï¿½ï¿½ï¿½ï¿½", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "8", name: "Zainab", type: "test" as const, icon: "ðŸŽ¯", score: Math.floor(Math.random() * 200) + 50 },
-      { id: "9", name: "Ibrahim", type: "test" as const, icon: "âœ¨", score: Math.floor(Math.random() * 200) + 50 }
-    ];
-    // Sort teams by score initially (highest first)
-    return initialTeams.sort((a, b) => (b.score || 0) - (a.score || 0));
-  });
+  // Teams state - starts empty, teams are added via network connections or manual addition
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
 
   const [pendingSort, setPendingSort] = useState(false);
   const sortTimeoutRef = useRef<NodeJS.Timeout>();
@@ -300,6 +286,11 @@ export function QuizHost() {
   const [teamAnswerStatuses, setTeamAnswerStatuses] = useState<{[teamId: string]: 'correct' | 'incorrect' | 'no-answer'}>({});
   const [teamCorrectRankings, setTeamCorrectRankings] = useState<{[teamId: string]: number}>({});
 
+  // Pending teams state for network players awaiting approval
+  const [pendingTeams, setPendingTeams] = useState<Array<{deviceId: string, playerId: string, teamName: string, timestamp: number}>>([]);
+  const [showPendingTeams, setShowPendingTeams] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
+
   // Team window state
   const [selectedTeamForWindow, setSelectedTeamForWindow] = useState<string | null>(null);
   
@@ -393,6 +384,250 @@ export function QuizHost() {
       timer.stop();
     }
   }, [flowState.flow, flowState.totalTime, timer]);
+
+  // Handle network player joins
+  useEffect(() => {
+    let wsInstance: WebSocket | null = null;
+    let isComponentMounted = true;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 15;
+    let connectionTimeoutId: NodeJS.Timeout | null = null;
+
+    const getDelayMs = (attempt: number): number => {
+      // Exponential backoff: 1s, 2s, 4s, 8s, 16s, etc. (capped at 30s)
+      const delayMs = Math.min(1000 * Math.pow(2, attempt), 30000);
+      return delayMs;
+    };
+
+    const connectWebSocket = () => {
+      if (!isComponentMounted) return;
+
+      try {
+        // Check if we've exceeded max attempts
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+          console.log('🛑 Max WebSocket reconnection attempts reached. Network player features unavailable.');
+          setWsConnected(false);
+          return;
+        }
+
+        // Get WebSocket URL - support both Electron and browser dev mode
+        let backendWs: string | null = null;
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const hostname = window.location.hostname;
+
+        if ((window as any).api?.backend?.ws) {
+          // Electron mode - get URL from IPC
+          try {
+            backendWs = (window as any).api.backend.ws();
+            if (backendWs) {
+              console.log('✓ WebSocket URL from Electron IPC:', backendWs);
+            } else {
+              console.log('⚠️  Electron IPC returned empty WebSocket URL (backend may still be initializing)');
+            }
+          } catch (err) {
+            console.warn('⚠️  Failed to get WebSocket URL from IPC:', err);
+            backendWs = null;
+          }
+        }
+
+        // Fallback if in browser mode or if Electron returned null
+        if (!backendWs) {
+          backendWs = `${protocol}//${hostname}:4310/events`;
+          console.log(`Using fallback WebSocket URL: ${backendWs}`);
+        }
+
+        console.log(`[WebSocket Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS}] Connecting to: ${backendWs}`);
+        wsInstance = new WebSocket(backendWs);
+
+        // Set a timeout for connection attempt
+        const connectionTimeout = setTimeout(() => {
+          if (wsInstance && wsInstance.readyState === WebSocket.CONNECTING) {
+            console.warn(`⏱️  WebSocket connection attempt timed out after 5 seconds`);
+            wsInstance?.close();
+          }
+        }, 5000);
+
+        wsInstance.onopen = () => {
+          clearTimeout(connectionTimeout);
+          console.log('✅ WebSocket connected successfully to backend');
+          setWsConnected(true);
+          reconnectAttempts = 0;
+        };
+
+        wsInstance.onmessage = async (event) => {
+          if (!isComponentMounted) return;
+
+          try {
+            const data = JSON.parse(event.data);
+            console.log('[WebSocket Message]', data);
+
+            if (data.type === 'PLAYER_JOIN') {
+              console.log('🎯 PLAYER_JOIN received:', data);
+              const { deviceId, playerId, teamName } = data;
+
+              if (!deviceId || !teamName) {
+                console.error('Invalid PLAYER_JOIN message - missing deviceId or teamName');
+                return;
+              }
+
+              // Check if team already exists
+              if (quizzes.find(q => q.id === deviceId)) {
+                console.log('Team already exists:', deviceId);
+                return;
+              }
+
+              // Check if all existing teams have score 0
+              const allScoresZero = quizzes.every(team => (team.score || 0) === 0);
+              console.log('All scores zero?', allScoresZero, 'Current scores:', quizzes.map(q => ({ name: q.name, score: q.score })));
+
+              if (allScoresZero) {
+                // Auto-approve: add team directly to quizzes list
+                console.log('Auto-approving team:', teamName);
+                const newTeam: Quiz = {
+                  id: deviceId,
+                  name: teamName,
+                  type: 'test' as const,
+                  icon: '👤',
+                  score: 0,
+                };
+
+                setQuizzes(prev => [...prev, newTeam]);
+
+                // Auto-approve via IPC (only works in Electron)
+                try {
+                  if ((window as any).api?.network?.approveTeam) {
+                    console.log('Calling approveTeam IPC:', { deviceId, teamName });
+                    await (window as any).api.network.approveTeam({ deviceId, teamName });
+                    console.log('✅ Team auto-approved');
+                  } else {
+                    console.warn('api.network.approveTeam not available');
+                  }
+                } catch (err) {
+                  console.error('❌ Failed to approve team:', err);
+                }
+              } else {
+                // Add to pending teams list
+                console.log('Adding to pending teams:', teamName);
+                setPendingTeams(prev => {
+                  const updated = [...prev, { deviceId, playerId, teamName, timestamp: Date.now() }];
+                  console.log('Updated pending teams:', updated);
+                  return updated;
+                });
+                setShowPendingTeams(true);
+              }
+            }
+          } catch (err) {
+            console.error('Failed to parse WebSocket message:', err);
+          }
+        };
+
+        wsInstance.onerror = (event) => {
+          clearTimeout(connectionTimeout);
+          console.error('❌ WebSocket error:', event);
+          setWsConnected(false);
+          // Don't retry on error alone - wait for onclose to handle reconnection
+        };
+
+        wsInstance.onclose = (event) => {
+          clearTimeout(connectionTimeout);
+          console.log(`⚠️  WebSocket closed with code ${event.code}`);
+          setWsConnected(false);
+
+          if (isComponentMounted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts++;
+            const delayMs = getDelayMs(reconnectAttempts - 1);
+            console.log(`📍 Scheduling WebSocket reconnect in ${delayMs}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+
+            if (connectionTimeoutId) clearTimeout(connectionTimeoutId);
+            connectionTimeoutId = setTimeout(connectWebSocket, delayMs);
+          }
+        };
+      } catch (err) {
+        console.error('Failed to initialize WebSocket:', err);
+        if (isComponentMounted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+          reconnectAttempts++;
+          const delayMs = getDelayMs(reconnectAttempts - 1);
+          if (connectionTimeoutId) clearTimeout(connectionTimeoutId);
+          connectionTimeoutId = setTimeout(connectWebSocket, delayMs);
+        }
+      }
+    };
+
+    // Wait 1 second before first connection attempt to allow backend to initialize
+    const initialDelayId = setTimeout(() => {
+      if (isComponentMounted) {
+        console.log('Starting WebSocket connection process...');
+        connectWebSocket();
+      }
+    }, 1000);
+
+    return () => {
+      isComponentMounted = false;
+      clearTimeout(initialDelayId);
+      if (connectionTimeoutId) clearTimeout(connectionTimeoutId);
+      if (wsInstance) {
+        wsInstance.close();
+      }
+    };
+  }, [quizzes, pendingTeams]);
+
+  // Handler to approve a pending team
+  const handleApproveTeam = async (deviceId: string, teamName: string) => {
+    try {
+      console.log('📋 handleApproveTeam called for:', { deviceId, teamName });
+
+      // Add team to quizzes list
+      const newTeam: Quiz = {
+        id: deviceId,
+        name: teamName,
+        type: 'test' as const,
+        icon: '👤',
+        score: 0,
+      };
+
+      if (!quizzes.find(q => q.id === deviceId)) {
+        setQuizzes(prev => [...prev, newTeam]);
+        console.log('Added team to quizzes');
+      }
+
+      // Approve via IPC (only works in Electron)
+      if ((window as any).api?.network?.approveTeam) {
+        console.log('Calling approveTeam IPC...');
+        const result = await (window as any).api.network.approveTeam({ deviceId, teamName });
+        console.log('✅ approveTeam result:', result);
+      } else {
+        console.warn('⚠️  api.network.approveTeam not available');
+      }
+
+      // Remove from pending
+      setPendingTeams(prev => prev.filter(t => t.deviceId !== deviceId));
+      console.log('Removed from pending teams');
+    } catch (err) {
+      console.error('❌ Failed to approve team:', err);
+    }
+  };
+
+  // Handler to decline a pending team
+  const handleDeclineTeam = async (deviceId: string, teamName: string) => {
+    try {
+      console.log('🚫 handleDeclineTeam called for:', { deviceId, teamName });
+
+      // Decline via IPC (only works in Electron)
+      if ((window as any).api?.network?.declineTeam) {
+        console.log('Calling declineTeam IPC...');
+        const result = await (window as any).api.network.declineTeam({ deviceId, teamName });
+        console.log('✅ declineTeam result:', result);
+      } else {
+        console.warn('⚠️  api.network.declineTeam not available');
+      }
+
+      // Remove from pending
+      setPendingTeams(prev => prev.filter(t => t.deviceId !== deviceId));
+      console.log('Removed from pending teams');
+    } catch (err) {
+      console.error('❌ Failed to decline team:', err);
+    }
+  };
 
   // Helper function to close all active game modes
   const closeAllGameModes = () => {
@@ -1177,54 +1412,13 @@ export function QuizHost() {
     }
   }, [timeRemaining, showAnswer, teamResponseTimes]);
 
-  // Mock response time generator for testing (only when timer is active) - throttled for performance
-  useEffect(() => {
-    let mockInterval: NodeJS.Timeout;
-    
-    if (isQuizActive && timeRemaining > 0) {
-      mockInterval = setInterval(() => {
-        setTeamResponseTimes(prev => {
-          const newTimes = { ...prev };
-          const teamIds = quizzesRef.current.map(q => q.id);
-          const currentElapsed = currentQuestion.timeLimit - timeRemaining;
-          
-          // Only add response times for teams that haven't answered yet
-          teamIds.forEach(teamId => {
-            if (!newTimes[teamId] && Math.random() > 0.9) { // Reduced frequency to 10% per second for performance
-              const responseTime = (currentElapsed + Math.random() * 2) * 1000; // Convert to milliseconds
-              newTimes[teamId] = responseTime;
-              
-              // Also add a mock answer for the team
-              setTeamAnswers(prevAnswers => {
-                if (!prevAnswers[teamId]) {
-                  const answers = ['A', 'B', 'C', 'D', 'E', 'F'];
-                  const randomAnswer = answers[Math.floor(Math.random() * answers.length)];
-                  return { ...prevAnswers, [teamId]: randomAnswer };
-                }
-                return prevAnswers;
-              });
-            }
-          });
-          
-          return newTimes;
-        });
-      }, 2000); // Reduced frequency to every 2 seconds for performance
-    }
-    
-    return () => {
-      if (mockInterval) {
-        clearInterval(mockInterval);
-      }
-    };
-  }, [isQuizActive, timeRemaining, currentQuestion.timeLimit]);
-
   // Spacebar shortcut for Next Question button when fastest team display is shown
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       // Only trigger if spacebar is pressed and not in an input field
       if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
         e.preventDefault();
-        
+
         // Next Question button when fastest team display is shown
         if (showFastestTeamDisplay) {
           setShowFastestTeamDisplay(false);
@@ -1237,6 +1431,34 @@ export function QuizHost() {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [showFastestTeamDisplay]);
+
+  // Listen for network player registrations
+  useEffect(() => {
+    const handleNetworkPlayerJoin = (data: any) => {
+      const { playerId, teamName } = data;
+
+      // Check if player already registered
+      if (!quizzes.find(q => q.id === playerId)) {
+        const newTeam: Quiz = {
+          id: playerId,
+          name: teamName,
+          type: 'test',
+          score: 0,
+          icon: '📱',
+        };
+
+        setQuizzes(prev => {
+          const updated = [...prev, newTeam];
+          // Sort by score after adding
+          return updated.sort((a, b) => (b.score || 0) - (a.score || 0));
+        });
+
+        console.log(`Network player joined: ${teamName} (${playerId})`);
+      }
+    };
+
+    onNetworkMessage('PLAYER_JOIN', handleNetworkPlayerJoin);
+  }, [quizzes]);
 
   const handleRevealAnswer = () => {
     setShowAnswer(true);
@@ -1438,291 +1660,7 @@ export function QuizHost() {
         <body>
           <div id="root" style="width: 100vw; height: 100vh;"></div>
           <script type="text/javascript">
-            const emojis = [
-              '🎯','🎪','🎉','🏆','⭐','💫','🎊','🎈','🎺','🧠','🎨','🎭','🎸','🎲','🎳','🎮',
-              '🎱','🎰','🎵','🌮','🍕','🍦','🍪','🍰','🧁','🍓','🍊','🍌','🍍','🐶','🐱','🐭',
-              '🐹','🐰','🦊','🐻','����','🐯','🌸','🌺','����','🌷','🌹','🌵','🌲','🌳','🍀','🍃',
-              '✨','🌙','☀️','🌤️','⛅','🌦️','❄️','🚀','🛸','🎡','🎢','🎠','🔥','💖','🌈','⚡'
-            ];
-
-            const state = {
-              mode: 'basic',
-              timerValue: 30,
-              totalTime: 30,
-              questionInfo: { number: 1 },
-              countdownStyle: 'circular',
-              gameModeTimers: { keypad: 30, buzzin: 30, nearestwins: 10 },
-              gameMode: 'keypad',
-              emojiInterval: null,
-              decorativeIcons: [
-                { emoji: '🎯', top: '-1rem', left: '-1rem' },
-                { emoji: '🌟', top: '1.5rem', right: '-2rem' },
-                { emoji: '🏆', bottom: '3rem', right: '-3rem' },
-                { emoji: '🎵', bottom: '-2rem', left: '-2rem' }
-              ]
-            };
-
-            function renderContent() {
-              const root = document.getElementById('root');
-
-              if (state.mode === 'timer') {
-                return renderTimer();
-              } else if (state.mode === 'question') {
-                return renderQuestion();
-              } else if (state.mode === 'correctAnswer') {
-                return renderCorrectAnswer();
-              } else if (state.mode === 'fastestTeam') {
-                return renderFastestTeam();
-              } else if (state.mode === 'questionWaiting') {
-                return renderQuestionWaiting();
-              } else {
-                return renderBasic();
-              }
-            }
-
-            function getRandomEmoji() {
-              return emojis[Math.floor(Math.random() * emojis.length)];
-            }
-
-            function spawnEmoji() {
-              const emoji = getRandomEmoji();
-              const randomLeft = Math.random() * 80 + 10; // 10% to 90%
-
-              const emojiEl = document.createElement('div');
-              emojiEl.className = 'falling-emoji';
-              emojiEl.textContent = emoji;
-              emojiEl.style.left = randomLeft + '%';
-              emojiEl.style.top = '-100px';
-              emojiEl.style.animation = 'fall ' + (4 + Math.random() * 2) + 's linear forwards';
-              emojiEl.style.animationDelay = '0s';
-
-              const container = document.querySelector('[data-emoji-container]');
-              if (container) {
-                container.appendChild(emojiEl);
-                setTimeout(() => emojiEl.remove(), 6000);
-              }
-            }
-
-            function renderBasic() {
-              const hue = (Date.now() / 50) % 360;
-              const bgColor = 'hsl(' + hue + ', 85%, 60%)';
-
-              const decorativeHTML = state.decorativeIcons.map(icon => {
-                const posStyle = icon.top ? 'top: ' + icon.top + ';' : '';
-                const posStyle2 = icon.bottom ? 'bottom: ' + icon.bottom + ';' : '';
-                const posStyle3 = icon.left ? 'left: ' + icon.left + ';' : '';
-                const posStyle4 = icon.right ? 'right: ' + icon.right + ';' : '';
-                return '<div class="decorative-icon" style="' + posStyle + posStyle2 + posStyle3 + posStyle4 + '">' + icon.emoji + '</div>';
-              }).join('');
-
-              return \`
-                <div data-emoji-container style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: \${bgColor}; position: relative; overflow: hidden;">
-                  <div style="text-align: center; position: relative; z-index: 10; transform: rotate(-6deg);">
-                    <div style="background-color: #f97316; color: black; padding: 64px 80px; border-radius: 16px; box-shadow: 0 25px 50px rgba(0,0,0,0.4); border: 6px solid white; transform: rotate(3deg); position: relative;">
-                      <h1 style="font-size: clamp(3rem, 15vw, 14rem); font-weight: 900; letter-spacing: 0.1em; margin: 0; line-height: 0.85; text-shadow: 0 4px 6px rgba(0,0,0,0.2);">POP</h1>
-                      <h2 style="font-size: clamp(3rem, 15vw, 14rem); font-weight: 900; letter-spacing: 0.1em; margin: 0; line-height: 0.85; text-shadow: 0 4px 6px rgba(0,0,0,0.2);">QUIZ!</h2>
-                      \${decorativeHTML}
-                    </div>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function renderQuestion() {
-              const question = state.data?.text || 'No question';
-              const options = state.data?.options || [];
-              const questionNumber = state.questionInfo?.number || 1;
-
-              const optionsHTML = options.map((option, idx) => {
-                return '<div style="background-color: #3498db; color: white; padding: 16px 24px; border-radius: 8px; margin: 8px 0; font-size: 20px; font-weight: 500;">' + option + '</div>';
-              }).join('');
-
-              return \`
-                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #2c3e50;">
-                  <div style="text-align: center; margin-bottom: 32px;">
-                    <h1 style="font-size: 48px; font-weight: bold; color: #ecf0f1;">Question \${questionNumber}</h1>
-                  </div>
-                  <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; justify-content: center;">
-                    <div style="background-color: #34495e; border-radius: 16px; padding: 48px; margin-bottom: 32px;">
-                      <h2 style="font-size: 36px; font-weight: 600; color: #ecf0f1; text-align: center; margin-bottom: 24px; word-wrap: break-word;">\${question}</h2>
-                      \${optionsHTML ? '<div style="margin-top: 32px;">' + optionsHTML + '</div>' : ''}
-                    </div>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function renderCorrectAnswer() {
-              const answer = state.data?.correctAnswer || 'No answer';
-              const questionNumber = state.questionInfo?.number || 1;
-              const stats = state.data?.stats || { correct: 0, wrong: 0, noAnswer: 0 };
-
-              return \`
-                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #2c3e50;">
-                  <div style="text-align: center; margin-bottom: 32px;">
-                    <h1 style="font-size: 48px; font-weight: bold; color: #ecf0f1;">Question \${questionNumber} • Answer Revealed</h1>
-                  </div>
-                  <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
-                    <div style="background-color: #34495e; border-radius: 16px; padding: 48px; margin-bottom: 32px; text-align: center;">
-                      <h2 style="font-size: 32px; color: #95a5a6; margin-bottom: 16px;">The Correct Answer Is:</h2>
-                      <div style="font-size: 48px; font-weight: bold; color: #f39c12; word-wrap: break-word;">\${answer}</div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
-                      <div style="background-color: #27ae60; border-radius: 12px; padding: 24px; text-align: center;">
-                        <div style="font-size: 36px; font-weight: bold; color: white;">\${stats.correct}</div>
-                        <div style="font-size: 16px; color: rgba(255,255,255,0.8); margin-top: 8px;">Teams Correct</div>
-                      </div>
-                      <div style="background-color: #e74c3c; border-radius: 12px; padding: 24px; text-align: center;">
-                        <div style="font-size: 36px; font-weight: bold; color: white;">\${stats.wrong}</div>
-                        <div style="font-size: 16px; color: rgba(255,255,255,0.8); margin-top: 8px;">Teams Wrong</div>
-                      </div>
-                      <div style="background-color: #95a5a6; border-radius: 12px; padding: 24px; text-align: center;">
-                        <div style="font-size: 36px; font-weight: bold; color: white;">\${stats.noAnswer}</div>
-                        <div style="font-size: 16px; color: rgba(255,255,255,0.8); margin-top: 8px;">No Answer</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function renderFastestTeam() {
-              const team = state.data?.fastestTeam;
-              const teamName = team?.name || 'TBD';
-              const responseTime = state.data?.responseTime || 0;
-              const questionNumber = state.questionInfo?.number || 1;
-
-              return \`
-                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #2c3e50;">
-                  <div style="text-align: center; margin-bottom: 32px;">
-                    <h1 style="font-size: 48px; font-weight: bold; color: #ecf0f1;">Question \${questionNumber} • Fastest Team</h1>
-                  </div>
-                  <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                    <div style="background: linear-gradient(135deg, #f39c12, #e67e22); border-radius: 16px; padding: 64px 80px; text-align: center; box-shadow: 0 25px 50px rgba(0,0,0,0.4);">
-                      <h2 style="font-size: 32px; color: white; margin-bottom: 24px; opacity: 0.9;">Fastest Correct Answer</h2>
-                      <div style="font-size: 64px; font-weight: 900; color: white; margin-bottom: 24px; word-wrap: break-word;">\${teamName}</div>
-                      <div style="font-size: 24px; color: white; opacity: 0.8;">Response Time: \${responseTime}ms</div>
-                    </div>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function renderQuestionWaiting() {
-              const questionNumber = state.data?.questionInfo?.number || 1;
-
-              return \`
-                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: #f1c40f;">
-                  <div style="text-align: center;">
-                    <h1 style="font-size: 96px; font-weight: 900; color: #1f2937; margin: 0; line-height: 1;">Question \${questionNumber}</h1>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function renderTimer() {
-              const timerValue = state.timerValue || 0;
-              const totalTime = state.totalTime || (state.gameModeTimers && state.gameModeTimers[state.gameMode]) || 30;
-              const question = state.questionInfo?.number || 1;
-              const progress = timerValue / totalTime;
-              const circumference = 2 * Math.PI * 45;
-              const strokeOffset = circumference * (1 - progress);
-
-              return \`
-                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; padding: 32px; background-color: #f1c40f;">
-                  <div style="text-align: center; margin-bottom: 32px;">
-                    <h1 style="font-size: 48px; font-weight: bold; color: #1f2937;">Question \${question} • Timer</h1>
-                  </div>
-                  <div style="flex: 1; background-color: #1f2937; border-radius: 24px; padding: 48px; display: flex; align-items: center; justify-content: center; position: relative;">
-                    <svg style="width: 30rem; height: 30rem; transform: rotate(-90deg); position: absolute;" viewBox="0 0 100 100">
-                      <circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.1)" stroke-width="8" fill="none" />
-                      <circle cx="50" cy="50" r="45" stroke="#e74c3c" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="\${circumference}" stroke-dashoffset="\${strokeOffset}" style="transition: stroke-dashoffset 1s linear;" />
-                    </svg>
-                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; z-index: 10;">
-                      <div style="font-size: 12rem; font-weight: bold; color: #ef4444; line-height: 0.9;">\${timerValue}</div>
-                      <div style="font-size: 24px; color: white; margin-top: 8px;">seconds</div>
-                    </div>
-                  </div>
-                </div>
-              \`;
-            }
-
-            function render() {
-              const root = document.getElementById('root');
-              const content = renderContent();
-
-              root.innerHTML = \`
-                <div style="height: 100vh; width: 100vw; background-color: #111827; display: flex; flex-direction: column;">
-                  <div style="background-color: #374151; padding: 12px; flex: 0 0 auto;">
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                      <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 12px; height: 12px; border-radius: 50%; background-color: #f97316; animation: pulse 2s infinite;"></div>
-                        <span style="font-size: 14px; font-weight: 600; color: white;">EXTERNAL DISPLAY</span>
-                        <span style="font-size: 12px; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; font-weight: 500; background-color: #f97316; color: white;">\${state.mode}</span>
-                      </div>
-                      <div style="font-size: 12px; color: #9ca3af;">1920x1080 • 16:9</div>
-                    </div>
-                  </div>
-                  <div style="flex: 1; background-color: black; position: relative; overflow: hidden;">
-                    \${content}
-                    <div style="position: absolute; bottom: 16px; right: 16px; font-size: 12px; color: white; opacity: 0.3; font-family: monospace;">EXT-1</div>
-                  </div>
-                </div>
-              \`;
-
-              // Start/stop emoji animation based on mode
-              if (state.mode === 'basic') {
-                if (!state.emojiInterval) {
-                  spawnEmoji(); // Spawn one immediately
-                  state.emojiInterval = setInterval(spawnEmoji, 2000);
-                }
-              } else {
-                if (state.emojiInterval) {
-                  clearInterval(state.emojiInterval);
-                  state.emojiInterval = null;
-                }
-              }
-            }
-
-            window.addEventListener('message', (event) => {
-              if (event.data?.type === 'DISPLAY_UPDATE') {
-                const wasTimerMode = state.mode === 'timer';
-                state.mode = event.data.mode || 'basic';
-
-                // Extract timerValue from either top-level or nested data
-                const incomingTimerValue = event.data.timerValue !== undefined ? event.data.timerValue : event.data.data?.timerValue;
-                if (incomingTimerValue !== undefined) {
-                  state.timerValue = incomingTimerValue;
-                  // Only update totalTime when transitioning to timer mode or if totalTime hasn't been set yet
-                  if (!wasTimerMode && state.mode === 'timer') {
-                    state.totalTime = incomingTimerValue;
-                  }
-                }
-
-                // Store all data from the message
-                state.data = event.data.data || {};
-                state.questionInfo = event.data.questionInfo || state.questionInfo || { number: 1 };
-                state.countdownStyle = event.data.countdownStyle || 'circular';
-                state.gameModeTimers = event.data.gameModeTimers || state.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 };
-                state.gameMode = event.data.gameMode || 'keypad';
-                render();
-              }
-            });
-
-            // Initial render
-            render();
-
-            // Auto-update timer every second
-            const timerUpdateInterval = setInterval(() => {
-              if (state.mode === 'timer') {
-                if (state.timerValue > 0) {
-                  state.timerValue--;
-                } else {
-                  state.timerValue = 0;
-                }
-                render();
-              }
-            }, 1000);
+            // External display handler
           </script>
         </body>
         </html>
@@ -1731,46 +1669,29 @@ export function QuizHost() {
       newWindow.document.write(htmlContent);
       newWindow.document.close();
 
-      const checkClosed = setInterval(() => {
-        if (newWindow.closed) {
-          clearInterval(checkClosed);
-          setExternalWindow(null);
-          setIsExternalDisplayOpen(false);
-        }
-      }, 1000);
-
       setTimeout(() => {
         updateExternalDisplay(newWindow, displayMode);
-      }, 1000);
+      }, 800);
+    } else {
+      alert('Please allow popups for this site to enable external display.');
     }
   };
 
-
- const openExternalDisplaySimple = () => {
-  if (externalWindow && !externalWindow.closed) {
-    externalWindow.focus();
-    return;
-  }
-
-  if (externalWindow && externalWindow.closed) {
-    setExternalWindow(null);
-    setIsExternalDisplayOpen(false);
-  }
-
-  try {
-    // Ensure a clean app reload instead of duplicating current route
-    const fullUrl = `${window.location.origin}${window.location.pathname}?external=1`;
-
-    let newWindow = null;
-    try {
-      newWindow = window.open(
-        fullUrl,
-        'externalDisplay',
-        'width=1920,height=1080,scrollbars=no,resizable=yes,status=no,location=no,toolbar=no,menubar=no'
-      );
-    } catch (e) {
-      console.warn('Popup blocked or failed to open directly', e);
+  const openExternalDisplaySimple = (): void => {
+    if (externalWindow && !externalWindow.closed) {
+      externalWindow.focus();
+      return;
     }
+    if (externalWindow && externalWindow.closed) {
+      setExternalWindow(null);
+      setIsExternalDisplayOpen(false);
+    }
+
+    const newWindow = window.open(
+      'about:blank',
+      'externalDisplay',
+      'width=1920,height=1080,scrollbars=no,resizable=yes,status=no,location=no,toolbar=no,menubar=no'
+    );
 
     if (!newWindow) {
       alert('Please allow popups for this site to enable external display.');
@@ -1791,15 +1712,7 @@ export function QuizHost() {
     setTimeout(() => {
       updateExternalDisplay(newWindow, displayMode);
     }, 800);
-  } catch (err) {
-    console.error('openExternalDisplaySimple error', err);
-  }
-};
-
-
-
- 
-
+  };
 
   const closeExternalDisplay = () => {
     if (externalWindow) {
@@ -1840,10 +1753,9 @@ export function QuizHost() {
       gameModeTimers: gameModeTimers,
       questionInfo: data?.questionInfo || {
         number: currentQuestionIndex + 1,
-        type: 'Multiple Choice', // This could be made dynamic based on question data
+        type: 'Multiple Choice',
         total: mockQuestions.length
       },
-      // Nearest wins specific data
       targetNumber: mode.includes('nearest-wins') ? data?.targetNumber : undefined,
       questionNumber: mode.includes('nearest-wins') ? data?.questionNumber : undefined,
       results: mode === 'nearest-wins-results' ? data?.results : undefined,
@@ -1856,7 +1768,6 @@ export function QuizHost() {
   const handleExternalDisplayUpdate = useCallback((content: string, data?: any) => {
     console.log('QuizHost: handleExternalDisplayUpdate called with', { content, data });
     
-    // Convert content to displayMode and update external display
     if (externalWindow && !externalWindow.closed) {
       const messageData = {
         type: 'DISPLAY_UPDATE',
@@ -1874,30 +1785,24 @@ export function QuizHost() {
         gameMode: getCurrentGameMode(),
         gameModeTimers: gameModeTimers,
         
-        // Question info
         questionInfo: content === 'question' ? data?.questionInfo : {
           number: currentQuestionIndex + 1,
           type: 'Multiple Choice',
           total: mockQuestions.length
         },
         
-        // Basic display data for all modes
         currentMode: content,
         
-        // Nearest wins specific data
         targetNumber: content.includes('nearest-wins') ? data?.targetNumber : undefined,
         questionNumber: content.includes('nearest-wins') ? data?.questionNumber : undefined,
         results: content === 'nearest-wins-results' ? data?.results : undefined,
         answerRevealed: content === 'nearest-wins-results' ? data?.answerRevealed : undefined,
         gameInfo: content.includes('nearest-wins') ? data?.gameInfo : undefined,
         
-        // Wheel spinner specific data
         wheelSpinnerData: content === 'wheel-spinner' ? data : undefined,
         
-        // Team welcome data
         teamName: content === 'team-welcome' ? data?.teamName : undefined,
         
-        // Reset flag for clean transitions
         isReset: content === 'basic'
       };
       
@@ -1974,7 +1879,11 @@ export function QuizHost() {
                 sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
                 break;
               case 'random':
-                // Don't re-sort in random mode to maintain the randomized order
+                // Fisher-Yates shuffle algorithm for proper randomization
+                for (let i = sortedTeams.length - 1; i > 0; i--) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [sortedTeams[i], sortedTeams[j]] = [sortedTeams[j], sortedTeams[i]];
+                }
                 break;
               case 'default':
               default:
@@ -1986,109 +1895,23 @@ export function QuizHost() {
           return sortedTeams;
         });
         setPendingSort(false);
-      }, 500); // 500ms delay
+      }, 500);
       
       return newQuizzes;
     });
-  }, [scoresPaused, scoresHidden, teamLayoutMode]);
+  }, [teamLayoutMode, scoresHidden, scoresPaused]);
 
-  // Handle awarding points to teams that answered correctly
-  const handleAwardPoints = useCallback((correctTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner", fastestTeamId?: string, teamResponseTimes?: {[teamId: string]: number}) => {
-    // For keypad mode, use current round scores (fallback to defaults if null); for nearest wins mode, use winner points; for other modes, use game mode defaults
-    const points = gameMode === 'keypad' ? (currentRoundPoints ?? defaultPoints) : 
-                   gameMode === 'nearestwins' ? (currentRoundWinnerPoints ?? 30) :
-                   gameModePoints[gameMode];
-    const speedBonus = gameMode === 'keypad' ? (currentRoundSpeedBonus ?? defaultSpeedBonus) : defaultSpeedBonus;
-
-    if (staggeredEnabled && teamResponseTimes && speedBonus > 0) {
-      // Staggered points system: award decreasing bonus points based on speed ranking
-      
-      // Filter to only correct teams that have response times
-      const correctTeamsWithTimes = correctTeamIds
-        .filter(teamId => teamResponseTimes[teamId] !== undefined)
-        .map(teamId => ({
-          teamId,
-          responseTime: teamResponseTimes[teamId]
-        }))
-        .sort((a, b) => a.responseTime - b.responseTime); // Sort by response time (fastest first)
-      
-      correctTeamsWithTimes.forEach((team, index) => {
-        let pointsToAward = points; // Base points for correct answer
-        
-        // Calculate staggered speed bonus
-        const staggeredBonus = Math.max(0, speedBonus - index);
-        pointsToAward += staggeredBonus;
-        
-        handleScoreChange(team.teamId, pointsToAward);
-        console.log(`Awarded ${pointsToAward} points to team ${team.teamId} (${points} base + ${staggeredBonus} staggered speed bonus, rank ${index + 1})`);
-      });
-      
-      // Award base points to any correct teams that don't have response times
-      const teamsWithoutTimes = correctTeamIds.filter(teamId => !teamResponseTimes[teamId]);
-      teamsWithoutTimes.forEach(teamId => {
-        handleScoreChange(teamId, points);
-        console.log(`Awarded ${points} points to team ${teamId} (${points} base points only - no response time)`);
-      });
-      
-    } else {
-      // Standard points system (non-staggered)
-      correctTeamIds.forEach(teamId => {
-        let pointsToAward = points;
-        
-        // Award speed bonus to the fastest team if applicable
-        if (fastestTeamId === teamId && speedBonus > 0) {
-          pointsToAward += speedBonus;
-        }
-        
-        handleScoreChange(teamId, pointsToAward);
-        console.log(`Awarded ${pointsToAward} points to team ${teamId} (${points} base ${fastestTeamId === teamId ? `+ ${speedBonus} speed bonus` : ''})`);
-      });
-    }
-  }, [gameModePoints, defaultSpeedBonus, currentRoundPoints, currentRoundSpeedBonus, currentRoundWinnerPoints, staggeredEnabled, handleScoreChange, defaultPoints]);
-
-  // Handle Evil Mode penalties for teams that answered incorrectly or didn't answer
-  const handleEvilModePenalty = useCallback((wrongTeamIds: string[], noAnswerTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner") => {
-    // Get the penalty amount (same as the points value for the game mode)
-    const penaltyPoints = gameMode === 'keypad' ? (currentRoundPoints ?? defaultPoints) : 
-                         gameMode === 'nearestwins' ? (currentRoundWinnerPoints ?? 30) :
-                         gameModePoints[gameMode];
-
-    if (evilModeEnabled) {
-      // Penalize teams that gave wrong answers
-      wrongTeamIds.forEach(teamId => {
-        handleScoreChange(teamId, -penaltyPoints);
-        console.log(`Evil Mode: Deducted ${penaltyPoints} points from team ${teamId} for wrong answer`);
-      });
-
-      // If both Evil Mode and Punishment Mode are enabled, also penalize teams that didn't answer
-      if (punishmentEnabled) {
-        noAnswerTeamIds.forEach(teamId => {
-          handleScoreChange(teamId, -penaltyPoints);
-          console.log(`Evil Mode + Punishment: Deducted ${penaltyPoints} points from team ${teamId} for no answer`);
-        });
-      }
-    }
-  }, [evilModeEnabled, punishmentEnabled, currentRoundPoints, defaultPoints, currentRoundWinnerPoints, gameModePoints, handleScoreChange]);
-
-  // Handle Fast Track - puts team in first place with 1 point lead
-  const handleFastTrack = useCallback((teamId: string) => {
+  const handleScoreSet = useCallback((teamId: string, newScore: number) => {
     // Check if scores are paused
     if (scoresPaused) {
-      console.log(`Scores are paused. Ignoring Fast Track for team ${teamId}`);
+      console.log(`Scores are paused. Cannot set score for team ${teamId}`);
       return;
     }
     
     setQuizzes(prevQuizzes => {
-      // Find the highest score
-      const highestScore = Math.max(...prevQuizzes.map(quiz => quiz.score || 0));
-      
-      // Set the fast tracked team's score to highest + 1
-      const newQuizzes = prevQuizzes.map(quiz => {
-        if (quiz.id === teamId) {
-          return { ...quiz, score: highestScore + 1 };
-        }
-        return quiz;
-      });
+      const newQuizzes = prevQuizzes.map(quiz =>
+        quiz.id === teamId ? { ...quiz, score: newScore } : quiz
+      );
       
       // Set pending sort state for visual feedback
       setPendingSort(true);
@@ -2113,7 +1936,11 @@ export function QuizHost() {
                 sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
                 break;
               case 'random':
-                // Don't re-sort in random mode to maintain the randomized order
+                // Fisher-Yates shuffle algorithm for proper randomization
+                for (let i = sortedTeams.length - 1; i > 0; i--) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [sortedTeams[i], sortedTeams[j]] = [sortedTeams[j], sortedTeams[i]];
+                }
                 break;
               case 'default':
               default:
@@ -2125,67 +1952,11 @@ export function QuizHost() {
           return sortedTeams;
         });
         setPendingSort(false);
-      }, 500); // 500ms delay
+      }, 500);
       
       return newQuizzes;
     });
-  }, [scoresPaused, scoresHidden, teamLayoutMode]);
-
-  const handleScoreSet = (teamId: string, newScore: number) => {
-    // Check if scores are paused
-    if (scoresPaused) {
-      console.log(`Scores are paused. Ignoring score set to ${newScore} for team ${teamId}`);
-      return;
-    }
-    
-    setQuizzes(prevQuizzes => {
-      const newQuizzes = prevQuizzes.map(quiz => {
-        if (quiz.id === teamId) {
-          return { ...quiz, score: newScore };
-        }
-        return quiz;
-      });
-      
-      // Set pending sort state for visual feedback
-      setPendingSort(true);
-      
-      // Clear existing timeout
-      if (sortTimeoutRef.current) {
-        clearTimeout(sortTimeoutRef.current);
-      }
-      
-      // Set timeout to sort and clear pending state
-      sortTimeoutRef.current = setTimeout(() => {
-        setQuizzes(currentQuizzes => {
-          const sortedTeams = [...currentQuizzes];
-          
-          if (scoresHidden) {
-            // Sort alphabetically when scores are hidden
-            sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
-          } else {
-            // Sort based on current team layout mode when scores are visible
-            switch (teamLayoutMode) {
-              case 'alphabetical':
-                sortedTeams.sort((a, b) => a.name.localeCompare(b.name));
-                break;
-              case 'random':
-                // Don't re-sort in random mode to maintain the randomized order
-                break;
-              case 'default':
-              default:
-                sortedTeams.sort((a, b) => (b.score || 0) - (a.score || 0));
-                break;
-            }
-          }
-          
-          return sortedTeams;
-        });
-        setPendingSort(false);
-      }, 500); // 500ms delay
-      
-      return newQuizzes;
-    });
-  };
+  }, [teamLayoutMode, scoresHidden, scoresPaused]);
 
   const handleNameChange = (teamId: string, newName: string) => {
     setQuizzes(prevQuizzes => 
@@ -2374,52 +2145,29 @@ export function QuizHost() {
     setQuizzes(prevQuizzes => 
       prevQuizzes.map(quiz => 
         quiz.id === teamId 
-          ? { ...quiz, blocked: blocked }
+          ? { ...quiz, blocked }
           : quiz
       )
     );
-    console.log(`Team ${teamId} has been ${blocked ? 'blocked' : 'unblocked'} from earning points`);
+    console.log(`Team ${teamId} has been ${blocked ? 'blocked' : 'unblocked'}`);
   };
 
-  // Handle scramble keypad
+  // Handle scramble team keypad
   const handleScrambleKeypad = (teamId: string) => {
-    console.log(`ðŸ”€ handleScrambleKeypad called for team ${teamId}`);
-    
-    setQuizzes(prevQuizzes => {
-      console.log('ðŸ”��� Previous quizzes state:', prevQuizzes.map(q => ({ id: q.id, name: q.name, scrambled: q.scrambled })));
-      
-      const targetTeam = prevQuizzes.find(q => q.id === teamId);
-      if (!targetTeam) {
-        console.error(`ðŸ”€ Team ${teamId} not found in quizzes array`);
-        return prevQuizzes;
-      }
-      
-      console.log(`ðŸ”€ Target team ${teamId} current scrambled state:`, targetTeam.scrambled);
-      
-      const updatedQuizzes = prevQuizzes.map(quiz => {
-        if (quiz.id === teamId) {
-          // Create a completely new object to ensure React detects the change
-          const newScrambledState = !quiz.scrambled;
-          console.log(`ðŸ”€ Updating team ${teamId} (${quiz.name}) scrambled from ${quiz.scrambled} to ${newScrambledState}`);
-          return { ...quiz, scrambled: newScrambledState };
-        }
-        return quiz;
-      });
-      
-      // Debug logging
-      const updatedTeam = updatedQuizzes.find(q => q.id === teamId);
-      console.log(`ðŸ”€ After update - team ${teamId} scrambled state:`, updatedTeam?.scrambled);
-      console.log('ðŸ”€ All teams scrambled states after update:', updatedQuizzes.map(q => ({ id: q.id, name: q.name, scrambled: q.scrambled })));
-      
-      return updatedQuizzes;
-    });
+    setQuizzes(prevQuizzes => 
+      prevQuizzes.map(quiz => 
+        quiz.id === teamId 
+          ? { ...quiz, scrambled: !quiz.scrambled }
+          : quiz
+      )
+    );
+    console.log(`Team ${teamId}'s keypad has been ${quizzes.find(q => q.id === teamId)?.scrambled ? 'unscrambled' : 'scrambled'}`);
   };
 
-  // Handle global scramble keypad for all teams
+  // Handle global scramble keypad
   const handleGlobalScrambleKeypad = () => {
-    // Check current state of teams
-    const scrambledTeams = quizzes.filter(quiz => quiz.scrambled).length;
     const totalTeams = quizzes.length;
+    const scrambledTeams = quizzes.filter(team => team.scrambled).length;
     
     // If more than half are scrambled, unscramble all
     // If half or less are scrambled, scramble all
@@ -2444,8 +2192,6 @@ export function QuizHost() {
   // Handle hot swap
   const handleHotSwap = (teamId: string) => {
     console.log(`Hot swapping device for team ${teamId}`);
-    // This will be implemented when device connection logic is added
-    // For now, just log the action
   };
 
   // Clear all team scores
@@ -2615,8 +2361,8 @@ export function QuizHost() {
               teams={quizzes}
               onTeamAnswerUpdate={handleTeamAnswerUpdate}
               onTeamResponseTimeUpdate={handleTeamResponseTimeUpdate}
-              onAwardPoints={handleAwardPoints}
-              onEvilModePenalty={handleEvilModePenalty}
+              onAwardPoints={handleScoreChange}
+              onEvilModePenalty={handleScoreChange}
               currentRoundPoints={currentRoundPoints}
               currentRoundSpeedBonus={currentRoundSpeedBonus}
               onCurrentRoundPointsChange={handleCurrentRoundPointsChange}
@@ -2624,7 +2370,7 @@ export function QuizHost() {
               onFastestTeamReveal={handleFastestTeamReveal}
               triggerNextQuestion={keypadNextQuestionTrigger}
               onAnswerStatusUpdate={handleTeamAnswerStatusUpdate}
-              onFastTrack={handleFastTrack}
+              onFastTrack={handleScoreChange}
               loadedQuestions={loadedQuizQuestions}
               currentQuestionIndex={currentLoadedQuestionIndex}
               isQuizPackMode={isQuizPackMode}
@@ -2671,10 +2417,11 @@ export function QuizHost() {
       return (
         <div className="flex-1 overflow-hidden">
           <BuzzInInterface 
-            quizzes={quizzes}
+            teams={quizzes}
+            onStartMode={handleBuzzInStart}
             onClose={handleBuzzInClose}
-            onEndRound={handleEndRound}
-            onAwardPoints={handleAwardPoints}
+            externalWindow={externalWindow}
+            onExternalDisplayUpdate={handleExternalDisplayUpdate}
           />
         </div>
       );
@@ -2684,18 +2431,14 @@ export function QuizHost() {
     if (showNearestWinsInterface) {
       return (
         <div className="flex-1 overflow-hidden">
-          <NearestWinsInterface 
-            onBack={() => {
-              setShowNearestWinsInterface(false);
-              setActiveTab("home");
-            }}
-            onDisplayUpdate={handleExternalDisplayUpdate}
+          <NearestWinsInterface
             teams={quizzes}
-            onTeamAnswerUpdate={handleTeamAnswerUpdate}
-            onAwardPoints={handleAwardPoints}
+            onClose={handleNearestWinsClick}
             currentRoundWinnerPoints={currentRoundWinnerPoints}
-            onCurrentRoundWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
+            onWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
             externalWindow={externalWindow}
+            onExternalDisplayUpdate={handleExternalDisplayUpdate}
+            onAwardPoints={handleScoreChange}
           />
         </div>
       );
@@ -2705,19 +2448,18 @@ export function QuizHost() {
     if (showWheelSpinnerInterface) {
       return (
         <div className="flex-1 overflow-hidden">
-          <WheelSpinnerInterface 
-            quizzes={quizzes}
-            onBack={handleWheelSpinnerClose}
-            onHome={() => setActiveTab("home")}
-            onAwardPoints={handleAwardPoints}
+          <WheelSpinnerInterface
+            teams={quizzes}
+            onClose={handleWheelSpinnerClose}
             externalWindow={externalWindow}
             onExternalDisplayUpdate={handleExternalDisplayUpdate}
+            onAwardPoints={handleScoreChange}
           />
         </div>
       );
     }
 
-    // Show buzzers management in center when active
+    // Show buzzers management when active
     if (showBuzzersManagement) {
       return (
         <div className="flex-1 overflow-hidden">
@@ -2849,6 +2591,9 @@ export function QuizHost() {
             scoresHidden={scoresHidden}
             teamAnswerStatuses={teamAnswerStatuses}
             teamCorrectRankings={teamCorrectRankings}
+            pendingTeams={pendingTeams}
+            onApprovePendingTeam={handleApproveTeam}
+            onDeclinePendingTeam={handleDeclineTeam}
           />
         </Resizable>
 
@@ -3024,7 +2769,7 @@ export function QuizHost() {
       {/* Next Question Button - appears at bottom right when fastest team display is shown */}
       {showFastestTeamDisplay && (
         <div className="fixed bottom-20 right-6 z-50">
-          <Button 
+          <Button
             className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
             onClick={() => {
               // Close fastest team display and trigger next question in KeypadInterface

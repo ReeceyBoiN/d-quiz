@@ -26,13 +26,63 @@ async function boot() {
 
   const isDev = !!process.env.VITE_DEV_SERVER_URL || !app.isPackaged;
 
-  // Start HTTP + WS backend only in dev or when explicitly enabled
+  // Always start the backend server for network player functionality
   let backend = null;
-  if (isDev || process.env.POPQUIZ_ENABLE_BACKEND === '1') {
-    backend = await startBackend({ port: process.env.BACKEND_PORT || 4310 });
-    process.env.BACKEND_URL = `http://127.0.0.1:${backend.port}`;
-    process.env.BACKEND_WS = `ws://127.0.0.1:${backend.port}`;
+  let port = process.env.BACKEND_PORT || 4310;
+
+  // Helper to get local IP address for network access
+  const getLocalIPAddress = () => {
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+    log.info('[IP Detection] Available network interfaces:', Object.keys(interfaces));
+
+    for (const name of Object.keys(interfaces)) {
+      const ifaces = interfaces[name] || [];
+      log.info(`[IP Detection] ${name}:`, ifaces.map(i => ({ family: i.family, address: i.address, internal: i.internal })));
+
+      for (const iface of ifaces) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          log.info(`[IP Detection] Selected IP: ${iface.address} from ${name}`);
+          return iface.address;
+        }
+      }
+    }
+
+    log.warn('[IP Detection] No external IPv4 address found, using localhost');
+    return 'localhost';
+  };
+
+  const localIP = getLocalIPAddress();
+
+  try {
+    backend = await startBackend({ port });
+    process.env.BACKEND_URL = `http://${localIP}:${backend.port}`;
+    process.env.BACKEND_WS = `ws://${localIP}:${backend.port}/events`;
+    log.info(`✅ Backend server started successfully on port ${backend.port}`);
+    log.info(`📍 Local IP: ${localIP}`);
+    log.info(`🌐 Network access URL: http://${localIP}:${backend.port}`);
+    log.info(`🔌 WebSocket URL: ws://${localIP}:${backend.port}/events`);
+    log.info(`📌 Environment variables set: BACKEND_URL=${process.env.BACKEND_URL}, BACKEND_WS=${process.env.BACKEND_WS}`);
+  } catch (err) {
+    if (err.code === 'EADDRINUSE') {
+      log.warn(`Port ${port} is in use, trying port ${port + 1}`);
+      try {
+        backend = await startBackend({ port: port + 1 });
+        process.env.BACKEND_URL = `http://${localIP}:${backend.port}`;
+        process.env.BACKEND_WS = `ws://${localIP}:${backend.port}/events`;
+        log.info(`Backend server started on fallback port ${backend.port}`);
+        log.info(`Network access URL: http://${localIP}:${backend.port}`);
+        log.info(`WebSocket URL: ws://${localIP}:${backend.port}/events`);
+      } catch (err2) {
+        log.error('Failed to start backend server on any port:', err2.message);
+      }
+    } else {
+      log.error('Failed to start backend server:', err.message);
+    }
   }
+
+  // Store backend reference for IPC access
+  global.backend = backend;
 
   // Create window
   mainWindow = createMainWindow();
@@ -46,6 +96,39 @@ async function boot() {
   router.mount('app/ready', async () => ({ ok: true, version: app.getVersion() }));
   router.mount('quiz/start', require('../modules/quizEngine').startQuiz);
   router.mount('quiz/score', require('../modules/scoring').scoreAttempt);
+
+  // Network player management endpoints
+  router.mount('network/pending-teams', async () => {
+    if (!backend || !backend.getPendingTeams) {
+      return [];
+    }
+    return backend.getPendingTeams();
+  });
+
+  router.mount('network/all-players', async () => {
+    if (!backend || !backend.getAllNetworkPlayers) {
+      return [];
+    }
+    return backend.getAllNetworkPlayers();
+  });
+
+  router.mount('network/approve-team', async (payload) => {
+    if (!backend || !backend.approveTeam) {
+      throw new Error('Backend not initialized');
+    }
+    const { deviceId, teamName } = payload;
+    backend.approveTeam(deviceId, teamName);
+    return { approved: true };
+  });
+
+  router.mount('network/decline-team', async (payload) => {
+    if (!backend || !backend.declineTeam) {
+      throw new Error('Backend not initialized');
+    }
+    const { deviceId, teamName } = payload;
+    backend.declineTeam(deviceId, teamName);
+    return { declined: true };
+  });
   
   // Open user's Documents/PopQuiz/Question Packs; create it if missing
   router.mount('app/open-from-file', async () => {

@@ -22,7 +22,9 @@ export type NetworkMessageType =
   | 'SCORES'
   | 'NEXT'
   | 'END_ROUND'
-  | 'ANSWER';  // incoming from players
+  | 'ANSWER'  // incoming from players
+  | 'PLAYER_JOIN'
+  | 'PLAYER_DISCONNECT';
 
 export interface NetworkPayload {
   type: NetworkMessageType;
@@ -38,6 +40,7 @@ class HostNetwork {
   private enabled = false;
   private port = 8787;
   private listeners: Map<NetworkMessageType, Array<(data: any) => void>> = new Map();
+  private networkPlayers: Map<string, { teamName: string; timestamp: number }> = new Map();
 
   /**
    * Initialize host network (called once on app start).
@@ -180,6 +183,45 @@ class HostNetwork {
       data: { scores },
     });
   }
+
+  /**
+   * Register a player from the network.
+   */
+  public registerNetworkPlayer(playerId: string, teamName: string) {
+    this.networkPlayers.set(playerId, { teamName, timestamp: Date.now() });
+    this.broadcast({
+      type: 'PLAYER_JOIN',
+      data: { playerId, teamName },
+    });
+  }
+
+  /**
+   * Unregister a network player.
+   */
+  public unregisterNetworkPlayer(playerId: string) {
+    this.networkPlayers.delete(playerId);
+    this.broadcast({
+      type: 'PLAYER_DISCONNECT',
+      data: { playerId },
+    });
+  }
+
+  /**
+   * Get all registered network players.
+   */
+  public getNetworkPlayers(): Array<{ id: string; teamName: string; timestamp: number }> {
+    return Array.from(this.networkPlayers.entries()).map(([id, data]) => ({
+      id,
+      ...data,
+    }));
+  }
+
+  /**
+   * Check if a player is registered.
+   */
+  public isPlayerRegistered(playerId: string): boolean {
+    return this.networkPlayers.has(playerId);
+  }
 }
 
 // Singleton instance
@@ -235,4 +277,20 @@ export function sendEndRound() {
 
 export function sendScoresToDisplay(scores: { teamId: string; teamName: string; score: number }[]) {
   hostNetwork.sendScores(scores);
+}
+
+export function registerNetworkPlayer(playerId: string, teamName: string) {
+  hostNetwork.registerNetworkPlayer(playerId, teamName);
+}
+
+export function unregisterNetworkPlayer(playerId: string) {
+  hostNetwork.unregisterNetworkPlayer(playerId);
+}
+
+export function getNetworkPlayers() {
+  return hostNetwork.getNetworkPlayers();
+}
+
+export function isPlayerRegistered(playerId: string): boolean {
+  return hostNetwork.isPlayerRegistered(playerId);
 }

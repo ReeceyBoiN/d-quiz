@@ -8,6 +8,7 @@ files:
   - filter:
       - electron/**/*
       - dist/**/*
+      - dist-player/**/*
       - package.json
 asar: true
 win:

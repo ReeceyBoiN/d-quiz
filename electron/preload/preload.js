@@ -40,8 +40,24 @@ contextBridge.exposeInMainWorld('api', {
 
   // --- Backend (Express/WebSocket) info ---
   backend: {
-    url: () => process.env.BACKEND_URL,
-    ws: () => process.env.BACKEND_WS,
+    url: () => {
+      const url = process.env.BACKEND_URL;
+      console.log('[Preload] backend.url() returning:', url);
+      return url;
+    },
+    ws: () => {
+      const ws = process.env.BACKEND_WS;
+      console.log('[Preload] backend.ws() returning:', ws);
+      return ws;
+    },
+  },
+
+  // --- Network player management ---
+  network: {
+    getPendingTeams: () => invoke('network/pending-teams'),
+    getAllPlayers: () => invoke('network/all-players'),
+    approveTeam: (data) => invoke('network/approve-team', data),
+    declineTeam: (data) => invoke('network/decline-team', data),
   },
 
   // --- 🔹 IPC event helpers (for external display, etc.) ---

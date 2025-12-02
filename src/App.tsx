@@ -1,4 +1,5 @@
 import { QuizHost } from "./components/QuizHost";
+import { ExternalDisplayWindow } from "./components/ExternalDisplayWindow";
 import React, { useEffect } from "react";
 import { SettingsProvider } from "./utils/SettingsContext";
 import { AuthProvider } from "./utils/AuthContext";
@@ -7,6 +8,7 @@ import { useQuizLoader } from "./utils/useQuizLoader";
 
 function AppInner() {
   const { handleQuizFileSelection } = useQuizLoader();
+  const isExternalDisplay = new URLSearchParams(window.location.search).get('external') === '1';
 
   useEffect(() => {
     const onDragOver = (e: DragEvent) => {
@@ -29,6 +31,10 @@ function AppInner() {
       document.removeEventListener("drop", onDrop);
     };
   }, [handleQuizFileSelection]);
+
+  if (isExternalDisplay) {
+    return <ExternalDisplayWindow />;
+  }
 
   return <QuizHost />;
 }

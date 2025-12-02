@@ -23,18 +23,21 @@ interface LeftSidebarProps {
   onScoreChange: (teamId: string, change: number) => void;
   onScoreSet: (teamId: string, newScore: number) => void;
   onNameChange: (teamId: string, newName: string) => void;
-  onDeleteTeam: (teamId: string, teamName: string, score: number) => void; // Add delete handler
-  onTeamDoubleClick?: (teamId: string) => void; // Handler for double-clicking a team
-  teamAnswers?: {[teamId: string]: string}; // Team answers for current question
-  teamResponseTimes?: {[teamId: string]: number}; // Persistent team response times in milliseconds
-  showAnswers?: boolean; // Whether to show answer boxes
-  scoresPaused?: boolean; // Whether scores are globally paused
-  scoresHidden?: boolean; // Whether scores should be hidden
-  teamAnswerStatuses?: {[teamId: string]: 'correct' | 'incorrect' | 'no-answer'}; // Team answer statuses for temporary background colors
-  teamCorrectRankings?: {[teamId: string]: number}; // Rankings for correct teams (1st, 2nd, 3rd, etc.)
+  onDeleteTeam: (teamId: string, teamName: string, score: number) => void;
+  onTeamDoubleClick?: (teamId: string) => void;
+  teamAnswers?: {[teamId: string]: string};
+  teamResponseTimes?: {[teamId: string]: number};
+  showAnswers?: boolean;
+  scoresPaused?: boolean;
+  scoresHidden?: boolean;
+  teamAnswerStatuses?: {[teamId: string]: 'correct' | 'incorrect' | 'no-answer'};
+  teamCorrectRankings?: {[teamId: string]: number};
+  pendingTeams?: Array<{deviceId: string, playerId: string, teamName: string, timestamp: number}>;
+  onApprovePendingTeam?: (deviceId: string, teamName: string) => void;
+  onDeclinePendingTeam?: (deviceId: string, teamName: string) => void;
 }
 
-export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange, onScoreSet, onNameChange, onDeleteTeam, onTeamDoubleClick, teamAnswers = {}, teamResponseTimes = {}, showAnswers = false, scoresPaused = false, scoresHidden = false, teamAnswerStatuses = {}, teamCorrectRankings = {} }: LeftSidebarProps) {
+export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange, onScoreSet, onNameChange, onDeleteTeam, onTeamDoubleClick, teamAnswers = {}, teamResponseTimes = {}, showAnswers = false, scoresPaused = false, scoresHidden = false, teamAnswerStatuses = {}, teamCorrectRankings = {}, pendingTeams = [], onApprovePendingTeam, onDeclinePendingTeam }: LeftSidebarProps) {
   const { responseTimesEnabled } = useSettings();
   
   // Debug logging - disabled for performance
@@ -316,6 +319,54 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
           </div>
         ))}
       </div>
+
+      {/* Pending Teams Section */}
+      {pendingTeams && pendingTeams.length > 0 && (
+        <div className="border-t border-sidebar-border bg-sidebar-accent/30">
+          <div className="px-3 py-2 border-b border-sidebar-border">
+            <div className="text-sm font-semibold text-sidebar-foreground flex items-center justify-between">
+              <span>PENDING APPROVAL</span>
+              <Badge variant="secondary" className="text-xs px-2 py-0 h-5">
+                {pendingTeams.length}
+              </Badge>
+            </div>
+          </div>
+          <div className="p-3 flex flex-col gap-2 max-h-48 overflow-y-auto">
+            {pendingTeams.map((team) => (
+              <div key={team.deviceId} className="flex items-center gap-2 p-2 bg-sidebar rounded border border-sidebar-border/50 hover:border-sidebar-border/80 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-sidebar-foreground truncate">
+                    {team.teamName}
+                  </div>
+                  <div className="text-xs text-sidebar-foreground/60">
+                    {new Date(team.timestamp).toLocaleTimeString()}
+                  </div>
+                </div>
+                <div className="flex gap-1 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onApprovePendingTeam?.(team.deviceId, team.teamName)}
+                    className="h-6 w-6 p-0 text-green-600 hover:bg-green-600/10"
+                    title="Approve team"
+                  >
+                    <span className="text-sm font-bold">✓</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDeclinePendingTeam?.(team.deviceId, team.teamName)}
+                    className="h-6 w-6 p-0 text-red-600 hover:bg-red-600/10"
+                    title="Decline team"
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
