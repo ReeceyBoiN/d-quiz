@@ -1,6 +1,4 @@
-import React, { useEffect } from 'react';
-import { Send, Timer, Eye, Zap, ChevronRight } from 'lucide-react';
-import { useSettings } from '../utils/SettingsContext';
+import React from 'react';
 
 interface QuestionPanelProps {
   question: any;
@@ -10,9 +8,6 @@ interface QuestionPanelProps {
   answerText?: string;
   correctIndex?: number;
   answerSubmitted?: string;
-  onPrimaryAction?: () => void;
-  flow?: string;
-  primaryLabel?: string;
 }
 
 /**
@@ -35,11 +30,7 @@ export function QuestionPanel({
   answerText = '',
   correctIndex = -1,
   answerSubmitted = '',
-  onPrimaryAction,
-  flow = 'ready',
-  primaryLabel = 'Send Question',
 }: QuestionPanelProps) {
-  const { gameModeTimers } = useSettings();
   if (!question) {
     return (
       <div className="flex-1 flex items-center justify-center bg-slate-800 text-slate-400">
@@ -51,65 +42,6 @@ export function QuestionPanel({
   const qType = (question.type || '').toLowerCase();
   const hasImage = !!question.imageDataUrl;
   const hasOptions = question.options && question.options.length > 0;
-
-  // Determine button content based on flow state
-  const getButtonContent = () => {
-    switch (flow) {
-      case 'ready':
-        return {
-          text: primaryLabel || 'Send Question',
-          icon: <Send className="w-4 h-4" />
-        };
-      case 'sent-picture':
-        return {
-          text: 'Send Question',
-          icon: <Send className="w-4 h-4" />
-        };
-      case 'sent-question':
-        return {
-          text: 'Start Timer',
-          icon: <Timer className="w-4 h-4" />
-        };
-      case 'running':
-      case 'timeup':
-        return {
-          text: 'Reveal Answer',
-          icon: <Eye className="w-4 h-4" />
-        };
-      case 'revealed':
-        return {
-          text: 'Fastest Team',
-          icon: <Zap className="w-4 h-4" />
-        };
-      case 'fastest':
-        const isLastQuestion = questionNumber >= totalQuestions;
-        return {
-          text: isLastQuestion ? 'End Round' : 'Next Question',
-          icon: <ChevronRight className="w-4 h-4" />
-        };
-      default:
-        return {
-          text: 'Send Question',
-          icon: <Send className="w-4 h-4" />
-        };
-    }
-  };
-
-  const { text, icon } = getButtonContent();
-
-  // Add spacebar shortcut for primary action
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      // Only trigger if spacebar is pressed and not in an input field
-      if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-        e.preventDefault();
-        onPrimaryAction?.();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [onPrimaryAction]);
 
   // Render options as letters (A, B, C, ...)
   const renderOptions = () => {
@@ -149,41 +81,73 @@ export function QuestionPanel({
   return (
     <div className="flex-1 bg-slate-800 text-white flex flex-col">
       {/* Header with question number and type */}
-      <div className="bg-slate-700 px-6 py-4 border-b border-slate-600">
-        <div className="flex justify-between items-center">
-          <span className="text-sm font-semibold text-slate-300">
-            Question {questionNumber} of {totalQuestions}
+      <div
+        style={{
+          borderBottomWidth: '1px',
+          borderColor: 'rgb(74, 85, 104)',
+          fontSize: '37px',
+          fontWeight: '400',
+          lineHeight: '55.5px',
+          display: 'flex',
+          flexDirection: 'row',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '0 24px',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            fontWeight: '400',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span
+            style={{
+              display: 'flex',
+              fontWeight: '600',
+              gap: '4px',
+            }}
+          >
+            <div style={{ fontSize: '35px', fontWeight: '600', lineHeight: '52.5px', marginBottom: '5px' }}>Question</div>
+            <div style={{ fontSize: '35px', fontWeight: '600', lineHeight: '52.5px' }}>{questionNumber}</div>
+            <div style={{ fontSize: '35px', fontWeight: '600', lineHeight: '52.5px', margin: '0 3px 0 1px' }}>of</div>
+            <div style={{ fontSize: '35px', fontWeight: '600', lineHeight: '52.5px' }}>{totalQuestions}</div>
           </span>
-          <span className="text-sm font-semibold text-slate-300">
+          <div
+            style={{
+              display: 'block',
+              fontSize: '35px',
+              fontWeight: '600',
+              lineHeight: '52.5px',
+              margin: '0 0 5px 50px',
+            }}
+          >
             {qType.charAt(0).toUpperCase() + qType.slice(1)}
-          </span>
+          </div>
         </div>
       </div>
 
       {/* Main content area */}
       <div className="flex-1 overflow-auto flex p-6 gap-6">
         {/* Left side: Question text and options */}
-        <div className="flex-1 flex flex-col">
+        <div
+          className="flex-1 flex flex-col"
+          style={{
+            justifyContent: 'flex-start',
+            alignItems: 'flex-start',
+          }}
+        >
           {/* Question text */}
           <div className="mb-8">
-            <p className="text-3xl font-semibold leading-relaxed text-slate-100">
+            <p className="text-3xl leading-relaxed text-slate-100">
               {question.q}
             </p>
           </div>
 
           {/* Options (for Multi, Letters, Sequence) */}
           {renderOptions()}
-
-          {/* For Buzzin/Numbers: show placeholder */}
-          {!hasOptions && (
-            <div className="text-slate-400 text-lg mb-6">
-              {qType === 'buzzin'
-                ? 'Teams will submit free-text answers'
-                : qType === 'numbers' || qType === 'nearest'
-                ? 'Teams will submit numeric answers'
-                : 'Teams will submit their answers'}
-            </div>
-          )}
 
           {/* Answer display (shown only after reveal) */}
           {showAnswer && (
@@ -225,19 +189,7 @@ export function QuestionPanel({
         )}
       </div>
 
-      {/* Dynamic Primary Action Button - Styled to match Keypad interface */}
-      <button
-        onClick={onPrimaryAction}
-        title="Press Spacebar to trigger this action"
-        className="border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl font-semibold bg-[#3498db] hover:bg-[#2980b9] text-white transition-all hover:scale-105 active:scale-95"
-        style={{
-          margin: '0 24.6px 75px auto',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {icon}
-        <span>{text}</span>
-      </button>
+      {/* Primary action button moved to QuestionNavigationBar */}
     </div>
   );
 }

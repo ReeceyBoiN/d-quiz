@@ -83,9 +83,9 @@ export function TopNavigation({
           }
         `
       }} />
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         {/* Left side - Navigation tabs */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Navigation tabs */}
           {tabs.filter(tab => tab.id !== "user-status").map((tab, index) => (
             <div key={tab.id} className="flex">
@@ -101,9 +101,9 @@ export function TopNavigation({
                     onTabChange(tab.id);
                   }
                 }}
-                className={`text-sm ${tab.id === "leaderboard-reveal" ? "px-3" : "px-4"} py-2 h-9 font-semibold transition-all duration-200 flex items-center gap-2 ${
-                  activeTab === tab.id 
-                    ? "bg-[#f39c12] text-white hover:bg-[#e67e22] shadow-lg transform scale-105" 
+                className={`text-sm px-3 py-2 h-8 font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                  activeTab === tab.id
+                    ? "bg-[#f39c12] text-white hover:bg-[#e67e22] shadow-lg transform scale-105"
                     : "bg-sidebar text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground hover:scale-102 border border-sidebar-border"
                 }`}
               >
@@ -129,14 +129,14 @@ export function TopNavigation({
           />
           
           {/* Player Devices Section */}
-          <div className="flex items-center ml-2">
+          <div className="flex items-center ml-1">
             {/* Settings Button */}
             <button
               onClick={onPlayerDevicesSettings}
-              className="h-9 px-1 bg-[#3d5166] text-[#ecf0f1] hover:bg-[#4a617a] hover:text-white border border-[#4a5568] rounded-l-md transition-all duration-200 hover:scale-102 flex items-center justify-center border-r-0"
+              className="h-8 px-0.5 bg-[#3d5166] text-[#ecf0f1] hover:bg-[#4a617a] hover:text-white border border-[#4a5568] rounded-l-md transition-all duration-200 hover:scale-102 flex items-center justify-center border-r-0"
               title="Player Devices Settings"
             >
-              <Settings className="w-5 h-5" />
+              <Settings className="w-4 h-4" />
             </button>
             
             {/* Thin separator line */}
@@ -150,11 +150,11 @@ export function TopNavigation({
                 const nextIndex = (currentIndex + 1) % modes.length;
                 onPlayerDevicesDisplayModeChange?.(modes[nextIndex]);
               }}
-              className="h-9 w-28 border border-[#4a5568] rounded-r-md transition-all duration-200 hover:scale-102 flex flex-col items-center justify-center text-[#ecf0f1] bg-[#3d5166] hover:bg-[#4a617a] hover:text-white border-l-0"
+              className="h-8 w-24 border border-[#4a5568] rounded-r-md transition-all duration-200 hover:scale-102 flex flex-col items-center justify-center text-[#ecf0f1] bg-[#3d5166] hover:bg-[#4a617a] hover:text-white border-l-0"
               title={`Player Devices Display Mode: ${playerDevicesDisplayMode} (click to cycle)`}
             >
-              <div className="text-xs opacity-75 leading-tight">Player Devices</div>
-              <div className="flex items-center gap-1">
+              <div className="text-xs opacity-75 leading-tight">Player</div>
+              <div className="flex items-center gap-0.5">
                 <Smartphone className="w-3 h-3" />
                 <span className="uppercase tracking-wide text-xs">{playerDevicesDisplayMode}</span>
               </div>
@@ -166,18 +166,18 @@ export function TopNavigation({
         <div className="flex-1"></div>
 
         {/* Right side - Controls */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {/* Title and version - moved to right side */}
-          <div className="text-center -mt-1 mr-2">
+          <div className="text-center -mt-1 mr-1">
             <h1 className="text-sidebar-foreground text-3xl font-medium tracking-wider">POP QUIZ</h1>
             <p className="text-muted-foreground text-xs -mt-1">{version}</p>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="flash-warning text-white text-sm px-3 py-2 h-auto hover:scale-105 transition-transform duration-200"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flash-warning text-white text-sm px-2.5 py-1.5 h-auto hover:scale-105 transition-transform duration-200"
               >
                 <AlertTriangle className="w-4 h-4 mr-2" />
                 <div className="text-left">
@@ -193,11 +193,11 @@ export function TopNavigation({
           
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={onSettingsOpen}
-                className="text-sidebar-foreground hover:bg-sidebar hover:text-sidebar-foreground p-2 h-8 w-8 transition-all duration-200 hover:scale-110"
+                className="text-sidebar-foreground hover:bg-sidebar hover:text-sidebar-foreground p-1.5 h-7 w-7 transition-all duration-200 hover:scale-110"
               >
                 <Settings className="w-4 h-4" />
               </Button>
@@ -210,10 +210,10 @@ export function TopNavigation({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-sidebar-foreground hover:bg-sidebar hover:text-sidebar-foreground flex items-center gap-2 px-3 py-2 h-auto transition-all duration-200 hover:scale-105"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-sidebar-foreground hover:bg-sidebar hover:text-sidebar-foreground flex items-center gap-1.5 px-2 py-1.5 h-auto transition-all duration-200 hover:scale-105"
                 onClick={handleUserClick}
               >
                 <User className="w-4 h-4" />

@@ -38,7 +38,8 @@ export function ExternalDisplayWindow() {
     gameMode: 'keypad',
     gameModeTimers: { keypad: 30, buzzin: 30, nearestwins: 10 } as any,
     teamName: null as string | null,
-    data: null as any
+    data: null as any,
+    totalTime: 30
   });
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [currentColorIndex, setCurrentColorIndex] = useState(0);
@@ -90,7 +91,8 @@ export function ExternalDisplayWindow() {
             gameMode: event.data.gameMode || prevData.gameMode || 'keypad',
             gameModeTimers: event.data.gameModeTimers || prevData.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 },
             teamName: (event.data.data && event.data.data.teamName) || event.data.teamName || null,
-            data: event.data.data || null
+            data: event.data.data || null,
+            totalTime: event.data.totalTime || (event.data.data && event.data.data.totalTime) || prevData.totalTime || 30
           };
         });
       }
@@ -128,7 +130,8 @@ export function ExternalDisplayWindow() {
             gameMode: data.gameMode || prevData.gameMode || 'keypad',
             gameModeTimers: data.gameModeTimers || prevData.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 },
             teamName: (data.data && data.data.teamName) || data.teamName || null,
-            data: data.data || null
+            data: data.data || null,
+            totalTime: data.totalTime || (data.data && data.data.totalTime) || prevData.totalTime || 30
           };
         });
       });
@@ -252,11 +255,12 @@ export function ExternalDisplayWindow() {
 
       case 'progress-bar':
         const progress = timerNum / totalTime;
+        const progressTransitionMs = Math.max(800, totalTime * 950); // Dynamic transition in milliseconds
         return (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '32px', width: '100%', maxWidth: '64rem', margin: '0 auto' }}>
             <div style={{ width: '100%', height: '48px', backgroundColor: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
               <div style={{
-                height: '100%', transition: 'all 1000ms linear ease-in-out',
+                height: '100%', transition: `all ${progressTransitionMs}ms linear`,
                 width: (progress * 100) + '%',
                 background: 'linear-gradient(90deg, #3b82f6, #1d4ed8)'
               }} />
@@ -280,12 +284,13 @@ export function ExternalDisplayWindow() {
 
       case 'liquid':
         const liquidProgress = timerNum / totalTime;
+        const liquidTransitionMs = Math.max(800, totalTime * 950); // Dynamic transition in milliseconds
         return (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
             <div style={{ position: 'relative', borderRadius: '50%', border: '4px solid #d1d5db', overflow: 'hidden', width: '30rem', height: '30rem' }}>
               <div style={{ position: 'absolute', inset: 0, backgroundColor: '#e5e7eb' }}></div>
               <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0, transition: 'all 1000ms linear ease-in-out',
+                position: 'absolute', bottom: 0, left: 0, right: 0, transition: `all ${liquidTransitionMs}ms linear`,
                 height: (liquidProgress * 100) + '%',
                 background: 'linear-gradient(180deg, #3b82f6, #1d4ed8)'
               }} />
@@ -321,13 +326,25 @@ export function ExternalDisplayWindow() {
         const circumference = 2 * Math.PI * radius;
         const circularProgress = timerNum / totalTime;
         const strokeOffset = circumference * (1 - circularProgress);
+        // Dynamic transition: 0.95 seconds per full timer second for smooth animation
+        const transitionDuration = Math.max(0.8, totalTime * 0.95);
 
         return (
           <div style={{ position: 'relative', display: 'inline-block' }}>
             <svg style={{ width: '30rem', height: '30rem', transform: 'rotate(-90deg)' }} viewBox="0 0 100 100">
               <circle cx="50" cy="50" r={radius} stroke="rgba(255,255,255,0.1)" strokeWidth="8" fill="none" />
-              <circle cx="50" cy="50" r={radius} stroke="#e74c3c" strokeWidth="8" fill="none" strokeLinecap="round"
-                strokeDasharray={circumference} strokeDashoffset={strokeOffset} style={{ transition: 'stroke-dashoffset 1s linear' }} />
+              <circle
+                cx="50"
+                cy="50"
+                r={radius}
+                stroke="#e74c3c"
+                strokeWidth="8"
+                fill="none"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeOffset}
+                style={{ transition: `stroke-dashoffset ${transitionDuration}s linear` }}
+              />
             </svg>
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ textAlign: 'center' }}>
@@ -382,7 +399,7 @@ export function ExternalDisplayWindow() {
             </div>
             <div style={{ flex: 1, backgroundColor: '#1f2937', borderRadius: '24px', padding: '48px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {renderCountdownTimer(displayData.timerValue, displayData.countdownStyle, displayData.gameModeTimers && displayData.gameMode ? displayData.gameModeTimers[displayData.gameMode] : 30)}
+                {renderCountdownTimer(displayData.timerValue, displayData.countdownStyle, displayData.totalTime || 30)}
               </div>
             </div>
           </div>

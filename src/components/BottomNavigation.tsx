@@ -58,11 +58,6 @@ interface StatusBarProps {
   showQuizPackDisplay?: boolean;
   onEndRound?: () => void;
   onOpenBuzzersManagement?: () => void;
-  // Quiz pack question mode button
-  onPrimaryAction?: () => void;
-  onSilentTimer?: () => void;
-  primaryButtonLabel?: string;
-  flowState?: string;
 }
 
 interface ExtendedStatusBarProps extends StatusBarProps {
@@ -162,19 +157,19 @@ function GameModeConfigPanel({
   };
 
   return (
-    <div className="flex-1 h-full flex items-center">
+    <div className="flex-1 h-full flex items-center justify-center">
       {/* Points section - show for keypad and buzzin modes */}
       {(gameMode === "keypad" || gameMode === "buzzin") && (
-        <div className="bg-[rgba(92,97,107,1)] rounded px-2 py-0.5 border shadow-sm">
-          <div className="flex flex-col gap-0.5 w-32">
+        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center" style={{ margin: '0 5px' }}>
+          <div className="flex flex-col gap-0.5 w-28">
             <div className="w-full h-5 flex items-center justify-center">
               <span className="text-white text-xs font-medium font-bold font-normal text-[15px]">POINTS</span>
             </div>
-            <div className="flex gap-1 w-full">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-6 flex-1 p-0 border border-border rounded shadow-sm mx-0.5"
+            <div className="flex gap-0.5 w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
                 onClick={() => {
                   const currentValue = parseInt(localPoints.toString()) || 0;
                   const newValue = Math.max(0, currentValue - 1);
@@ -183,13 +178,13 @@ function GameModeConfigPanel({
               >
                 <span className="text-xs">▼</span>
               </Button>
-              <div className="h-6 flex-1 bg-background flex items-center justify-center rounded border shadow-sm">
+              <div className="h-5 flex-1 bg-background flex items-center justify-center rounded border shadow-sm">
                 <span className="text-xs font-medium">{localPoints}</span>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-6 flex-1 p-0 border border-border rounded shadow-sm mx-0.5"
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
                 onClick={() => handlePointsChange((localPoints + 1).toString())}
               >
                 <span className="text-xs">▲</span>
@@ -201,16 +196,16 @@ function GameModeConfigPanel({
 
       {/* Speed Bonus section - only show for keypad mode, not buzzin */}
       {gameMode === "keypad" && (
-        <div className="bg-[rgba(92,97,107,1)] rounded px-2 py-0.5 border shadow-sm">
-          <div className="flex flex-col gap-0.5 w-24">
-            <div className="w-full h-5 flex items-center justify-center">
+        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center">
+          <div className="flex flex-col gap-0.5 w-28">
+            <div className="w-full flex items-center justify-center" style={{ marginRight: '23px' }}>
               <span className="text-white text-xs font-medium font-bold no-underline font-normal text-[15px]">BONUS</span>
             </div>
-            <div className="flex gap-1 w-full">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-6 flex-1 p-0 border border-border rounded shadow-sm mx-0.5"
+            <div className="flex gap-0.5 w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
                 onClick={() => {
                   const currentValue = parseInt(localSpeedBonus.toString()) || 0;
                   const newValue = Math.max(0, currentValue - 1);
@@ -219,13 +214,13 @@ function GameModeConfigPanel({
               >
                 <span className="text-xs">▼</span>
               </Button>
-              <div className="h-6 flex-1 bg-background flex items-center justify-center rounded border shadow-sm">
+              <div className="h-5 flex-1 bg-background flex items-center justify-center rounded border shadow-sm">
                 <span className="text-xs font-medium">{localSpeedBonus}</span>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-6 flex-1 p-0 border border-border rounded shadow-sm mx-0.5"
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
                 onClick={() => handleSpeedBonusChange((localSpeedBonus + 1).toString())}
               >
                 <span className="text-xs">▲</span>
@@ -237,39 +232,39 @@ function GameModeConfigPanel({
 
       {/* Modes section - only show for keypad mode */}
       {gameMode === "keypad" && (
-        <div className="bg-[rgba(92,97,107,1)] rounded px-2 py-0.5 border shadow-sm">
-          <div className="flex flex-col gap-0.5 w-40">
-            <div className="w-full h-5 flex items-center justify-center">
+        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center" style={{ marginLeft: '5px' }}>
+          <div className="flex flex-col gap-0.5 w-32">
+            <div className="w-full flex items-center justify-center">
               <span className="text-white text-xs font-medium font-bold font-normal text-[15px]">MODES</span>
             </div>
-            <div className="flex gap-1 w-full">
+            <div className="flex gap-0.5 w-full">
               {/* Staggered Mode */}
-              <Button 
-                variant={staggeredEnabled ? "default" : "outline"} 
-                size="sm" 
-                className="h-6 flex-1 p-0 border border-border rounded shadow-sm mx-0.5"
+              <Button
+                variant={staggeredEnabled ? "default" : "outline"}
+                size="sm"
+                className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
                 onClick={() => updateStaggeredEnabled(!staggeredEnabled)}
                 title="Staggered Mode"
               >
                 <Layers className="h-3 w-3" />
               </Button>
-              
+
               {/* Go Wide Mode */}
-              <Button 
-                variant={goWideEnabled ? "default" : "outline"} 
-                size="sm" 
-                className="h-6 flex-1 p-0 border border-border rounded shadow-sm mx-0.5"
+              <Button
+                variant={goWideEnabled ? "default" : "outline"}
+                size="sm"
+                className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
                 onClick={() => updateGoWideEnabled(!goWideEnabled)}
                 title="Go Wide Mode"
               >
                 <ArrowLeftRight className="h-3 w-3" />
               </Button>
-              
+
               {/* Evil Mode */}
-              <Button 
-                variant={evilModeEnabled ? "default" : "outline"} 
-                size="sm" 
-                className="h-6 flex-1 p-0 border border-border rounded shadow-sm mx-0.5"
+              <Button
+                variant={evilModeEnabled ? "default" : "outline"}
+                size="sm"
+                className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
                 onClick={() => updateEvilModeEnabled(!evilModeEnabled)}
                 title="Evil Mode"
               >
@@ -282,16 +277,16 @@ function GameModeConfigPanel({
 
       {/* Winner Points section - only show for nearest wins mode */}
       {gameMode === "nearestwins" && (
-        <div className="bg-[rgba(92,97,107,1)] rounded px-2 py-0.5 border shadow-sm">
-          <div className="flex flex-col gap-0.5 w-36">
-            <div className="w-full h-5 flex items-center justify-center">
+        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center">
+          <div className="flex flex-col gap-0.5 w-32">
+            <div className="w-full flex items-center justify-center">
               <span className="text-white text-xs font-medium font-bold font-normal text-[15px]">WINNER POINTS</span>
             </div>
-            <div className="flex gap-1 w-full">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-6 flex-1 p-0 border border-border rounded shadow-sm mx-0.5"
+            <div className="flex gap-0.5 w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
                 onClick={() => {
                   const currentValue = parseInt(localWinnerPoints.toString()) || 0;
                   const newValue = Math.max(0, currentValue - 1);
@@ -300,13 +295,13 @@ function GameModeConfigPanel({
               >
                 <span className="text-xs">▼</span>
               </Button>
-              <div className="h-6 flex-1 bg-background flex items-center justify-center rounded border shadow-sm">
+              <div className="h-5 flex-1 bg-background flex items-center justify-center rounded border shadow-sm">
                 <span className="text-xs font-medium">{localWinnerPoints}</span>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-6 flex-1 p-0 border border-border rounded shadow-sm mx-0.5"
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
                 onClick={() => handleWinnerPointsChange((localWinnerPoints + 1).toString())}
               >
                 <span className="text-xs">▲</span>
@@ -377,10 +372,6 @@ export function StatusBar({
   showQuizPackDisplay = false,
   onEndRound,
   onOpenBuzzersManagement,
-  onPrimaryAction,
-  onSilentTimer,
-  primaryButtonLabel = 'Send Question',
-  flowState = 'idle'
 }: ExtendedStatusBarProps) {
   const { 
     goWideEnabled: settingsGoWide, 
@@ -401,9 +392,9 @@ export function StatusBar({
   const [showTeamPhotosPopup, setShowTeamPhotosPopup] = useState(false);
   
   return (
-    <div 
-      className="fixed bottom-0 right-0 bg-sidebar-accent border-t border-sidebar-border px-4 py-2 h-[60px] flex items-center z-30 transition-[left] duration-0"
-      style={{ left: `${leftSidebarWidth}px` }}
+    <div
+      className="w-full bg-sidebar-accent border-t border-sidebar-border px-2 py-0 h-[41px] flex items-center justify-center z-40"
+      style={{ marginTop: '-13px' }}
     >
       {/* END ROUND button - show when any game interface is active */}
       {(showKeypadInterface || showBuzzInInterface || showNearestWinsInterface || showWheelSpinnerInterface || showBuzzInMode || showQuizPackDisplay) && (
@@ -415,7 +406,8 @@ export function StatusBar({
               onEndRound();
             }
           }}
-          className="h-8 px-4 bg-[#e74c3c] hover:bg-[#c0392b] text-white border shadow-sm mr-4 text-sm font-semibold rounded"
+          className="px-2.5 bg-[#e74c3c] hover:bg-[#c0392b] text-white border shadow-sm font-semibold rounded flex items-center"
+          style={{ fontSize: '12px', padding: '0 10px', height: '100%' }}
         >
           END ROUND
         </Button>
@@ -449,8 +441,8 @@ export function StatusBar({
           {/* Home screen toggle buttons - full height with vertical separators */}
           
           {/* Buzzers */}
-          <button 
-            className="px-4 flex items-center gap-2 hover:bg-accent transition-colors border-r border-border"
+          <button
+            className="px-3 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
             onClick={() => onOpenBuzzersManagement?.()}
             title="Buzzer Management"
           >
@@ -459,8 +451,8 @@ export function StatusBar({
           </button>
 
           {/* Empty Lobby */}
-          <button 
-            className="px-4 flex items-center gap-2 hover:bg-accent transition-colors border-r border-border"
+          <button
+            className="px-3 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
             onClick={() => setShowEmptyLobbyDialog(true)}
             title="Empty Lobby"
           >
@@ -469,8 +461,8 @@ export function StatusBar({
           </button>
 
           {/* Team Photos */}
-          <button 
-            className="px-4 flex items-center gap-2 hover:bg-accent transition-colors border-r border-border"
+          <button
+            className="px-3 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
             onClick={() => setShowTeamPhotosPopup(true)}
             title="Team Photos"
           >
@@ -479,10 +471,10 @@ export function StatusBar({
           </button>
 
           {/* Pause Scores */}
-          <button 
-            className={`px-4 flex items-center gap-2 transition-colors border-r border-border ${
-              scoresPaused 
-                ? 'bg-orange-500 text-white hover:bg-orange-600' 
+          <button
+            className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${
+              scoresPaused
+                ? 'bg-orange-500 text-white hover:bg-orange-600'
                 : 'hover:bg-accent'
             }`}
             onClick={() => onPauseScoresToggle?.()}
@@ -493,12 +485,12 @@ export function StatusBar({
           </button>
 
           {/* Scramble Keypad */}
-          <button 
-            className={`px-4 flex items-center gap-2 transition-colors border-r border-border ${(() => {
+          <button
+            className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${(() => {
               if (!teams || teams.length === 0) return 'hover:bg-accent';
               const scrambledCount = teams.filter(team => team.scrambled).length;
-              return scrambledCount > 0 
-                ? 'bg-purple-500 text-white hover:bg-purple-600' 
+              return scrambledCount > 0
+                ? 'bg-purple-500 text-white hover:bg-purple-600'
                 : 'hover:bg-accent';
             })()}`}
             onClick={() => onGlobalScrambleKeypad?.()}
@@ -525,8 +517,8 @@ export function StatusBar({
           </button>
 
           {/* Clear Scores */}
-          <button 
-            className="px-4 flex items-center gap-2 hover:bg-accent transition-colors border-r border-border"
+          <button
+            className="px-3 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
             onClick={() => setShowClearScoresDialog(true)}
             title="Clear Scores"
           >
@@ -535,10 +527,10 @@ export function StatusBar({
           </button>
 
           {/* Hide Scores & Positions */}
-          <button 
-            className={`px-4 flex items-center gap-2 transition-colors border-r border-border ${
-              scoresHidden 
-                ? 'bg-blue-500 text-white hover:bg-blue-600' 
+          <button
+            className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${
+              scoresHidden
+                ? 'bg-blue-500 text-white hover:bg-blue-600'
                 : 'hover:bg-accent'
             }`}
             onClick={() => onToggleHideScores?.()}
@@ -549,8 +541,8 @@ export function StatusBar({
           </button>
 
           {/* Font Size Down */}
-          <button 
-            className="px-3 flex items-center justify-center hover:bg-accent transition-colors border-r border-border p-[0px]"
+          <button
+            className="px-2.5 flex items-center justify-center hover:bg-accent transition-colors border-r border-border p-[0px]"
             onClick={() => {/* TODO: Add font size down functionality */}}
             title="Font Size Down"
           >
@@ -558,13 +550,13 @@ export function StatusBar({
           </button>
 
           {/* Font Size Label */}
-          <div className="px-3 flex items-center justify-center text-sm text-muted-foreground border-r border-border text-center">
+          <div className="px-2.5 flex items-center justify-center text-sm text-muted-foreground border-r border-border text-center">
             Font Size
           </div>
 
           {/* Font Size Up */}
-          <button 
-            className="px-3 flex items-center justify-center hover:bg-accent transition-colors border-r border-border p-[0px]"
+          <button
+            className="px-2.5 flex items-center justify-center hover:bg-accent transition-colors border-r border-border p-[0px]"
             onClick={() => {/* TODO: Add font size up functionality */}}
             title="Font Size Up"
           >
@@ -572,10 +564,10 @@ export function StatusBar({
           </button>
 
           {/* Change Teams Layout */}
-          <button 
-            className={`px-4 flex items-center gap-2 transition-colors border-r border-border ${
-              teamLayoutMode !== 'default' 
-                ? 'bg-blue-500 text-white hover:bg-blue-600' 
+          <button
+            className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${
+              teamLayoutMode !== 'default'
+                ? 'bg-blue-500 text-white hover:bg-blue-600'
                 : 'hover:bg-accent'
             }`}
             onClick={() => onChangeTeamLayout?.()}
@@ -594,10 +586,10 @@ export function StatusBar({
           </button>
 
           {/* Host Controller */}
-          <button 
-            className={`px-4 flex items-center gap-2 transition-colors ${
-              hostControllerEnabled 
-                ? 'bg-green-500 text-white hover:bg-green-600' 
+          <button
+            className={`px-3 flex items-center gap-1.5 transition-colors ${
+              hostControllerEnabled
+                ? 'bg-green-500 text-white hover:bg-green-600'
                 : 'hover:bg-accent'
             }`}
             onClick={() => onToggleHostController?.()}

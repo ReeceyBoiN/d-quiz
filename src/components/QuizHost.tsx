@@ -26,8 +26,8 @@ import { PopoutDisplay, QuizStage } from "./PopoutDisplay";
 import { BuzzInDisplay } from "./BuzzInDisplay";
 import { BuzzInInterface } from "./BuzzInInterface";
 import { GlobalGameModeSelector } from "./GlobalGameModeSelector";
-import { TimerProgressBar } from "./TimerProgressBar";
 import { QuestionPanel } from "./QuestionPanel";
+import { QuestionNavigationBar } from "./QuestionNavigationBar";
 // CountdownTimer not used in QuizHost - using inline timer in external window
 
 import { StoredImage, projectImageStorage } from "../utils/projectImageStorage";
@@ -333,6 +333,16 @@ export function QuizHost() {
   // Buzzers management state
   const [showBuzzersManagement, setShowBuzzersManagement] = useState(false);
 
+  // Hide question state - when true, don't send question to players/external display
+  const [hideQuestionMode, setHideQuestionMode] = useState(false);
+
+  // Action handlers from game mode components for nav bar integration
+  const [gameActionHandlers, setGameActionHandlers] = useState<{
+    reveal?: () => void;
+    nextQuestion?: () => void;
+    startTimer?: () => void;
+  } | null>(null);
+
   // Game mode configuration state is now handled by settings context
 
   // Sync fastestTeamData with updated team data when quizzes change
@@ -362,6 +372,7 @@ export function QuizHost() {
       if (isQuizPack) {
         // For quiz packs, show the quiz pack display (config or question screen)
         setShowQuizPackDisplay(true);
+        setHideQuestionMode(false);
       } else {
         // For regular games, show the keypad interface
         setShowKeypadInterface(true);
@@ -802,18 +813,19 @@ export function QuizHost() {
         isQuestionMode: false,
         flow: 'idle',
       }));
+      setHideQuestionMode(false);
       timer.stop();
       return;
     }
     // Play explosion sound effect for regular game modes
     playExplosionSound();
-    
+
     // Close all game modes
     closeAllGameModes();
-    
+
     // Navigate back to home screen
     setActiveTab("home");
-    
+
     // Reset external display to basic mode if it's open
     if (externalWindow && !externalWindow.closed) {
       updateExternalDisplay(externalWindow, "basic");
@@ -910,6 +922,7 @@ export function QuizHost() {
 
   const handleQuizPackClose = () => {
     setShowQuizPackDisplay(false);
+    setHideQuestionMode(false);
     setActiveTab("home");
   };
 
@@ -925,8 +938,16 @@ export function QuizHost() {
 
     switch (flowState.flow) {
       case 'ready': {
-        // Send picture (if available) or go straight to question
-        if (hasQuestionImage(currentQuestion)) {
+        // If hideQuestionMode is true, skip sending and go directly to sent-question
+        if (hideQuestionMode) {
+          setFlowState(prev => ({
+            ...prev,
+            flow: 'sent-question',
+            questionSent: false, // Mark that question was NOT sent
+            pictureSent: false,
+          }));
+        } else if (hasQuestionImage(currentQuestion)) {
+          // Send picture (if available) or go straight to question
           sendPictureToPlayers(currentQuestion.imageDataUrl);
           // Also send to external display using proper message format
           if (externalWindow) {
@@ -957,17 +978,19 @@ export function QuizHost() {
       }
 
       case 'sent-picture': {
-        // Send question after picture
-        sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
-        if (externalWindow) {
-          sendToExternalDisplay(
-            { type: 'DISPLAY_UPDATE', mode: 'question', data: { text: currentQuestion.q, options: currentQuestion.options, type: currentQuestion.type } }
-          );
+        // Send question after picture (unless hideQuestionMode is true)
+        if (!hideQuestionMode) {
+          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
+          if (externalWindow) {
+            sendToExternalDisplay(
+              { type: 'DISPLAY_UPDATE', mode: 'question', data: { text: currentQuestion.q, options: currentQuestion.options, type: currentQuestion.type } }
+            );
+          }
         }
         setFlowState(prev => ({
           ...prev,
           flow: 'sent-question',
-          questionSent: true,
+          questionSent: !hideQuestionMode,
         }));
         break;
       }
@@ -982,7 +1005,8 @@ export function QuizHost() {
               mode: 'timer',
               data: {
                 timerValue: flowState.totalTime,
-                seconds: flowState.totalTime
+                seconds: flowState.totalTime,
+                totalTime: flowState.totalTime
               },
               questionInfo: {
                 number: currentQuestionIndex + 1,
@@ -990,7 +1014,8 @@ export function QuizHost() {
                 total: mockQuestions.length
               },
               gameModeTimers: gameModeTimers,
-              countdownStyle: countdownStyle
+              countdownStyle: countdownStyle,
+              totalTime: flowState.totalTime
             }
           );
         }
@@ -1037,6 +1062,7 @@ export function QuizHost() {
         // Move to next question or end round
         if (currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
           setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex + 1);
+          setHideQuestionMode(false); // Reset hide question flag for next question
           sendNextQuestion();
           // Flow state will be reset by the effect
         } else {
@@ -1074,6 +1100,7 @@ export function QuizHost() {
     loadedQuizQuestions,
     externalWindow,
     timer,
+    hideQuestionMode,
   ]);
 
   /**
@@ -1083,7 +1110,7 @@ export function QuizHost() {
     sendTimerToPlayers(flowState.totalTime, true);
     if (externalWindow) {
       sendToExternalDisplay(
-        { type: 'TIMER', data: { seconds: flowState.totalTime } }
+        { type: 'TIMER', data: { seconds: flowState.totalTime, totalTime: flowState.totalTime }, totalTime: flowState.totalTime }
       );
     }
     setFlowState(prev => ({
@@ -1092,6 +1119,40 @@ export function QuizHost() {
       answerSubmitted: 'silent',
     }));
   }, [flowState.totalTime, externalWindow]);
+
+  /**
+   * Wrapper for nav bar's onStartTimer - handles both quiz pack and on-the-spot modes
+   */
+  const handleNavBarStartTimer = useCallback(() => {
+    if (isQuizPackMode || flowState.isQuestionMode) {
+      // For quiz pack mode, use the primary action handler
+      handlePrimaryAction();
+    } else if (gameActionHandlers?.startTimer) {
+      // For on-the-spot modes, use the handler from the game component
+      gameActionHandlers.startTimer();
+    }
+  }, [isQuizPackMode, flowState.isQuestionMode, gameActionHandlers, handlePrimaryAction]);
+
+  /**
+   * Wrapper for nav bar's onSilentTimer - handles both quiz pack and on-the-spot modes
+   */
+  const handleNavBarSilentTimer = useCallback(() => {
+    if (isQuizPackMode || flowState.isQuestionMode) {
+      // For quiz pack mode, use the silent timer handler
+      handleSilentTimer();
+    } else if (gameActionHandlers?.startTimer) {
+      // For on-the-spot modes, start timer (silent behavior depends on game mode logic)
+      gameActionHandlers.startTimer();
+    }
+  }, [isQuizPackMode, flowState.isQuestionMode, gameActionHandlers, handleSilentTimer]);
+
+  /**
+   * Hide question handler - prevents question from being sent to players and external display.
+   * Used in quiz pack mode to hide the question while keeping it visible on host screen.
+   */
+  const handleHideQuestion = useCallback(() => {
+    setHideQuestionMode(prev => !prev);
+  }, []);
 
   /**
    * Start quiz handler - called when "START QUIZ" is clicked in config screen.
@@ -2313,14 +2374,6 @@ export function QuizHost() {
 
       return (
         <div className="flex-1 overflow-hidden flex flex-col">
-          {/* Top draining timer bar (visible when question sent) */}
-          <TimerProgressBar
-            isVisible={flowState.flow === 'sent-question' || (flowState.flow as any) === 'running' || flowState.flow === 'timeup'}
-            timeRemaining={flowState.timeRemaining}
-            totalTime={flowState.totalTime}
-            position="top"
-          />
-
           {/* Main question display */}
           <QuestionPanel
             question={currentQuestion}
@@ -2329,9 +2382,6 @@ export function QuizHost() {
             showAnswer={flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
             answerText={currentQuestion?.answerText}
             correctIndex={currentQuestion?.correctIndex}
-            onPrimaryAction={handlePrimaryAction}
-            flow={flowState.flow}
-            primaryLabel={primaryButtonLabel}
           />
         </div>
       );
@@ -2385,6 +2435,7 @@ export function QuizHost() {
               loadedQuestions={loadedQuizQuestions}
               currentQuestionIndex={currentLoadedQuestionIndex}
               isQuizPackMode={isQuizPackMode}
+              onGetActionHandlers={setGameActionHandlers}
             />
           </div>
           
@@ -2450,6 +2501,7 @@ export function QuizHost() {
             externalWindow={externalWindow}
             onExternalDisplayUpdate={handleExternalDisplayUpdate}
             onAwardPoints={handleScoreChange}
+            onGetActionHandlers={setGameActionHandlers}
           />
         </div>
       );
@@ -2637,8 +2689,8 @@ export function QuizHost() {
             {/* Right panel - fixed width - only show when no game modes are active and team window is closed and not in question mode */}
             {!showKeypadInterface && !showBuzzInInterface && !showNearestWinsInterface && !showWheelSpinnerInterface && !showBuzzInMode && !showFastestTeamDisplay && !selectedTeamForWindow && !showBuzzersManagement && !(showQuizPackDisplay && flowState.isQuestionMode) && (
               <div className="w-80 bg-background border-l border-border">
-                <RightPanel 
-                  quizzes={quizzes} 
+                <RightPanel
+                  quizzes={quizzes}
                   onKeypadClick={handleKeypadClick}
                   onBuzzInClick={handleBuzzInClick}
                   onBuzzInStart={handleBuzzInStart}
@@ -2648,55 +2700,73 @@ export function QuizHost() {
               </div>
             )}
           </div>
+
+          {/* Question Navigation Bar - All Game Modes */}
+          <QuestionNavigationBar
+            isVisible={
+              // Show for quiz pack mode when in question mode
+              (flowState.isQuestionMode && showQuizPackDisplay) ||
+              // Show for on-the-spot game modes
+              showKeypadInterface || showNearestWinsInterface || showBuzzInMode
+            }
+            isQuizPackMode={isQuizPackMode}
+            flowState={flowState}
+            onStartTimer={handleNavBarStartTimer}
+            onSilentTimer={handleNavBarSilentTimer}
+            onHideQuestion={handleHideQuestion}
+            leftSidebarWidth={sidebarWidth}
+            isTimerRunning={timer.isRunning}
+            timerProgress={timer.progress}
+            hideQuestionMode={hideQuestionMode}
+            currentQuestion={loadedQuizQuestions[currentLoadedQuestionIndex]}
+            questionNumber={currentLoadedQuestionIndex + 1}
+            totalQuestions={loadedQuizQuestions.length}
+          />
+
+          {/* Status bar */}
+          <StatusBar
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            teamCount={participants.length}
+            displayMode={userSelectedDisplayMode}
+            onDisplayModeChange={handleDisplayModeChange}
+            onHandsetSettings={handleHandsetSettings}
+            onDisplaySettings={handleDisplaySettings}
+            leftSidebarWidth={sidebarWidth}
+            currentGameMode={getCurrentGameMode()}
+            goWideEnabled={goWideEnabled}
+            evilModeEnabled={evilModeEnabled}
+            onGoWideToggle={handleGoWideToggle}
+            onEvilModeToggle={handleEvilModeToggle}
+            onClearScores={handleClearScores}
+            onEmptyLobby={handleEmptyLobby}
+            onGlobalScrambleKeypad={handleGlobalScrambleKeypad}
+            scoresPaused={scoresPaused}
+            onPauseScoresToggle={handlePauseScoresToggle}
+            scoresHidden={scoresHidden}
+            onToggleHideScores={handleToggleHideScores}
+            teamLayoutMode={teamLayoutMode}
+            onChangeTeamLayout={handleChangeTeamLayout}
+            teams={quizzes}
+            currentRoundPoints={currentRoundPoints}
+            currentRoundSpeedBonus={currentRoundSpeedBonus}
+            onCurrentRoundPointsChange={handleCurrentRoundPointsChange}
+            onCurrentRoundSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
+            currentRoundWinnerPoints={currentRoundWinnerPoints}
+            onCurrentRoundWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
+            showKeypadInterface={showKeypadInterface}
+            showBuzzInInterface={showBuzzInInterface}
+            showNearestWinsInterface={showNearestWinsInterface}
+            showWheelSpinnerInterface={showWheelSpinnerInterface}
+            showBuzzInMode={showBuzzInMode}
+            showQuizPackDisplay={showQuizPackDisplay && flowState.isQuestionMode}
+            onEndRound={handleEndRound}
+            onOpenBuzzersManagement={handleOpenBuzzersManagement}
+            hostControllerEnabled={hostControllerEnabled}
+            onToggleHostController={handleToggleHostController}
+          />
         </div>
       </div>
-
-      {/* Status bar */}
-      <StatusBar
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        teamCount={participants.length}
-        displayMode={userSelectedDisplayMode}
-        onDisplayModeChange={handleDisplayModeChange}
-        onHandsetSettings={handleHandsetSettings}
-        onDisplaySettings={handleDisplaySettings}
-        leftSidebarWidth={sidebarWidth}
-        currentGameMode={getCurrentGameMode()}
-        goWideEnabled={goWideEnabled}
-        evilModeEnabled={evilModeEnabled}
-        onGoWideToggle={handleGoWideToggle}
-        onEvilModeToggle={handleEvilModeToggle}
-        onClearScores={handleClearScores}
-        onEmptyLobby={handleEmptyLobby}
-        onGlobalScrambleKeypad={handleGlobalScrambleKeypad}
-        scoresPaused={scoresPaused}
-        onPauseScoresToggle={handlePauseScoresToggle}
-        scoresHidden={scoresHidden}
-        onToggleHideScores={handleToggleHideScores}
-        teamLayoutMode={teamLayoutMode}
-        onChangeTeamLayout={handleChangeTeamLayout}
-        teams={quizzes}
-        currentRoundPoints={currentRoundPoints}
-        currentRoundSpeedBonus={currentRoundSpeedBonus}
-        onCurrentRoundPointsChange={handleCurrentRoundPointsChange}
-        onCurrentRoundSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
-        currentRoundWinnerPoints={currentRoundWinnerPoints}
-        onCurrentRoundWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
-        showKeypadInterface={showKeypadInterface}
-        showBuzzInInterface={showBuzzInInterface}
-        showNearestWinsInterface={showNearestWinsInterface}
-        showWheelSpinnerInterface={showWheelSpinnerInterface}
-        showBuzzInMode={showBuzzInMode}
-        showQuizPackDisplay={showQuizPackDisplay && flowState.isQuestionMode}
-        onEndRound={handleEndRound}
-        onOpenBuzzersManagement={handleOpenBuzzersManagement}
-        hostControllerEnabled={hostControllerEnabled}
-        onToggleHostController={handleToggleHostController}
-        onPrimaryAction={handlePrimaryAction}
-        onSilentTimer={handleSilentTimer}
-        primaryButtonLabel={primaryButtonLabel}
-        flowState={flowState.flow}
-      />
 
 
       {/* Modals and overlays */}

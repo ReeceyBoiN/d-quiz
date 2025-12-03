@@ -16,9 +16,10 @@ interface NearestWinsInterfaceProps {
   onCurrentRoundWinnerPointsChange?: (winnerPoints: number) => void; // Handler for winner points changes
   onTimerLockChange?: (isLocked: boolean) => void; // Timer lock state callback
   externalWindow?: Window | null; // External display window
+  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: () => void }) => void; // Pass action handlers to parent for nav bar
 }
 
-export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTeamAnswerUpdate, onAwardPoints, currentRoundWinnerPoints, onCurrentRoundWinnerPointsChange, onTimerLockChange, externalWindow }: NearestWinsInterfaceProps) {
+export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTeamAnswerUpdate, onAwardPoints, currentRoundWinnerPoints, onCurrentRoundWinnerPointsChange, onTimerLockChange, externalWindow, onGetActionHandlers }: NearestWinsInterfaceProps) {
   const { nearestWinsTimer, gameModePoints, voiceCountdown, keypadDesign } = useSettings();
 
   // Wrapper function to clear team answers when going back
@@ -614,6 +615,17 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [currentScreen, timerHasBeenStarted, answerConfirmed, answerRevealed]);
 
+  // Expose action handlers to parent for nav bar integration
+  useEffect(() => {
+    if (onGetActionHandlers) {
+      onGetActionHandlers({
+        reveal: handleRevealResults,
+        nextQuestion: handleNextRound,
+        startTimer: handleStartTimer,
+      });
+    }
+  }, [onGetActionHandlers, handleRevealResults, handleNextRound, handleStartTimer]);
+
   // Reveal results
   const handleRevealResults = useCallback(() => {
     setAnswerRevealed(true);
@@ -895,7 +907,7 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
         </div>
 
         {/* Start Timer Button - Fixed bottom right position */}
-        <div className="fixed bottom-20 right-6 z-50">
+        <div className="fixed bottom-[110px] right-6 z-50">
           <Button
             onClick={handleStartTimer}
             disabled={timerHasBeenStarted}
@@ -1008,18 +1020,7 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
         </div>
       </div>
 
-      {/* Reveal Winner / Next Round Button - Fixed bottom right position */}
-      {answerConfirmed && (
-        <div className="fixed bottom-20 right-6 z-50">
-          <Button
-            onClick={!answerRevealed ? handleRevealResults : handleNextRound}
-            className="bg-[#27ae60] hover:bg-[#229954] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
-          >
-            {!answerRevealed ? <Eye className="h-6 w-6" /> : <RotateCcw className="h-6 w-6" />}
-            {!answerRevealed ? 'Reveal Winner' : 'Next Round'}
-          </Button>
-        </div>
-      )}
+      {/* Action buttons moved to QuestionNavigationBar */}
     </div>
   );
 }

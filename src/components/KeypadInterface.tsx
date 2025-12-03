@@ -41,6 +41,7 @@ interface KeypadInterfaceProps {
   currentQuestionIndex?: number; // Current question index from loaded quiz
   onQuestionComplete?: () => void; // Callback when a question is completed
   isQuizPackMode?: boolean; // Is this in quiz pack mode with pre-loaded answers
+  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: () => void }) => void; // Pass action handlers to parent for nav bar
 }
 
 export function KeypadInterface({
@@ -66,7 +67,8 @@ export function KeypadInterface({
   loadedQuestions = [],
   currentQuestionIndex = 0,
   onQuestionComplete,
-  isQuizPackMode = false
+  isQuizPackMode = false,
+  onGetActionHandlers
 }: KeypadInterfaceProps) {
   const {
     defaultPoints,
@@ -990,6 +992,17 @@ export function KeypadInterface({
     }
   }, [triggerNextQuestion, handleNextQuestion]);
 
+  // Expose action handlers to parent for nav bar integration
+  useEffect(() => {
+    if (onGetActionHandlers) {
+      onGetActionHandlers({
+        reveal: handleShowResults,
+        nextQuestion: handleNextQuestion,
+        startTimer: handleStartTimer,
+      });
+    }
+  }, [onGetActionHandlers, handleShowResults, handleNextQuestion, handleStartTimer]);
+
   // Add home navigation to any nested screen
   const handleHomeNavigation = () => {
     // Reset question number when going back to home
@@ -1275,7 +1288,7 @@ export function KeypadInterface({
 
         {/* Start Timer Button - Fixed bottom right position */}
         {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-20 right-6 z-50">
+          <div className="fixed bottom-[110px] right-6 z-50">
             <Button
               onClick={handleStartTimer}
               className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
@@ -1364,7 +1377,7 @@ export function KeypadInterface({
 
         {/* Start Timer Button - Fixed bottom right position */}
         {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-20 right-6 z-50">
+          <div className="fixed bottom-[110px] right-6 z-50">
             <Button
               onClick={handleStartTimer}
               className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
@@ -1401,7 +1414,7 @@ export function KeypadInterface({
 
         {/* Start Timer Button - Fixed bottom right position */}
         {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-20 right-6 z-50">
+          <div className="fixed bottom-[110px] right-6 z-50">
             <Button
               onClick={handleStartTimer}
               className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
@@ -1447,7 +1460,15 @@ export function KeypadInterface({
           <div className="text-center">
             <div className="mb-6">
               <h3 className="text-xl text-[#95a5a6] mb-4">Correct Answer</h3>
-              <div className={`bg-[#34495e] border-2 ${numbersAnswerConfirmed ? 'border-green-500' : 'border-[#4a5568]'} rounded-lg p-6 mb-6`}>
+              <div
+                className={`bg-[#34495e] border-2 ${numbersAnswerConfirmed ? 'border-green-500' : 'border-[#4a5568]'} rounded-lg p-6 mb-6`}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              >
                 <input
                   type="text"
                   value={numbersAnswer}
@@ -1456,7 +1477,11 @@ export function KeypadInterface({
                     setNumbersAnswer(value);
                   }}
                   disabled={numbersAnswerConfirmed}
-                  className={`w-full bg-transparent text-center text-6xl font-bold outline-none ${numbersAnswerConfirmed ? 'text-green-400 cursor-not-allowed' : 'text-white'}`}
+                  className={`w-full bg-transparent text-center text-2xl font-bold outline-none ${numbersAnswerConfirmed ? 'text-green-400 cursor-not-allowed' : 'text-white'}`}
+                  style={{
+                    margin: '-25px 0',
+                    lineHeight: '60px',
+                  }}
                   placeholder="0"
                   maxLength={10}
                 />
@@ -1552,7 +1577,7 @@ export function KeypadInterface({
 
         {/* Start Timer Button - Fixed bottom right position */}
         {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-20 right-6 z-50">
+          <div className="fixed bottom-[110px] right-6 z-50">
             <Button
               onClick={handleStartTimer}
               className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
@@ -1698,7 +1723,7 @@ export function KeypadInterface({
 
         {/* Start Timer Button - Fixed bottom right position */}
         {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-20 right-6 z-50">
+          <div className="fixed bottom-[110px] right-6 z-50">
             <Button
               onClick={handleStartTimer}
               className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
@@ -2131,47 +2156,7 @@ export function KeypadInterface({
               </Button>
             </div>
         
-        {/* Multi-state Action Button - Fixed bottom right position */}
-        <div className="fixed bottom-20 right-6 z-50">
-          <Button
-            onClick={() => {
-              if (!answerRevealed) {
-                handleRevealAnswer();
-              } else if (answerRevealed && !fastestTeamRevealed && getFastestCorrectTeam()) {
-                // Check if SHIFT is pressed for Fast Track mode
-                if (isShiftPressed) {
-                  handleFastTrack();
-                } else {
-                  handleRevealFastestTeam();
-                }
-              } else {
-                handleNextQuestion();
-              }
-            }}
-            className={`border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl ${
-              answerRevealed && !fastestTeamRevealed && getFastestCorrectTeam() && isShiftPressed
-                ? 'bg-[#00FF00] hover:bg-[#00DD00] text-black'
-                : 'bg-[#3498db] hover:bg-[#2980b9] text-white'
-            }`}
-          >
-            {!answerRevealed ? (
-              <>
-                <Eye className="h-6 w-6" />
-                Reveal Answer
-              </>
-            ) : answerRevealed && !fastestTeamRevealed && getFastestCorrectTeam() ? (
-              <>
-                <Zap className="h-6 w-6" />
-                {isShiftPressed ? 'Fast Track' : 'Fastest Team'}
-              </>
-            ) : (
-              <>
-                <RotateCcw className="h-6 w-6" />
-                Next Question
-              </>
-            )}
-          </Button>
-        </div>
+        {/* Action buttons moved to QuestionNavigationBar */}
           </div>
         </div>
       </div>
