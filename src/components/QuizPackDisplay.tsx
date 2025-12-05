@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { ChevronLeft, ChevronRight, Flag, Star, Zap, Grid3X3, Skull, ArrowLeft, Timer as TimerIcon } from "lucide-react";
@@ -6,6 +6,7 @@ import { Slider } from "./ui/slider";
 import { Checkbox } from "./ui/checkbox";
 import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
+import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 
 interface LoadedQuestion {
   type: string;
@@ -28,6 +29,8 @@ interface QuizPackDisplayProps {
   onStartQuiz?: () => void; // Called when "START QUIZ" button is clicked
   onPointsChange?: (points: number) => void; // Callback when points slider changes
   onSpeedBonusChange?: (speedBonus: number) => void; // Callback when speed bonus slider changes
+  currentRoundPoints?: number | null; // Current round points from parent
+  currentRoundSpeedBonus?: number | null; // Current round speed bonus from parent
 }
 
 export function QuizPackDisplay({
@@ -40,7 +43,9 @@ export function QuizPackDisplay({
   onAwardPoints,
   onStartQuiz,
   onPointsChange,
-  onSpeedBonusChange
+  onSpeedBonusChange,
+  currentRoundPoints,
+  currentRoundSpeedBonus
 }: QuizPackDisplayProps) {
   const [currentScreen, setCurrentScreen] = useState<'config' | 'question'>('config');
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
@@ -50,6 +55,12 @@ export function QuizPackDisplay({
   const [localPoints, setLocalPoints] = useState<number | null>(null);
   const [localSpeedBonus, setLocalSpeedBonus] = useState<number | null>(null);
   const [autoDisableEnabled, setAutoDisableEnabled] = useState(false);
+  const [timerStartValue, setTimerStartValue] = useState<number | null>(null);
+  const isMountedRef = useRef(true);
+  const countdownRef = useRef<number | null>(null);
+  const isFirstTickRef = useRef(true);
+  const audioPlayedRef = useRef(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const {
     defaultPoints,
@@ -62,13 +73,12 @@ export function QuizPackDisplay({
     updateStaggeredEnabled,
     punishmentEnabled,
     updatePunishmentEnabled,
-    gameModeTimers,
-    voiceCountdown
+    gameModeTimers
   } = useSettings();
 
-  // Use local state if set, otherwise use defaults
-  const currentPoints = localPoints !== null ? localPoints : defaultPoints;
-  const currentSpeedBonus = localSpeedBonus !== null ? localSpeedBonus : defaultSpeedBonus;
+  // Use parent's round values if set, otherwise use local state, otherwise use defaults
+  const currentPoints = currentRoundPoints !== null ? currentRoundPoints : (localPoints !== null ? localPoints : defaultPoints);
+  const currentSpeedBonus = currentRoundSpeedBonus !== null ? currentRoundSpeedBonus : (localSpeedBonus !== null ? localSpeedBonus : defaultSpeedBonus);
   const points = [currentPoints];
   const speedBonus = [currentSpeedBonus];
 
@@ -82,40 +92,126 @@ export function QuizPackDisplay({
     setIsTimerRunning(false);
     setCountdown(null);
     setTimerFinished(false);
-    // Store the configured points in local state before triggering parent
-    // The parent will access these values from the QuizHost state
-    onStartQuiz?.();
-  }, [onStartQuiz, currentPoints, currentSpeedBonus]);
+    setTimerStartValue(null);
 
-  // Timer effect - handles countdown when timer is running
+    // Reset timer refs for new round
+    countdownRef.current = null;
+    isFirstTickRef.current = true;
+    audioPlayedRef.current = false;
+
+    onStartQuiz?.();
+  }, [onStartQuiz]);
+
+  // Timer effect - handles countdown
   useEffect(() => {
-    if (!isTimerRunning || countdown === null) return;
+    console.log('[QuizPackDisplay Timer Effect] Setup:', { isTimerRunning, countdown });
+    if (!isTimerRunning || countdown === null) {
+      console.log('[QuizPackDisplay Timer Effect] Not running');
+      return;
+    }
+
+    console.log('[QuizPackDisplay Timer Effect] Starting interval, initial countdown:', countdown);
+    isFirstTickRef.current = true;
 
     const interval = setInterval(() => {
-      setCountdown(prev => {
-        if (prev === null) return null;
-        const newCountdown = prev - 1;
+      // Check if component is still mounted before doing anything
+      if (!isMountedRef.current) {
+        console.log('[QuizPackDisplay Timer] Component unmounted, clearing interval');
+        clearInterval(interval);
+        return;
+      }
 
-        if (newCountdown <= 0) {
-          clearInterval(interval);
-          setIsTimerRunning(false);
+      setCountdown(prev => {
+        if (prev === null || !isMountedRef.current) return null;
+
+        // On the first tick, don't decrement (show the full second for the starting number)
+        if (isFirstTickRef.current) {
+          isFirstTickRef.current = false;
+          return prev;
+        }
+
+        const newCountdown = Math.max(0, prev - 1);
+
+        if (newCountdown === 0) {
           setTimerFinished(true);
-          return 0;
+          // Delay hiding the timer to show the final 0% progress bar state
+          setTimeout(() => {
+            if (isMountedRef.current) {
+              setIsTimerRunning(false);
+            }
+          }, 1100);
         }
 
         return newCountdown;
       });
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [isTimerRunning, countdown]);
+    // Store interval ref so we can clear it on unmount
+    intervalRef.current = interval;
+
+    return () => {
+      clearInterval(interval);
+      intervalRef.current = null;
+    };
+  }, [isTimerRunning]);
+
+  // Cleanup effect - cleanup on unmount to prevent background sounds
+  useEffect(() => {
+    return () => {
+      console.log('[QuizPackDisplay] Component unmounting, cleaning up');
+
+      // Mark component as unmounted to prevent any sounds from playing
+      isMountedRef.current = false;
+
+      // Stop countdown audio
+      stopCountdownAudio();
+      console.log('[QuizPackDisplay] Countdown audio stopped');
+
+      // Clear the interval if it's still running
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+        console.log('[QuizPackDisplay] Interval cleared');
+      }
+
+      // Clear refs
+      countdownRef.current = null;
+      isFirstTickRef.current = true;
+      audioPlayedRef.current = false;
+      console.log('[QuizPackDisplay] Refs cleared');
+    };
+  }, []);
 
   const handleStartTimer = useCallback(() => {
-    if (isTimerRunning) return;
+    console.log('[QuizPackDisplay] handleStartTimer called', { isTimerRunning, isMounted: isMountedRef.current });
+
+    if (isTimerRunning) {
+      console.log('[QuizPackDisplay] Timer already running, returning');
+      return;
+    }
 
     const timerLength = gameModeTimers.keypad || 30;
+    console.log('[QuizPackDisplay] Starting timer with length:', timerLength);
+
+    // Reset timer refs for this session
+    countdownRef.current = timerLength;
+    isFirstTickRef.current = true;
+    audioPlayedRef.current = false;
+
+    // Play countdown audio with normal mode (not silent)
+    if (isMountedRef.current) {
+      console.log('[QuizPackDisplay] Playing countdown audio:', timerLength);
+      playCountdownAudio(timerLength, false).catch(error => {
+        console.error('[QuizPackDisplay] Error playing countdown audio:', error);
+      });
+      audioPlayedRef.current = true;
+    }
+
+    // Set state to start timer display
     setCountdown(timerLength);
+    setTimerFinished(false);
     setIsTimerRunning(true);
+    setTimerStartValue(timerLength);
   }, [isTimerRunning, gameModeTimers.keypad]);
 
   const getQuestionTypeLabel = (type: string): string => {
@@ -179,6 +275,19 @@ export function QuizPackDisplay({
       return newSet;
     });
   };
+
+  // Sync local state with parent's round values when they change (e.g., from bottom navigation controls)
+  useEffect(() => {
+    if (currentRoundPoints !== null && localPoints !== currentRoundPoints) {
+      setLocalPoints(currentRoundPoints);
+    }
+  }, [currentRoundPoints]);
+
+  useEffect(() => {
+    if (currentRoundSpeedBonus !== null && localSpeedBonus !== currentRoundSpeedBonus) {
+      setLocalSpeedBonus(currentRoundSpeedBonus);
+    }
+  }, [currentRoundSpeedBonus]);
 
   // Configuration Screen - exact copy of KeypadInterface layout
   if (currentScreen === 'config') {
@@ -423,11 +532,20 @@ export function QuizPackDisplay({
         {/* Question Image if available */}
         {currentQuestion.imageDataUrl && (
           <div className="mb-8 flex justify-center">
-            <img
-              src={currentQuestion.imageDataUrl}
-              alt="Question"
-              className="max-h-64 max-w-full object-contain rounded-lg"
-            />
+            <div
+              className="rounded-lg overflow-hidden bg-slate-700 flex items-center justify-center"
+              style={{
+                width: '300px',
+                height: '450px',
+                aspectRatio: '2 / 3',
+              }}
+            >
+              <img
+                src={currentQuestion.imageDataUrl}
+                alt="Question"
+                className="w-full h-full object-contain"
+              />
+            </div>
           </div>
         )}
 
@@ -497,12 +615,13 @@ export function QuizPackDisplay({
             </div>
             
             {/* Timer Progress Bar */}
-            {isTimerRunning && (
+            {isTimerRunning && countdown !== null && (
               <div className="w-32">
                 <TimerProgressBar
-                  timeRemaining={countdown || 0}
-                  totalTime={gameModeTimers.keypad || 30}
-                  isFinished={timerFinished}
+                  isVisible={true}
+                  timeRemaining={countdown}
+                  totalTime={timerStartValue || gameModeTimers.keypad || 30}
+                  position="bottom"
                 />
               </div>
             )}

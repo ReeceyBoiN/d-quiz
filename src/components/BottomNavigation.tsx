@@ -394,7 +394,7 @@ export function StatusBar({
   return (
     <div
       className="w-full bg-sidebar-accent border-t border-sidebar-border px-2 py-0 h-[41px] flex items-center justify-center z-40"
-      style={{ marginTop: '-13px' }}
+      style={{ marginTop: '-13px', minHeight: '10px' }}
     >
       {/* END ROUND button - show when any game interface is active */}
       {(showKeypadInterface || showBuzzInInterface || showNearestWinsInterface || showWheelSpinnerInterface || showBuzzInMode || showQuizPackDisplay) && (

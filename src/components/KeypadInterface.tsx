@@ -42,6 +42,14 @@ interface KeypadInterfaceProps {
   onQuestionComplete?: () => void; // Callback when a question is completed
   isQuizPackMode?: boolean; // Is this in quiz pack mode with pre-loaded answers
   onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: () => void }) => void; // Pass action handlers to parent for nav bar
+  onGameTimerStateChange?: (isTimerRunning: boolean) => void; // Notify parent of timer state changes
+  onCurrentScreenChange?: (screen: string) => void; // Notify parent of current screen changes
+  onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
+  onGameTimerFinished?: (finished: boolean) => void; // Notify parent when on-the-spot timer finishes
+  onGameAnswerRevealed?: (revealed: boolean) => void; // Notify parent when answer is revealed
+  onGameFastestRevealed?: (revealed: boolean) => void; // Notify parent when fastest team is revealed
+  onTeamsAnsweredCorrectly?: (hasCorrectAnswers: boolean) => void; // Notify parent if any teams answered correctly
+  onGameAnswerSelected?: (selected: boolean) => void; // Notify parent when user has selected an answer
 }
 
 export function KeypadInterface({
@@ -68,7 +76,15 @@ export function KeypadInterface({
   currentQuestionIndex = 0,
   onQuestionComplete,
   isQuizPackMode = false,
-  onGetActionHandlers
+  onGetActionHandlers,
+  onGameTimerStateChange,
+  onCurrentScreenChange,
+  onGameTimerUpdate,
+  onGameTimerFinished,
+  onGameAnswerRevealed,
+  onGameFastestRevealed,
+  onTeamsAnsweredCorrectly,
+  onGameAnswerSelected
 }: KeypadInterfaceProps) {
   const {
     defaultPoints,
@@ -107,7 +123,10 @@ export function KeypadInterface({
   
   // Add state for correct answer revelation
   const [answerRevealed, setAnswerRevealed] = useState(false);
-  
+
+  // Track if user has selected an answer
+  const [answerSelected, setAnswerSelected] = useState(false);
+
   // Team simulation state
   const [teamAnswers, setTeamAnswers] = useState<{[teamId: string]: string}>({});
   const [teamAnswerTimes, setTeamAnswerTimes] = useState<{[teamId: string]: number}>({});
@@ -992,16 +1011,27 @@ export function KeypadInterface({
     }
   }, [triggerNextQuestion, handleNextQuestion]);
 
+  // Create smart reveal handler that knows whether to reveal answer or fastest team
+  const handleReveal = useCallback(() => {
+    if (!answerRevealed) {
+      // Answer not revealed yet - reveal the answer
+      handleRevealAnswer();
+    } else if (!fastestTeamRevealed && getFastestCorrectTeam()) {
+      // Answer already revealed, fastest team not revealed yet - reveal fastest team
+      handleRevealFastestTeam();
+    }
+  }, [answerRevealed, fastestTeamRevealed, handleRevealAnswer, handleRevealFastestTeam, getFastestCorrectTeam]);
+
   // Expose action handlers to parent for nav bar integration
   useEffect(() => {
     if (onGetActionHandlers) {
       onGetActionHandlers({
-        reveal: handleShowResults,
+        reveal: handleReveal,
         nextQuestion: handleNextQuestion,
         startTimer: handleStartTimer,
       });
     }
-  }, [onGetActionHandlers, handleShowResults, handleNextQuestion, handleStartTimer]);
+  }, [onGetActionHandlers, handleReveal, handleNextQuestion, handleStartTimer]);
 
   // Add home navigation to any nested screen
   const handleHomeNavigation = () => {
@@ -1121,10 +1151,19 @@ export function KeypadInterface({
     const handleKeyPress = (e: KeyboardEvent) => {
       // Only trigger if spacebar is pressed and not in an input field
       if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        // Don't handle spacebar on config or question-types screens, or when timer is running
+        if (currentScreen === 'config' || currentScreen === 'question-types' || isTimerRunning) {
+          return;
+        }
+
         e.preventDefault();
 
-        // Results screen - multi-state button
+        // Results screen - multi-state button (only if timer has finished)
         if (currentScreen === 'results') {
+          // Only allow progression if timer has finished
+          if (!timerFinished) {
+            return;
+          }
           if (!answerRevealed) {
             handleRevealAnswer();
           } else if (answerRevealed && !fastestTeamRevealed && getFastestCorrectTeam()) {
@@ -1133,16 +1172,31 @@ export function KeypadInterface({
             handleNextQuestion();
           }
         }
-        // Game screens - Start Timer button
-        else if ((currentScreen === 'letters-game' || currentScreen === 'multiple-choice-game' || currentScreen === 'numbers-game') && !isTimerRunning && !timerFinished) {
-          handleStartTimer();
+        // Game screens - Start Timer button (only if answer has been selected)
+        else if ((currentScreen === 'letters-game' || currentScreen === 'multiple-choice-game' || currentScreen === 'numbers-game' || currentScreen === 'sequence-game') && !timerFinished) {
+          // Check if an answer has been selected based on the current screen
+          let answerSelected = false;
+          if (currentScreen === 'letters-game' && selectedLetter !== null) {
+            answerSelected = true;
+          } else if (currentScreen === 'multiple-choice-game' && selectedAnswers.length > 0) {
+            answerSelected = true;
+          } else if (currentScreen === 'numbers-game' && numbersAnswerConfirmed) {
+            answerSelected = true;
+          } else if (currentScreen === 'sequence-game' && sequenceCompleted) {
+            answerSelected = true;
+          }
+
+          // Only start timer if an answer has been selected
+          if (answerSelected) {
+            handleStartTimer();
+          }
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentScreen, isTimerRunning, timerFinished, answerRevealed, fastestTeamRevealed, handleRevealAnswer, handleRevealFastestTeam, handleNextQuestion, handleStartTimer, getFastestCorrectTeam]);
+  }, [currentScreen, isTimerRunning, timerFinished, answerRevealed, fastestTeamRevealed, selectedLetter, selectedAnswers, numbersAnswerConfirmed, sequenceCompleted, handleRevealAnswer, handleRevealFastestTeam, handleNextQuestion, handleStartTimer, getFastestCorrectTeam]);
 
   // Update parent component when response times change
   useEffect(() => {
@@ -1157,6 +1211,80 @@ export function KeypadInterface({
       handleShowResults();
     }
   }, [timerFinished, currentScreen, handleShowResults]);
+
+  // Notify parent of timer state changes for navigation bar
+  useEffect(() => {
+    if (onGameTimerStateChange) {
+      onGameTimerStateChange(isTimerRunning);
+    }
+  }, [isTimerRunning, onGameTimerStateChange]);
+
+  // Notify parent of current screen changes for navigation bar visibility
+  useEffect(() => {
+    if (onCurrentScreenChange) {
+      onCurrentScreenChange(currentScreen);
+    }
+  }, [currentScreen, onCurrentScreenChange]);
+
+  // Notify parent of timer values for navigation bar display
+  useEffect(() => {
+    if (onGameTimerUpdate && isTimerRunning) {
+      onGameTimerUpdate(countdown || 0, totalTimerLength);
+    }
+  }, [countdown, totalTimerLength, isTimerRunning, onGameTimerUpdate]);
+
+  // Notify parent when timer finishes
+  useEffect(() => {
+    if (onGameTimerFinished) {
+      onGameTimerFinished(timerFinished);
+    }
+  }, [timerFinished, onGameTimerFinished]);
+
+  // Notify parent when answer is revealed
+  useEffect(() => {
+    if (onGameAnswerRevealed) {
+      onGameAnswerRevealed(answerRevealed);
+    }
+  }, [answerRevealed, onGameAnswerRevealed]);
+
+  // Notify parent when fastest team is revealed
+  useEffect(() => {
+    if (onGameFastestRevealed) {
+      onGameFastestRevealed(fastestTeamRevealed);
+    }
+  }, [fastestTeamRevealed, onGameFastestRevealed]);
+
+  // Notify parent if any teams answered correctly
+  useEffect(() => {
+    if (onTeamsAnsweredCorrectly) {
+      const correctAnswer = getCorrectAnswer();
+      const hasCorrectAnswers = correctAnswer && Object.keys(teamAnswers).some(teamId => {
+        const teamAnswer = teamAnswers[teamId];
+        return teamAnswer && (
+          (questionType === 'letters' && teamAnswer === correctAnswer) ||
+          (questionType === 'multiple-choice' && teamAnswer === correctAnswer) ||
+          (questionType === 'numbers' && teamAnswer === correctAnswer)
+        );
+      });
+      onTeamsAnsweredCorrectly(hasCorrectAnswers || false);
+    }
+  }, [teamAnswers, questionType, onTeamsAnsweredCorrectly, getCorrectAnswer]);
+
+  // Notify parent when user has selected an answer
+  useEffect(() => {
+    if (onGameAnswerSelected && currentScreen !== 'config' && currentScreen !== 'question-types') {
+      // Determine if an answer has been selected based on current game screen
+      const hasSelected = (
+        (currentScreen === 'letters-game' && selectedLetter !== null) ||
+        (currentScreen === 'multiple-choice-game' && selectedAnswers.length > 0) ||
+        (currentScreen === 'numbers-game' && numbersAnswerConfirmed) ||
+        (currentScreen === 'sequence-game' && sequenceCompleted) ||
+        (currentScreen === 'quiz-pack-question') ||
+        (currentScreen === 'results')
+      );
+      onGameAnswerSelected(hasSelected);
+    }
+  }, [selectedLetter, selectedAnswers, numbersAnswerConfirmed, sequenceCompleted, currentScreen, onGameAnswerSelected]);
 
   // Letters Question Game Screen
   if (currentScreen === 'letters-game') {
@@ -1185,14 +1313,6 @@ export function KeypadInterface({
             <h2 className="text-3xl font-semibold text-white">Question {currentQuestion}: Ask an on the spot question!</h2>
           </div>
         </div>
-
-        {/* Timer Progress Bar */}
-        <TimerProgressBar 
-          isVisible={isTimerRunning}
-          timeRemaining={countdown || 0}
-          totalTime={totalTimerLength}
-          position="top"
-        />
 
         {/* Debug Panel */}
         {showDebugPanel && (
@@ -1276,8 +1396,8 @@ export function KeypadInterface({
 
 
         {/* Picture Display Box - Bottom Right Corner */}
-        {currentLoadedQuestion?.imageDataUrl && (
-          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ maxWidth: '200px', maxHeight: '200px' }}>
+        {isQuizPackMode && currentLoadedQuestion?.imageDataUrl && (
+          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ width: '160px', height: '240px', aspectRatio: '2 / 3' }}>
             <img
               src={currentLoadedQuestion.imageDataUrl}
               alt="Question"
@@ -1285,20 +1405,6 @@ export function KeypadInterface({
             />
           </div>
         )}
-
-        {/* Start Timer Button - Fixed bottom right position */}
-        {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-[110px] right-6 z-50">
-            <Button
-              onClick={handleStartTimer}
-              className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
-            >
-              <Timer className="h-6 w-6" />
-              Start Timer
-            </Button>
-          </div>
-        )}
-
 
       </div>
     );
@@ -1329,14 +1435,6 @@ export function KeypadInterface({
             <h2 className="text-3xl font-semibold text-white">Question {currentQuestion}: Multiple Choice Question</h2>
           </div>
         </div>
-
-        {/* Timer Progress Bar */}
-        <TimerProgressBar 
-          isVisible={isTimerRunning}
-          timeRemaining={countdown || 0}
-          totalTime={totalTimerLength}
-          position="top"
-        />
 
         {/* Multiple Choice Interface */}
         <div className="flex items-center justify-center mb-8">
@@ -1375,19 +1473,6 @@ export function KeypadInterface({
 
 
 
-        {/* Start Timer Button - Fixed bottom right position */}
-        {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-[110px] right-6 z-50">
-            <Button
-              onClick={handleStartTimer}
-              className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
-            >
-              <Timer className="h-6 w-6" />
-              Start Timer
-            </Button>
-          </div>
-        )}
-
         {/* Show Results Button - Hidden (irrelevant on this screen) */}
         {false && timerFinished && selectedAnswers.length > 0 && (
           <div className="flex justify-center mt-4">
@@ -1402,8 +1487,8 @@ export function KeypadInterface({
         )}
 
         {/* Picture Display Box - Bottom Right Corner */}
-        {currentLoadedQuestion?.imageDataUrl && (
-          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ maxWidth: '200px', maxHeight: '200px' }}>
+        {isQuizPackMode && currentLoadedQuestion?.imageDataUrl && (
+          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ width: '160px', height: '240px', aspectRatio: '2 / 3' }}>
             <img
               src={currentLoadedQuestion.imageDataUrl}
               alt="Question"
@@ -1412,18 +1497,6 @@ export function KeypadInterface({
           </div>
         )}
 
-        {/* Start Timer Button - Fixed bottom right position */}
-        {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-[110px] right-6 z-50">
-            <Button
-              onClick={handleStartTimer}
-              className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
-            >
-              <Timer className="h-6 w-6" />
-              Start Timer
-            </Button>
-          </div>
-        )}
       </div>
     );
   }
@@ -1446,14 +1519,6 @@ export function KeypadInterface({
           </div>
 
         </div>
-
-        {/* Timer Progress Bar */}
-        <TimerProgressBar 
-          isVisible={isTimerRunning}
-          timeRemaining={countdown || 0}
-          totalTime={totalTimerLength}
-          position="top"
-        />
 
         {/* Numbers Interface */}
         <div className="flex-1 flex items-center justify-center">
@@ -1575,24 +1640,11 @@ export function KeypadInterface({
 
 
 
-        {/* Start Timer Button - Fixed bottom right position */}
-        {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-[110px] right-6 z-50">
-            <Button
-              onClick={handleStartTimer}
-              className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
-            >
-              <Timer className="h-6 w-6" />
-              Start Timer
-            </Button>
-          </div>
-        )}
-
         {/* Show Results Button - Only visible after timer finishes and answer is confirmed */}
 
         {/* Picture Display Box - Bottom Right Corner */}
-        {currentLoadedQuestion?.imageDataUrl && (
-          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ maxWidth: '200px', maxHeight: '200px' }}>
+        {isQuizPackMode && currentLoadedQuestion?.imageDataUrl && (
+          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ width: '160px', height: '240px', aspectRatio: '2 / 3' }}>
             <img
               src={currentLoadedQuestion.imageDataUrl}
               alt="Question"
@@ -1621,14 +1673,6 @@ export function KeypadInterface({
             <h2 className="text-3xl font-semibold text-white">Question {currentQuestion}: Sequence Question</h2>
           </div>
         </div>
-
-        {/* Timer Progress Bar */}
-        <TimerProgressBar
-          isVisible={isTimerRunning}
-          timeRemaining={countdown || 0}
-          totalTime={totalTimerLength}
-          position="top"
-        />
 
         {/* Sequence Game Interface */}
         <div className="flex-1 flex flex-col items-center justify-center gap-8">
@@ -1711,8 +1755,8 @@ export function KeypadInterface({
         </div>
 
         {/* Picture Display Box - Bottom Right Corner */}
-        {currentLoadedQuestion?.imageDataUrl && (
-          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ maxWidth: '200px', maxHeight: '200px' }}>
+        {isQuizPackMode && currentLoadedQuestion?.imageDataUrl && (
+          <div className="fixed bottom-24 right-6 z-40 border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-2 shadow-lg" style={{ width: '160px', height: '240px', aspectRatio: '2 / 3' }}>
             <img
               src={currentLoadedQuestion.imageDataUrl}
               alt="Question"
@@ -1721,18 +1765,6 @@ export function KeypadInterface({
           </div>
         )}
 
-        {/* Start Timer Button - Fixed bottom right position */}
-        {!isTimerRunning && !timerFinished && (
-          <div className="fixed bottom-[110px] right-6 z-50">
-            <Button
-              onClick={handleStartTimer}
-              className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
-            >
-              <Timer className="h-6 w-6" />
-              Start Timer
-            </Button>
-          </div>
-        )}
       </div>
     );
   }
@@ -2033,14 +2065,6 @@ export function KeypadInterface({
           </div>
         </div>
 
-        {/* Timer Progress Bar */}
-        <TimerProgressBar
-          isVisible={isTimerRunning}
-          timeRemaining={countdown || 0}
-          totalTime={totalTimerLength}
-          position="top"
-        />
-
         {/* Main Content Area */}
         <div className="flex-1 flex items-center justify-center flex-col gap-8">
           {/* Question Text */}
@@ -2066,8 +2090,8 @@ export function KeypadInterface({
           </div>
 
           {/* Picture Display Box */}
-          {currentLoadedQuestion?.imageDataUrl && (
-            <div className="border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-4 shadow-lg" style={{ maxWidth: '300px', maxHeight: '300px' }}>
+          {isQuizPackMode && currentLoadedQuestion?.imageDataUrl && (
+            <div className="border-2 border-[#4a5568] rounded-lg bg-[#34495e] p-4 shadow-lg" style={{ width: '300px', height: '450px', aspectRatio: '2 / 3' }}>
               <img
                 src={currentLoadedQuestion.imageDataUrl}
                 alt="Question"
@@ -2144,17 +2168,36 @@ export function KeypadInterface({
               </div>
             </div>
 
-            {/* Finish Round Button - Centered */}
-            <div className="flex justify-center">
-              <Button
-                onClick={() => setCurrentScreen('config')}
-                variant="outline"
-                className="px-8 py-4 text-lg font-semibold flex items-center gap-2 border-[#4a5568] text-[#ecf0f1] hover:bg-[#4a5568]"
-              >
-                <CheckCircle className="h-5 w-5" />
-                Finish Round
-              </Button>
-            </div>
+            {/* Fastest Team display - shown after answer is revealed and there are correct answers */}
+            {answerRevealed && !fastestTeamRevealed && (
+              (() => {
+                const fastestTeam = getFastestCorrectTeam();
+                if (fastestTeam) {
+                  return (
+                    <div className="mb-6 p-4 rounded-lg bg-[#2c3e50] border-2 border-[#f39c12]">
+                      <div className="text-lg text-[#95a5a6] mb-2">Fastest Team:</div>
+                      <div className="text-3xl font-bold text-[#f39c12]">{fastestTeam.team.name}</div>
+                      <div className="text-sm text-[#95a5a6] mt-1">{fastestTeam.responseTime.toFixed(2)}s</div>
+                    </div>
+                  );
+                }
+                return null;
+              })()
+            )}
+
+            {/* Finish Round Button - Only show in quiz pack mode; on-the-spot uses QuestionNavigationBar */}
+            {isQuizPackMode && (
+              <div className="flex justify-center">
+                <Button
+                  onClick={() => setCurrentScreen('config')}
+                  variant="outline"
+                  className="px-8 py-4 text-lg font-semibold flex items-center gap-2 border-[#4a5568] text-[#ecf0f1] hover:bg-[#4a5568]"
+                >
+                  <CheckCircle className="h-5 w-5" />
+                  Finish Round
+                </Button>
+              </div>
+            )}
         
         {/* Action buttons moved to QuestionNavigationBar */}
           </div>

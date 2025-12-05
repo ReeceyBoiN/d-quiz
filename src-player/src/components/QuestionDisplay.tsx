@@ -64,12 +64,21 @@ export function QuestionDisplay({
 
         {/* Image if present */}
         {question.imageUrl && (
-          <div className="mb-8 max-w-md">
-            <img
-              src={question.imageUrl}
-              alt="Question"
-              className="w-full rounded-lg shadow-lg"
-            />
+          <div className="mb-8">
+            <div
+              className="rounded-lg shadow-lg bg-slate-700 flex items-center justify-center"
+              style={{
+                width: '300px',
+                height: '450px',
+                aspectRatio: '2 / 3',
+              }}
+            >
+              <img
+                src={question.imageUrl}
+                alt="Question"
+                className="w-full h-full object-contain"
+              />
+            </div>
           </div>
         )}
 

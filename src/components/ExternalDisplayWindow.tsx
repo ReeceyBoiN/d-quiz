@@ -223,8 +223,10 @@ export function ExternalDisplayWindow() {
     return 'hsl(' + hue + ', 85%, 60%)';
   };
 
-  const renderCountdownTimer = (currentTime: number | null, style: string, totalTime = 30) => {
-    const timerNum = currentTime || 0;
+  const renderCountdownTimer = (currentTime: number | null, style: string, totalTime = 30, size = 300) => {
+    // Display full seconds when > 1, show 0 when timer reaches or passes 0
+    const timerNum = currentTime !== null && currentTime !== undefined && currentTime > 0 ? Math.floor(currentTime) : 0;
+    const actualTime = currentTime !== null && currentTime !== undefined ? Math.max(0, currentTime) : 0; // Keep actual time for progress calculations
 
     switch (style) {
       case 'digital':
@@ -254,7 +256,7 @@ export function ExternalDisplayWindow() {
         );
 
       case 'progress-bar':
-        const progress = timerNum / totalTime;
+        const progress = actualTime / totalTime;
         const progressTransitionMs = Math.max(800, totalTime * 950); // Dynamic transition in milliseconds
         return (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '32px', width: '100%', maxWidth: '64rem', margin: '0 auto' }}>
@@ -283,7 +285,7 @@ export function ExternalDisplayWindow() {
         );
 
       case 'liquid':
-        const liquidProgress = timerNum / totalTime;
+        const liquidProgress = actualTime / totalTime;
         const liquidTransitionMs = Math.max(800, totalTime * 950); // Dynamic transition in milliseconds
         return (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
@@ -324,10 +326,12 @@ export function ExternalDisplayWindow() {
       default:
         const radius = 45;
         const circumference = 2 * Math.PI * radius;
-        const circularProgress = timerNum / totalTime;
-        const strokeOffset = circumference * (1 - circularProgress);
-        // Dynamic transition: 0.95 seconds per full timer second for smooth animation
-        const transitionDuration = Math.max(0.8, totalTime * 0.95);
+        // Ensure progress reaches exactly 1.0 (100%) when timer is 0 or negative
+        const circularProgress = totalTime > 0 ? Math.max(0, Math.min(1, actualTime / totalTime)) : 1;
+        const strokeOffset = circularProgress >= 0.99 ? 0 : circumference * (1 - circularProgress);
+        // Use the actual remaining time for transition duration, not the total time
+        // This ensures the animation completes exactly when the timer reaches 0
+        const transitionDuration = Math.max(0.1, actualTime);
 
         return (
           <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -389,18 +393,341 @@ export function ExternalDisplayWindow() {
           </div>
         );
 
-      case 'timer':
+      case 'question-with-timer':
+      case 'timer-with-question': {
+        // Timer with question, options, and image displayed
+        const progressPercentage = displayData.data?.timerValue && displayData.data?.totalTime
+          ? Math.max(0, Math.min(100, (displayData.data.timerValue / displayData.data.totalTime) * 100))
+          : 0;
+        const timeRemaining = displayData.data?.timerValue || 0;
+        const showProgressBar = displayData.data?.showProgressBar !== false; // Default to true if not specified
+
+        // Dynamic scaling based on available space
+        const isMobileSize = window.innerWidth < 1024;
+        const isSmallHeight = window.innerHeight < 800;
+
+        // Calculate responsive padding and font sizes
+        const containerPadding = isMobileSize ? '20px' : '40px';
+        const gapSize = isMobileSize ? '20px' : '40px';
+        const questionFontSize = isMobileSize ? '28px' : '40px';
+        const headerFontSize = isMobileSize ? '24px' : '36px';
+        const optionFontSize = isMobileSize ? '14px' : '20px';
+
         return (
-          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '32px', backgroundColor: dynamicBackgroundColor }}>
-            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-              <h1 style={{ fontSize: '48px', fontWeight: 'bold', color: '#1f2937' }}>
-                Question {(displayData.questionInfo && displayData.questionInfo.number) || 1} • Timer
-              </h1>
-            </div>
-            <div style={{ flex: 1, backgroundColor: '#1f2937', borderRadius: '24px', padding: '48px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {renderCountdownTimer(displayData.timerValue, displayData.countdownStyle, displayData.totalTime || 30)}
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1f2937', position: 'relative', overflow: 'hidden' }}>
+            {/* Progress bar at top - show only if timer is actively running */}
+            {showProgressBar && (
+              <div style={{
+                height: '12px',
+                backgroundColor: '#374151',
+                width: '100%',
+                position: 'relative',
+                flexShrink: 0,
+                opacity: timeRemaining > 0 ? 1 : 0,
+                transition: 'opacity 0.2s ease'
+              }}>
+                <div style={{
+                  height: '100%',
+                  backgroundColor: '#f97316',
+                  width: `${progressPercentage}%`,
+                  transition: 'width 0.1s linear'
+                }}></div>
               </div>
+            )}
+
+            {/* Main content area with question on left, image on right (if present) */}
+            <div style={{ flex: 1, display: 'flex', padding: containerPadding, gap: gapSize, alignItems: 'flex-start', justifyContent: 'flex-start', overflow: 'hidden' }}>
+              {/* Question and Options on Left - takes up left portion, shrinks if image present */}
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                flex: displayData.data?.imageDataUrl ? '0 1 50%' : '1',
+                maxWidth: displayData.data?.imageDataUrl ? '50%' : '100%',
+                overflow: 'auto',
+                paddingRight: displayData.data?.imageDataUrl ? '0' : gapSize
+              }}>
+                {/* Question Header */}
+                <div style={{ marginBottom: isMobileSize ? '20px' : '30px' }}>
+                  <h1 style={{ fontSize: headerFontSize, fontWeight: 'bold', color: '#f97316', margin: '0 0 15px 0' }}>
+                    Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
+                  </h1>
+                  {displayData.data?.hidden ? (
+                    <div style={{ fontSize: isMobileSize ? '64px' : '96px', fontWeight: 'bold', color: '#9ca3af', textAlign: 'center', marginTop: '20px' }}>?</div>
+                  ) : (
+                    <h2 style={{ fontSize: questionFontSize, fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.3' }}>
+                      {displayData.data?.text || 'Loading question...'}
+                    </h2>
+                  )}
+                </div>
+
+                {/* Options */}
+                {displayData.data?.options && displayData.data.options.length > 0 && !displayData.data?.hidden && (
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobileSize ? '120px' : '180px'}, 1fr))`, gap: isMobileSize ? '10px' : '16px', marginTop: isMobileSize ? '10px' : '20px' }}>
+                    {displayData.data.options.map((option: string, index: number) => {
+                      const letterMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+                      return (
+                        <div key={index} style={{
+                          backgroundColor: '#374151',
+                          border: '2px solid #f97316',
+                          borderRadius: '8px',
+                          padding: isMobileSize ? '10px' : '16px',
+                          textAlign: 'center',
+                          fontSize: optionFontSize,
+                          fontWeight: '600',
+                          color: 'white'
+                        }}>
+                          <div style={{ marginBottom: '8px', fontSize: isMobileSize ? '18px' : '28px', color: '#f97316' }}>{letterMap[index]}</div>
+                          <div>{option}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Image on Right (if present) - constrained to right half of screen */}
+              {displayData.data?.imageDataUrl && (
+                <div style={{
+                  flex: '0 0 calc(50% - 20px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                  overflow: 'hidden'
+                }}>
+                  <img
+                    src={displayData.data.imageDataUrl}
+                    alt="Question"
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      width: 'auto',
+                      height: 'auto',
+                      objectFit: 'contain',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Timer at bottom-right - only show while timer is running */}
+            {timeRemaining > 0 && (
+              <div style={{
+                position: 'absolute',
+                bottom: isMobileSize ? '12px' : '24px',
+                right: isMobileSize ? '12px' : '24px',
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                borderRadius: '16px',
+                padding: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+                transform: 'scale(0.425)',
+                transformOrigin: 'bottom right'
+              }}>
+                {renderCountdownTimer(timeRemaining, displayData.countdownStyle || displayData.data?.countdownStyle || 'circular', displayData.data?.totalTime || displayData.totalTime || 30, 120)}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      case 'timer':
+        const progressPercentage = displayData.timerValue !== null && displayData.timerValue !== undefined && displayData.totalTime
+          ? Math.max(0, Math.min(100, (displayData.timerValue / displayData.totalTime) * 100))
+          : 0;
+        const timerValue = displayData.timerValue !== null && displayData.timerValue !== undefined ? displayData.timerValue : 0;
+        const isTimerActive = timerValue > 0 || (displayData.timerValue !== null && displayData.timerValue === 0);
+        const getProgressBarColor = () => {
+          const percent = (timerValue / (displayData.totalTime || 30)) * 100;
+          if (percent > 66) return '#10b981'; // Green
+          if (percent > 33) return '#f59e0b'; // Amber
+          return '#ef4444'; // Red
+        };
+
+        return (
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: dynamicBackgroundColor, position: 'relative' }}>
+            {/* Progress bar at top - show while timer is active */}
+            {isTimerActive && (
+              <div style={{
+                height: '12px',
+                backgroundColor: '#e5e7eb',
+                width: '100%',
+                position: 'relative',
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  height: '100%',
+                  backgroundColor: getProgressBarColor(),
+                  width: `${progressPercentage}%`,
+                  transition: 'width 0.05s linear, background-color 0.3s ease',
+                  boxShadow: `0 0 10px ${getProgressBarColor()}`
+                }}></div>
+              </div>
+            )}
+
+            {/* Content area - centered */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '32px', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+                <h1 style={{ fontSize: '48px', fontWeight: 'bold', color: '#1f2937' }}>
+                  Question {(displayData.questionInfo && displayData.questionInfo.number) || 1}
+                </h1>
+              </div>
+            </div>
+
+            {/* Timer at bottom-right - show while timer is active */}
+            {isTimerActive && (
+              <div style={{
+                position: 'absolute',
+                bottom: window.innerWidth < 1024 ? '12px' : '24px',
+                right: window.innerWidth < 1024 ? '12px' : '24px',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                borderRadius: '16px',
+                padding: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+                transform: 'scale(0.355)',
+                transformOrigin: 'bottom right'
+              }}>
+                {renderCountdownTimer(timerValue, displayData.countdownStyle, displayData.totalTime || 30, 120)}
+              </div>
+            )}
+          </div>
+        );
+
+      case 'question':
+        return (
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Question Header */}
+            <div style={{ marginBottom: '40px', textAlign: 'center', width: '100%' }}>
+              <h1 style={{ fontSize: '56px', fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
+                Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
+              </h1>
+              {displayData.data?.hidden ? (
+                <div style={{ fontSize: '120px', fontWeight: 'bold', color: '#9ca3af' }}>?</div>
+              ) : (
+                <h2 style={{ fontSize: '48px', fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2', maxWidth: '90vw' }}>
+                  {displayData.data?.text || 'Loading question...'}
+                </h2>
+              )}
+            </div>
+
+            {/* Options for Multiple Choice and Sequence */}
+            {displayData.data?.options && displayData.data.options.length > 0 && !displayData.data?.hidden && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', width: '100%', maxWidth: '1200px' }}>
+                {displayData.data.options.map((option: string, index: number) => {
+                  const letterMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+                  return (
+                    <div key={index} style={{
+                      backgroundColor: '#374151',
+                      border: '3px solid #f97316',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      textAlign: 'center',
+                      fontSize: '28px',
+                      fontWeight: '600',
+                      color: 'white'
+                    }}>
+                      <div style={{ marginBottom: '10px', fontSize: '36px', color: '#f97316' }}>{letterMap[index]}</div>
+                      <div>{option}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+
+      case 'resultsSummary':
+        return (
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}>
+            {/* Question and Answer at top */}
+            <div style={{ marginBottom: displayData.data?.correctCount !== undefined ? '40px' : '60px', textAlign: 'center', width: '100%' }}>
+              <h1 style={{ fontSize: '48px', fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
+                Question {displayData.data?.questionNumber || 1}
+              </h1>
+              <h2 style={{ fontSize: '40px', fontWeight: '600', color: 'white', margin: '0 0 30px 0', lineHeight: '1.3' }}>
+                {displayData.data?.text || ''}
+              </h2>
+              <div style={{ fontSize: '42px', fontWeight: 'bold', color: '#10b981', margin: '0 0 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+                <span style={{ fontSize: '48px' }}>✓</span>
+                <span>{displayData.data?.answer || 'No answer available'}</span>
+              </div>
+            </div>
+
+            {/* Results Summary Grid - only show if team answer counts exist */}
+            {displayData.data?.correctCount !== undefined && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', width: '100%', maxWidth: '800px' }}>
+              {/* Correct */}
+              <div style={{
+                backgroundColor: '#10b981',
+                borderRadius: '16px',
+                padding: '30px',
+                textAlign: 'center',
+                border: '4px solid white'
+              }}>
+                <div style={{ fontSize: '24px', fontWeight: '600', color: 'white', marginBottom: '10px' }}>Correct</div>
+                <div style={{ fontSize: '56px', fontWeight: 'bold', color: 'white' }}>{displayData.data?.correctCount || 0}</div>
+              </div>
+
+              {/* Incorrect */}
+              <div style={{
+                backgroundColor: '#ef4444',
+                borderRadius: '16px',
+                padding: '30px',
+                textAlign: 'center',
+                border: '4px solid white'
+              }}>
+                <div style={{ fontSize: '24px', fontWeight: '600', color: 'white', marginBottom: '10px' }}>Incorrect</div>
+                <div style={{ fontSize: '56px', fontWeight: 'bold', color: 'white' }}>{displayData.data?.incorrectCount || 0}</div>
+              </div>
+
+              {/* No Answer */}
+              <div style={{
+                backgroundColor: '#6b7280',
+                borderRadius: '16px',
+                padding: '30px',
+                textAlign: 'center',
+                border: '4px solid white'
+              }}>
+                <div style={{ fontSize: '24px', fontWeight: '600', color: 'white', marginBottom: '10px' }}>No Answer</div>
+                <div style={{ fontSize: '56px', fontWeight: 'bold', color: 'white' }}>{displayData.data?.noAnswerCount || 0}</div>
+              </div>
+            </div>
+            )}
+          </div>
+        );
+
+      case 'fastestTeam':
+        return (
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Subheader */}
+            <div style={{ fontSize: '32px', fontWeight: '600', color: '#9ca3af', marginBottom: '30px', textAlign: 'center' }}>
+              The fastest correct team was:
+            </div>
+
+            {/* Team Name with animation */}
+            <div style={{
+              fontSize: 'clamp(3rem, 10vw, 8rem)',
+              fontWeight: 'bold',
+              color: '#f97316',
+              textAlign: 'center',
+              padding: '40px',
+              border: '6px solid #f97316',
+              borderRadius: '24px',
+              backgroundColor: '#374151',
+              animation: 'scaleInAnimation 0.6s ease-out',
+              maxWidth: '90vw',
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word'
+            }}>
+              {displayData.data?.teamName || 'No Team'}
             </div>
           </div>
         );
@@ -437,7 +764,7 @@ export function ExternalDisplayWindow() {
   };
 
   return (
-    <div style={{ height: '100vh', width: '100vw', backgroundColor: '#111827', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100vh', width: '100vw', backgroundColor: '#111827', display: 'flex', flexDirection: 'column', border: '8px solid #f97316' }}>
       <style>{`
         @keyframes fall {
           to { transform: translateY(100vh); opacity: 0; }
@@ -454,9 +781,19 @@ export function ExternalDisplayWindow() {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+        @keyframes scaleInAnimation {
+          from {
+            opacity: 0;
+            transform: scale(0.8);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
       `}</style>
 
-      <div style={{ backgroundColor: '#374151', padding: '12px', flex: '0 0 auto' }}>
+      <div style={{ backgroundColor: '#374151', padding: '12px', flex: '0 0 auto', borderBottom: '3px solid #f97316', display: 'none' }} data-external-display-header="true">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#f97316', animation: 'pulse 2s ease-in-out infinite' }}></div>
@@ -469,7 +806,7 @@ export function ExternalDisplayWindow() {
         </div>
       </div>
 
-      <div style={{ flex: 1, backgroundColor: 'black', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ flex: 1, backgroundColor: 'black', position: 'relative', overflow: 'hidden', border: '8px solid #f97316', boxSizing: 'border-box' }}>
         {renderContent()}
         <div style={{ position: 'absolute', bottom: '16px', right: '16px', fontSize: '12px', color: 'white', opacity: 0.3, fontFamily: 'monospace' }}>
           EXT-1

@@ -17,9 +17,12 @@ interface NearestWinsInterfaceProps {
   onTimerLockChange?: (isLocked: boolean) => void; // Timer lock state callback
   externalWindow?: Window | null; // External display window
   onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: () => void }) => void; // Pass action handlers to parent for nav bar
+  onGameTimerStateChange?: (isTimerRunning: boolean) => void; // Notify parent of timer state changes
+  onCurrentScreenChange?: (screen: string) => void; // Notify parent of current screen changes
+  onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
 }
 
-export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTeamAnswerUpdate, onAwardPoints, currentRoundWinnerPoints, onCurrentRoundWinnerPointsChange, onTimerLockChange, externalWindow, onGetActionHandlers }: NearestWinsInterfaceProps) {
+export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTeamAnswerUpdate, onAwardPoints, currentRoundWinnerPoints, onCurrentRoundWinnerPointsChange, onTimerLockChange, externalWindow, onGetActionHandlers, onGameTimerStateChange, onCurrentScreenChange, onGameTimerUpdate }: NearestWinsInterfaceProps) {
   const { nearestWinsTimer, gameModePoints, voiceCountdown, keypadDesign } = useSettings();
 
   // Wrapper function to clear team answers when going back
@@ -626,6 +629,27 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
     }
   }, [onGetActionHandlers, handleRevealResults, handleNextRound, handleStartTimer]);
 
+  // Notify parent of timer state changes for navigation bar
+  useEffect(() => {
+    if (onGameTimerStateChange) {
+      onGameTimerStateChange(isTimerRunning);
+    }
+  }, [isTimerRunning, onGameTimerStateChange]);
+
+  // Notify parent of current screen changes for navigation bar visibility
+  useEffect(() => {
+    if (onCurrentScreenChange) {
+      onCurrentScreenChange(currentScreen);
+    }
+  }, [currentScreen, onCurrentScreenChange]);
+
+  // Notify parent of timer values for navigation bar display
+  useEffect(() => {
+    if (onGameTimerUpdate && isTimerRunning) {
+      onGameTimerUpdate(countdown || 0, totalTimerLength);
+    }
+  }, [countdown, totalTimerLength, isTimerRunning, onGameTimerUpdate]);
+
   // Reveal results
   const handleRevealResults = useCallback(() => {
     setAnswerRevealed(true);
@@ -802,14 +826,6 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
           </Button>
         </div>
 
-        {/* Timer Progress Bar */}
-        <TimerProgressBar 
-          isVisible={isTimerRunning}
-          timeRemaining={countdown || 0}
-          totalTime={totalTimerLength}
-          position="top"
-        />
-
         <div className="flex-1 flex items-center justify-center">
           <div className="w-full max-w-2xl">
             {/* Centered Answer Keypad */}
@@ -906,21 +922,7 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
           </div>
         </div>
 
-        {/* Start Timer Button - Fixed bottom right position */}
-        <div className="fixed bottom-[110px] right-6 z-50">
-          <Button
-            onClick={handleStartTimer}
-            disabled={timerHasBeenStarted}
-            className={`border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl ${
-              timerHasBeenStarted
-                ? 'bg-[#7f8c8d] text-[#95a5a6] cursor-not-allowed'
-                : 'bg-[#3498db] hover:bg-[#2980b9] text-white'
-            }`}
-          >
-            <Timer className="h-6 w-6" />
-            {timerHasBeenStarted ? 'Timer Finished' : 'Start Timer'}
-          </Button>
-        </div>
+
       </div>
     );
   }

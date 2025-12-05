@@ -175,15 +175,16 @@ export function QuestionPanel({
             <div
               className="bg-slate-700 border-2 border-slate-600 rounded-lg overflow-hidden flex items-center justify-center"
               style={{
-                width: '300px',
-                height: '300px',
-              }}
+        width: '300px',
+        height: '450px',
+        aspectRatio: '2 / 3',
+      }}
             >
               <img
-                src={question.imageDataUrl}
-                alt="Question"
-                className="w-full h-full object-cover"
-              />
+        src={question.imageDataUrl}
+        alt="Question"
+        className="w-full h-full object-contain"
+      />
             </div>
           </div>
         )}

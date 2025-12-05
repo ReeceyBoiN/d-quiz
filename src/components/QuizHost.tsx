@@ -37,6 +37,7 @@ import { useTimer } from "../hooks/useTimer";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage } from "../state/flowState";
 import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage } from "../network/wsHost";
+import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { Resizable } from "re-resizable";
 import { Button } from "./ui/button";
 import { ChevronRight } from "lucide-react";
@@ -248,6 +249,10 @@ export function QuizHost() {
     answerSubmitted: undefined,
   });
 
+  // Voice announcement tracking for timer
+  const timerVoiceAnnouncedRef = useRef<Set<number | string>>(new Set());
+  const timerIsMountedRef = useRef(true);
+
   // Timer hook for countdown
   const timer = useTimer({
     onEnd: () => {
@@ -257,12 +262,39 @@ export function QuizHost() {
         flow: 'timeup',
         timeRemaining: 0,
       }));
+
+      // Announce "Times up!" when timer ends (only for non-quiz-pack modes)
+      if (voiceCountdown && !isQuizPackMode && timerIsMountedRef.current && !timerVoiceAnnouncedRef.current.has('timesUp')) {
+        console.log('[QuizHost Timer] Announcing Times up!');
+        const utterance = new SpeechSynthesisUtterance("Time's up!");
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        speechSynthesis.speak(utterance);
+        timerVoiceAnnouncedRef.current.add('timesUp');
+      }
     },
     onTick: (remaining) => {
       setFlowState(prev => ({
         ...prev,
         timeRemaining: remaining,
       }));
+
+      // Announce countdown at 5-second intervals (5, 10, 15, etc) - only for non-quiz-pack modes
+      if (voiceCountdown && !isQuizPackMode && timerIsMountedRef.current) {
+        // Round down to nearest second for comparison
+        const roundedRemaining = Math.ceil(remaining);
+
+        if (roundedRemaining > 0 && roundedRemaining % 5 === 0 && !timerVoiceAnnouncedRef.current.has(roundedRemaining)) {
+          console.log('[QuizHost Timer] Announcing countdown:', roundedRemaining);
+          const utterance = new SpeechSynthesisUtterance(roundedRemaining.toString());
+          utterance.rate = 1;
+          utterance.pitch = 1;
+          utterance.volume = 1;
+          speechSynthesis.speak(utterance);
+          timerVoiceAnnouncedRef.current.add(roundedRemaining);
+        }
+      }
     },
   });
 
@@ -336,12 +368,34 @@ export function QuizHost() {
   // Hide question state - when true, don't send question to players/external display
   const [hideQuestionMode, setHideQuestionMode] = useState(false);
 
+  // Fastest team reveal timing - ensure minimum 4 second display on external display
+  const [fastestTeamRevealTime, setFastestTeamRevealTime] = useState<number | null>(null);
+  const FASTEST_TEAM_MIN_DISPLAY_TIME = 4000; // 4 seconds in milliseconds
+  const SEND_QUESTION_DISABLED_TIME = 2000; // 2 seconds button disable on fastest team
+  const [isSendQuestionDisabled, setIsSendQuestionDisabled] = useState(false);
+
   // Action handlers from game mode components for nav bar integration
   const [gameActionHandlers, setGameActionHandlers] = useState<{
     reveal?: () => void;
     nextQuestion?: () => void;
     startTimer?: () => void;
   } | null>(null);
+
+  // Game timer state for navigation bar
+  const [gameTimerRunning, setGameTimerRunning] = useState(false);
+  const [gameTimerTimeRemaining, setGameTimerTimeRemaining] = useState(0);
+  const [gameTimerTotalTime, setGameTimerTotalTime] = useState(0);
+
+  // On-the-spot game state tracking for navigation bar flow button logic
+  const [gameTimerFinished, setGameTimerFinished] = useState(false);
+  const [gameAnswerRevealed, setGameAnswerRevealed] = useState(false);
+  const [gameFastestRevealed, setGameFastestRevealed] = useState(false);
+  const [teamsAnsweredCorrectly, setTeamsAnsweredCorrectly] = useState(false);
+  const [gameAnswerSelected, setGameAnswerSelected] = useState(false);
+
+  // Screen state tracking for on-the-spot game modes
+  const [keypadCurrentScreen, setKeypadCurrentScreen] = useState<string>('config');
+  const [nearestWinsCurrentScreen, setNearestWinsCurrentScreen] = useState<string>('config');
 
   // Game mode configuration state is now handled by settings context
 
@@ -406,12 +460,87 @@ export function QuizHost() {
   // Handle timer when flow state changes to 'running'
   useEffect(() => {
     if ((flowState.flow as any) === 'running') {
+      // Reset voice announcements for new timer session
+      timerVoiceAnnouncedRef.current.clear();
+      console.log('[QuizHost] Timer starting, reset voice announcements');
+
       const isSilent = flowState.answerSubmitted === 'silent'; // Check if silent timer was used
       timer.start(flowState.totalTime, isSilent);
+
+      // Announce starting value immediately if it's a 5-second interval (only for non-quiz-pack modes)
+      if (voiceCountdown && !isQuizPackMode && flowState.totalTime % 5 === 0 && timerIsMountedRef.current) {
+        console.log('[QuizHost] Announcing starting value:', flowState.totalTime);
+        const utterance = new SpeechSynthesisUtterance(flowState.totalTime.toString());
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        speechSynthesis.speak(utterance);
+        timerVoiceAnnouncedRef.current.add(flowState.totalTime);
+      }
     } else if (flowState.flow !== 'running' && flowState.flow !== 'timeup') {
       timer.stop();
     }
-  }, [flowState.flow, flowState.totalTime, timer]);
+  }, [flowState.flow, flowState.totalTime, timer, voiceCountdown, isQuizPackMode]);
+
+  // Auto-show answer in app when timer ends (flow transitions to 'timeup')
+  useEffect(() => {
+    if (flowState.flow === 'timeup' && isQuizPackMode) {
+      setShowAnswer(true);
+    }
+  }, [flowState.flow, isQuizPackMode]);
+
+  // Update external display with timer countdown - keep question visible
+  useEffect(() => {
+    if (externalWindow && flowState.flow === 'running') {
+      const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+      if (currentQuestion) {
+        const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
+        const timeRemaining = Math.max(0, flowState.timeRemaining);
+
+        sendToExternalDisplay({
+          type: 'DISPLAY_UPDATE',
+          mode: 'timer-with-question',
+          data: {
+            text: hideQuestionMode ? null : currentQuestion.q,
+            options: shouldIncludeOptions && !hideQuestionMode ? currentQuestion.options : [],
+            type: currentQuestion.type,
+            questionNumber: currentLoadedQuestionIndex + 1,
+            totalQuestions: loadedQuizQuestions.length,
+            hidden: hideQuestionMode,
+            timerValue: timeRemaining,
+            totalTime: flowState.totalTime,
+            showProgressBar: true,
+            imageDataUrl: currentQuestion.imageDataUrl || null
+          },
+          totalTime: flowState.totalTime,
+          countdownStyle: countdownStyle
+        });
+      }
+    }
+  }, [flowState.timeRemaining, flowState.flow, currentLoadedQuestionIndex, hideQuestionMode, loadedQuizQuestions, externalWindow]);
+
+  // Disable Send Question button for 2 seconds after Next Question is clicked
+  useEffect(() => {
+    if (isSendQuestionDisabled) {
+      const timer = setTimeout(() => {
+        setIsSendQuestionDisabled(false);
+      }, SEND_QUESTION_DISABLED_TIME);
+      return () => clearTimeout(timer);
+    }
+  }, [isSendQuestionDisabled]);
+
+  // Fastest team will stay on screen indefinitely until Next Question is clicked
+  // The reversion happens in the Next Question handler in the 'fastest' case
+
+  // Cleanup effect for timer voice announcements on unmount
+  useEffect(() => {
+    return () => {
+      console.log('[QuizHost] Unmounting, cleaning up timer voice announcements');
+      timerIsMountedRef.current = false;
+      timerVoiceAnnouncedRef.current.clear();
+      speechSynthesis.cancel();
+    };
+  }, []);
 
   // Handle network player joins
   useEffect(() => {
@@ -551,7 +680,10 @@ export function QuizHost() {
 
         wsInstance.onerror = (event) => {
           clearTimeout(connectionTimeout);
-          console.error('❌ WebSocket error:', event);
+          const errorMsg = event instanceof Event
+            ? `WebSocket connection failed (the app may need to run in Electron)`
+            : (event as any)?.message || 'Unknown WebSocket error';
+          console.error('❌ WebSocket error:', errorMsg, 'Attempting to connect to:', backendWs);
           setWsConnected(false);
           // Don't retry on error alone - wait for onclose to handle reconnection
         };
@@ -667,6 +799,11 @@ export function QuizHost() {
     setShowFastestTeamDisplay(false);
     setShowQuizPackDisplay(false);
     setIsQuizPackMode(false);
+    setGameTimerRunning(false);
+    setGameTimerTimeRemaining(0);
+    setGameTimerTotalTime(0);
+    setKeypadCurrentScreen('config');
+    setNearestWinsCurrentScreen('config');
     setBuzzInConfig(null);
     // Reset current round scores
     setCurrentRoundPoints(null);
@@ -904,6 +1041,15 @@ export function QuizHost() {
   const handleKeypadClose = () => {
     setShowKeypadInterface(false);
     setIsQuizPackMode(false);
+    setGameTimerRunning(false);
+    setGameTimerTimeRemaining(0);
+    setGameTimerTotalTime(0);
+    setGameTimerFinished(false);
+    setGameAnswerRevealed(false);
+    setGameFastestRevealed(false);
+    setTeamsAnsweredCorrectly(false);
+    setGameAnswerSelected(false);
+    setKeypadCurrentScreen('config');
     setActiveTab("home"); // Return to home when keypad is closed
   };
 
@@ -922,6 +1068,26 @@ export function QuizHost() {
 
   const handleQuizPackClose = () => {
     setShowQuizPackDisplay(false);
+
+    // Reset external display to default mode when closing quiz pack
+    if (externalWindow && !externalWindow.closed) {
+      if (userSelectedDisplayMode === 'basic') {
+        sendToExternalDisplay({ type: 'DISPLAY_UPDATE', mode: 'basic' });
+      } else if (userSelectedDisplayMode === 'scores') {
+        sendToExternalDisplay({
+          type: 'DISPLAY_UPDATE',
+          mode: 'scores',
+          quizzes: quizzes
+        });
+      } else if (userSelectedDisplayMode === 'slideshow') {
+        sendToExternalDisplay({
+          type: 'DISPLAY_UPDATE',
+          mode: 'slideshow',
+          images: images,
+          slideshowSpeed: slideshowSpeed
+        });
+      }
+    }
     setHideQuestionMode(false);
     setActiveTab("home");
   };
@@ -964,8 +1130,28 @@ export function QuizHost() {
           // No picture, send question directly
           sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
           if (externalWindow) {
+            // Only include options for sequence and multiple-choice questions
+            const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
             sendToExternalDisplay(
-              { type: 'DISPLAY_UPDATE', mode: 'question', data: { text: currentQuestion.q, options: currentQuestion.options, type: currentQuestion.type } }
+              {
+                type: 'DISPLAY_UPDATE',
+                mode: 'question-with-timer',
+                data: {
+                  text: hideQuestionMode ? null : currentQuestion.q,
+                  options: shouldIncludeOptions && !hideQuestionMode ? currentQuestion.options : [],
+                  type: currentQuestion.type,
+                  questionNumber: currentLoadedQuestionIndex + 1,
+                  totalQuestions: loadedQuizQuestions.length,
+                  hidden: hideQuestionMode,
+                  timerValue: flowState.totalTime,
+                  totalTime: flowState.totalTime,
+                  countdownStyle: countdownStyle,
+                  showProgressBar: false,
+                  imageDataUrl: currentQuestion.imageDataUrl || null
+                },
+                totalTime: flowState.totalTime,
+                countdownStyle: countdownStyle
+              }
             );
           }
           setFlowState(prev => ({
@@ -982,10 +1168,53 @@ export function QuizHost() {
         if (!hideQuestionMode) {
           sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
           if (externalWindow) {
+            // Only include options for sequence and multiple-choice questions
+            const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
             sendToExternalDisplay(
-              { type: 'DISPLAY_UPDATE', mode: 'question', data: { text: currentQuestion.q, options: currentQuestion.options, type: currentQuestion.type } }
+              {
+                type: 'DISPLAY_UPDATE',
+                mode: 'question-with-timer',
+                data: {
+                  text: currentQuestion.q,
+                  options: shouldIncludeOptions ? currentQuestion.options : [],
+                  type: currentQuestion.type,
+                  questionNumber: currentLoadedQuestionIndex + 1,
+                  totalQuestions: loadedQuizQuestions.length,
+                  hidden: false,
+                  timerValue: flowState.totalTime,
+                  totalTime: flowState.totalTime,
+                  countdownStyle: countdownStyle,
+                  showProgressBar: false,
+                  imageDataUrl: null
+                },
+                totalTime: flowState.totalTime,
+                countdownStyle: countdownStyle
+              }
             );
           }
+        } else if (externalWindow) {
+          // Send hidden question marker even in hide mode
+          sendToExternalDisplay(
+            {
+              type: 'DISPLAY_UPDATE',
+              mode: 'question-with-timer',
+              data: {
+                text: null,
+                options: [],
+                type: currentQuestion.type,
+                questionNumber: currentLoadedQuestionIndex + 1,
+                totalQuestions: loadedQuizQuestions.length,
+                hidden: true,
+                timerValue: flowState.totalTime,
+                totalTime: flowState.totalTime,
+                countdownStyle: countdownStyle,
+                showProgressBar: false,
+                imageDataUrl: null
+              },
+              totalTime: flowState.totalTime,
+              countdownStyle: countdownStyle
+            }
+          );
         }
         setFlowState(prev => ({
           ...prev,
@@ -998,27 +1227,13 @@ export function QuizHost() {
       case 'sent-question': {
         // Start audible timer
         sendTimerToPlayers(flowState.totalTime, false);
-        if (externalWindow) {
-          sendToExternalDisplay(
-            {
-              type: 'DISPLAY_UPDATE',
-              mode: 'timer',
-              data: {
-                timerValue: flowState.totalTime,
-                seconds: flowState.totalTime,
-                totalTime: flowState.totalTime
-              },
-              questionInfo: {
-                number: currentQuestionIndex + 1,
-                type: 'Question',
-                total: mockQuestions.length
-              },
-              gameModeTimers: gameModeTimers,
-              countdownStyle: countdownStyle,
-              totalTime: flowState.totalTime
-            }
-          );
-        }
+        // Play countdown audio with normal sound
+        playCountdownAudio(flowState.totalTime, false).catch(error => {
+          console.error('[QuizHost] Error playing countdown audio:', error);
+        });
+        // Start the local timer
+        setIsQuizActive(true);
+        setTimeRemaining(flowState.totalTime);
         setFlowState(prev => ({
           ...prev,
           flow: 'running',
@@ -1028,29 +1243,110 @@ export function QuizHost() {
 
       case 'running':
       case 'timeup': {
-        // Stop timer and reveal answer
+        // User clicked "Reveal Answer" - send answer to external display and show fastest team in app
         timer.stop();
+
+        // Send the answer to all players and external display
         if (externalWindow) {
-          sendToExternalDisplay(
-            { type: 'DISPLAY_UPDATE', mode: 'correctAnswer', data: { answer: currentQuestion.answerText, correctIndex: currentQuestion.correctIndex, type: currentQuestion.type } }
-          );
+          // For quiz pack mode, send results summary; for on-the-spot, send the answer
+          if (isQuizPackMode && loadedQuizQuestions.length > 0) {
+            // Calculate answer statistics for quiz pack
+            const correctCount = quizzes.filter(team => teamAnswerStatuses[team.id] === 'correct').length;
+            const incorrectCount = quizzes.filter(team => teamAnswerStatuses[team.id] === 'incorrect').length;
+            const noAnswerCount = quizzes.filter(team => teamAnswerStatuses[team.id] === 'no-answer' || !teamAnswerStatuses[team.id]).length;
+
+            sendToExternalDisplay(
+              {
+                type: 'DISPLAY_UPDATE',
+                mode: 'resultsSummary',
+                data: {
+                  text: currentQuestion.q,
+                  answer: getAnswerText(currentQuestion),
+                  correctIndex: currentQuestion.correctIndex,
+                  type: currentQuestion.type,
+                  questionNumber: currentLoadedQuestionIndex + 1,
+                  totalQuestions: loadedQuizQuestions.length,
+                  correctCount,
+                  incorrectCount,
+                  noAnswerCount,
+                  totalTeams: quizzes.length
+                }
+              }
+            );
+          } else {
+            sendToExternalDisplay(
+              { type: 'DISPLAY_UPDATE', mode: 'correctAnswer', data: { answer: getAnswerText(currentQuestion), correctIndex: currentQuestion.correctIndex, type: currentQuestion.type } }
+            );
+          }
         }
-        sendRevealToPlayers(currentQuestion.answerText, currentQuestion.correctIndex, currentQuestion.type);
-        setFlowState(prev => ({
-          ...prev,
-          flow: 'revealed',
-        }));
+        sendRevealToPlayers(getAnswerText(currentQuestion), currentQuestion.correctIndex, currentQuestion.type);
+
+        const isOnTheSpotMode = showKeypadInterface && !isQuizPackMode;
+
+        if (isOnTheSpotMode) {
+          // For on-the-spot: Show fastest team info and transition to fastest state
+          // Find the fastest team among those who answered correctly
+          const correctTeams = quizzes.filter(team => teamAnswerStatuses[team.id] === 'correct');
+          const fastestTeam = correctTeams.length > 0
+            ? correctTeams.reduce((fastest, current) => {
+                const currentTime = teamResponseTimes[current.id] || Infinity;
+                const fastestTime = teamResponseTimes[fastest.id] || Infinity;
+                return currentTime < fastestTime ? current : fastest;
+              })
+            : null;
+
+          if (fastestTeam) {
+            sendFastestToDisplay(fastestTeam.name, currentLoadedQuestionIndex + 1);
+            if (externalWindow) {
+              sendToExternalDisplay(
+                { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name } }
+              );
+            }
+          }
+
+          // Transition to fastest state
+          setFastestTeamRevealTime(Date.now());
+          setFlowState(prev => ({
+            ...prev,
+            flow: 'fastest',
+          }));
+        } else {
+          // For quiz pack: Show results summary on external display, show fastest team info in app
+          // Transition to revealed state (next click will show fastest team on external display)
+          setFastestTeamRevealTime(Date.now());
+          setFlowState(prev => ({
+            ...prev,
+            flow: 'revealed',
+          }));
+        }
         break;
       }
 
       case 'revealed': {
-        // Show fastest team view
-        if (externalWindow) {
-          sendToExternalDisplay(
-            { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1 } }
-          );
+        // User clicked "Fastest Team" button - send fastest team to external display
+        // This only happens in quiz pack mode (on-the-spot already sent it when answer was revealed)
+
+        const isOnTheSpotMode = showKeypadInterface && !isQuizPackMode;
+
+        if (!isOnTheSpotMode && isQuizPackMode) {
+          // For quiz pack: Show fastest team on external display
+          const correctTeams = quizzes.filter(team => teamAnswerStatuses[team.id] === 'correct');
+          const fastestTeam = correctTeams.length > 0
+            ? correctTeams.reduce((fastest, current) => {
+                const currentTime = teamResponseTimes[current.id] || Infinity;
+                const fastestTime = teamResponseTimes[fastest.id] || Infinity;
+                return currentTime < fastestTime ? current : fastest;
+              })
+            : null;
+
+          if (fastestTeam && externalWindow) {
+            sendToExternalDisplay(
+              { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name } }
+            );
+          }
         }
-        sendFastestToDisplay('TBD', currentLoadedQuestionIndex + 1);
+
+        // Transition to fastest state
         setFlowState(prev => ({
           ...prev,
           flow: 'fastest',
@@ -1059,20 +1355,63 @@ export function QuizHost() {
       }
 
       case 'fastest': {
-        // Move to next question or end round
-        if (currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
-          setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex + 1);
-          setHideQuestionMode(false); // Reset hide question flag for next question
+        const isOnTheSpotMode = showKeypadInterface && !isQuizPackMode;
+
+        if (isOnTheSpotMode) {
+          // For on-the-spot: Close keypad interface and return to question selection
+          handleKeypadClose();
           sendNextQuestion();
-          // Flow state will be reset by the effect
-        } else {
+          // Reset team answers and statuses for next question
+          setTeamAnswers({});
+          setTeamResponseTimes({});
+          setTeamAnswerStatuses({});
+          setTeamCorrectRankings({});
+          setFastestTeamRevealTime(null); // Reset reveal time
           setFlowState(prev => ({
             ...prev,
-            flow: 'complete',
+            flow: 'idle',
+            isQuestionMode: false,
           }));
-          sendEndRound();
-          if (externalWindow) {
-            sendToExternalDisplay({ type: 'END_ROUND' });
+        } else {
+          // For quiz pack: Move to next question or end round
+          if (currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
+            setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex + 1);
+            setHideQuestionMode(false); // Reset hide question flag for next question
+            setShowAnswer(false); // Reset answer visibility for next question
+            setFastestTeamRevealTime(null); // Reset reveal time
+            setIsSendQuestionDisabled(true); // Disable Send Question for 2 seconds
+            sendNextQuestion();
+
+            // Revert external display to default mode with fade transition
+            if (externalWindow) {
+              if (userSelectedDisplayMode === 'basic') {
+                sendToExternalDisplay({ type: 'DISPLAY_UPDATE', mode: 'basic' });
+              } else if (userSelectedDisplayMode === 'scores') {
+                sendToExternalDisplay({
+                  type: 'DISPLAY_UPDATE',
+                  mode: 'scores',
+                  quizzes: quizzes
+                });
+              } else if (userSelectedDisplayMode === 'slideshow') {
+                sendToExternalDisplay({
+                  type: 'DISPLAY_UPDATE',
+                  mode: 'slideshow',
+                  images: images,
+                  slideshowSpeed: slideshowSpeed
+                });
+              }
+            }
+            // Flow state will be reset by the effect
+          } else {
+            setFlowState(prev => ({
+              ...prev,
+              flow: 'complete',
+            }));
+            setIsSendQuestionDisabled(true); // Disable Send Question for 2 seconds
+            sendEndRound();
+            if (externalWindow) {
+              sendToExternalDisplay({ type: 'END_ROUND' });
+            }
           }
         }
         break;
@@ -1101,10 +1440,22 @@ export function QuizHost() {
     externalWindow,
     timer,
     hideQuestionMode,
+    showKeypadInterface,
+    isQuizPackMode,
+    quizzes,
+    teamAnswerStatuses,
+    teamResponseTimes,
+    handleKeypadClose,
+    setTeamAnswers,
+    setTeamResponseTimes,
+    setTeamAnswerStatuses,
+    setTeamCorrectRankings,
+    setShowQuizPackDisplay,
+    setActiveTab,
   ]);
 
   /**
-   * Silent timer handler - starts timer without audio.
+   * Silent timer handler - starts timer with silent countdown audio.
    */
   const handleSilentTimer = useCallback(() => {
     sendTimerToPlayers(flowState.totalTime, true);
@@ -1113,6 +1464,10 @@ export function QuizHost() {
         { type: 'TIMER', data: { seconds: flowState.totalTime, totalTime: flowState.totalTime }, totalTime: flowState.totalTime }
       );
     }
+    // Play silent countdown audio
+    playCountdownAudio(flowState.totalTime, true).catch(error => {
+      console.error('[QuizHost] Error playing silent countdown audio:', error);
+    });
     setFlowState(prev => ({
       ...prev,
       flow: 'running',
@@ -1121,17 +1476,62 @@ export function QuizHost() {
   }, [flowState.totalTime, externalWindow]);
 
   /**
+   * Helper function to get the correct answer from a question in all formats
+   */
+  const getAnswerText = (question: any): string => {
+    if (!question) return '';
+
+    if (question.answerText) {
+      return question.answerText;
+    }
+
+    if (question.meta?.short_answer) {
+      return question.meta.short_answer;
+    }
+
+    if (question.type?.toLowerCase() === 'multi' && question.options && question.correctIndex !== undefined) {
+      return question.options[question.correctIndex] || '';
+    }
+
+    if (question.type?.toLowerCase() === 'letters' && question.correctIndex !== undefined) {
+      return String.fromCharCode(65 + question.correctIndex);
+    }
+
+    if (question.type?.toLowerCase() === 'sequence' && question.options && question.correctIndex !== undefined) {
+      return question.options[question.correctIndex] || '';
+    }
+
+    if (question.type?.toLowerCase() === 'numbers' && question.answerText) {
+      return question.answerText;
+    }
+
+    return '';
+  };
+
+  /**
    * Wrapper for nav bar's onStartTimer - handles both quiz pack and on-the-spot modes
    */
   const handleNavBarStartTimer = useCallback(() => {
     if (isQuizPackMode || flowState.isQuestionMode) {
       // For quiz pack mode, use the primary action handler
       handlePrimaryAction();
-    } else if (gameActionHandlers?.startTimer) {
-      // For on-the-spot modes, use the handler from the game component
-      gameActionHandlers.startTimer();
+    } else if (showKeypadInterface || showNearestWinsInterface || showBuzzInMode) {
+      // For on-the-spot modes, determine which handler to call based on game state
+      if (!gameTimerRunning && !gameTimerFinished) {
+        // Timer not started yet - start the timer
+        gameActionHandlers?.startTimer?.();
+      } else if (gameTimerFinished && !gameAnswerRevealed) {
+        // Timer finished, next action is reveal answer
+        gameActionHandlers?.reveal?.();
+      } else if (gameTimerFinished && gameAnswerRevealed && !gameFastestRevealed && teamsAnsweredCorrectly) {
+        // Answer revealed and teams answered correctly, next action is fastest team
+        gameActionHandlers?.reveal?.();
+      } else if (gameFastestRevealed || (gameAnswerRevealed && !teamsAnsweredCorrectly)) {
+        // Either fastest team revealed OR answer revealed but no correct teams - next action is next question
+        gameActionHandlers?.nextQuestion?.();
+      }
     }
-  }, [isQuizPackMode, flowState.isQuestionMode, gameActionHandlers, handlePrimaryAction]);
+  }, [isQuizPackMode, flowState.isQuestionMode, gameActionHandlers, handlePrimaryAction, gameTimerRunning, gameTimerFinished, gameAnswerRevealed, gameFastestRevealed, teamsAnsweredCorrectly, showKeypadInterface, showNearestWinsInterface, showBuzzInMode]);
 
   /**
    * Wrapper for nav bar's onSilentTimer - handles both quiz pack and on-the-spot modes
@@ -1287,6 +1687,10 @@ export function QuizHost() {
     // If nearest wins interface is open and user clicks home, close nearest wins interface
     if (showNearestWinsInterface && tab === "home") {
       setShowNearestWinsInterface(false);
+      setNearestWinsCurrentScreen('config');
+      setGameTimerRunning(false);
+      setGameTimerTimeRemaining(0);
+      setGameTimerTotalTime(0);
     }
     // If wheel spinner interface is open and user clicks home, close wheel spinner interface
     if (showWheelSpinnerInterface && tab === "home") {
@@ -1439,8 +1843,8 @@ export function QuizHost() {
         setTimeRemaining(prev => {
           const newValue = prev - 1;
           
-          // Use text-to-speech for countdown - only at 5-second intervals
-          if (voiceCountdown && newValue > 0) {
+          // Use text-to-speech for countdown - only at 5-second intervals (not for quiz pack mode - audio files handle voiceover)
+          if (voiceCountdown && !isQuizPackMode && newValue > 0) {
             if (newValue % 5 === 0) {
               const utterance = new SpeechSynthesisUtterance(newValue.toString());
               utterance.rate = 1;
@@ -1449,12 +1853,12 @@ export function QuizHost() {
               speechSynthesis.speak(utterance);
             }
           }
-          
+
           if (newValue < 0) {
             setShowAnswer(true);
-            
-            // Say "Time's up!" at the end
-            if (voiceCountdown) {
+
+            // Say "Time's up!" at the end (not for quiz pack mode - audio files handle voiceover)
+            if (voiceCountdown && !isQuizPackMode) {
               const finalUtterance = new SpeechSynthesisUtterance("Time's up!");
               finalUtterance.rate = 1;
               finalUtterance.pitch = 1;
@@ -1474,7 +1878,7 @@ export function QuizHost() {
         clearInterval(interval);
       }
     };
-  }, [isQuizActive, timeRemaining, showAnswer, voiceCountdown]);
+  }, [isQuizActive, timeRemaining, showAnswer, voiceCountdown, isQuizPackMode]);
 
   // Separate effect to save response times when timer ends
   useEffect(() => {
@@ -1533,6 +1937,25 @@ export function QuizHost() {
 
   const handleRevealAnswer = () => {
     setShowAnswer(true);
+
+    // Send results summary to external display
+    if (isQuizPackMode && externalWindow && loadedQuizQuestions.length > 0) {
+      const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+      if (currentQuestion) {
+        sendToExternalDisplay({
+          type: 'DISPLAY_UPDATE',
+          mode: 'resultsSummary',
+          data: {
+            text: currentQuestion.q,
+            answer: getAnswerText(currentQuestion),
+            correctIndex: currentQuestion.correctIndex,
+            type: currentQuestion.type,
+            questionNumber: currentLoadedQuestionIndex + 1,
+            totalQuestions: loadedQuizQuestions.length
+          }
+        });
+      }
+    }
     setIsQuizActive(false);
     // Save current response times when revealing answer
     setLastResponseTimes(prev => ({ ...prev, ...teamResponseTimes }));
@@ -2295,6 +2718,7 @@ export function QuizHost() {
   const getPrimaryButtonLabel = (): string => {
     const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
     const hasPicture = hasQuestionImage(currentQuestion);
+    const isOnTheSpotMode = showKeypadInterface && !isQuizPackMode;
 
     switch (flowState.flow) {
       case 'ready':
@@ -2307,7 +2731,7 @@ export function QuizHost() {
       case 'timeup':
         return 'Reveal Answer';
       case 'revealed':
-        return 'Fastest Team';
+        return isOnTheSpotMode ? 'Fastest Answer' : 'Fastest Team';
       case 'fastest':
         return currentLoadedQuestionIndex < loadedQuizQuestions.length - 1 ? 'Next Question' : 'End Round';
       case 'complete':
@@ -2379,7 +2803,7 @@ export function QuizHost() {
             question={currentQuestion}
             questionNumber={currentLoadedQuestionIndex + 1}
             totalQuestions={loadedQuizQuestions.length}
-            showAnswer={flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
+            showAnswer={flowState.flow === 'timeup' || flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
             answerText={currentQuestion?.answerText}
             correctIndex={currentQuestion?.correctIndex}
           />
@@ -2401,6 +2825,8 @@ export function QuizHost() {
             onStartQuiz={handleStartQuiz}
             onPointsChange={handleCurrentRoundPointsChange}
             onSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
+            currentRoundPoints={currentRoundPoints}
+            currentRoundSpeedBonus={currentRoundSpeedBonus}
           />
         </div>
       );
@@ -2436,6 +2862,17 @@ export function QuizHost() {
               currentQuestionIndex={currentLoadedQuestionIndex}
               isQuizPackMode={isQuizPackMode}
               onGetActionHandlers={setGameActionHandlers}
+              onGameTimerStateChange={setGameTimerRunning}
+              onCurrentScreenChange={setKeypadCurrentScreen}
+              onGameTimerUpdate={(remaining, total) => {
+                setGameTimerTimeRemaining(remaining);
+                setGameTimerTotalTime(total);
+              }}
+              onGameTimerFinished={setGameTimerFinished}
+              onGameAnswerRevealed={setGameAnswerRevealed}
+              onGameFastestRevealed={setGameFastestRevealed}
+              onTeamsAnsweredCorrectly={setTeamsAnsweredCorrectly}
+              onGameAnswerSelected={setGameAnswerSelected}
             />
           </div>
           
@@ -2502,6 +2939,12 @@ export function QuizHost() {
             onExternalDisplayUpdate={handleExternalDisplayUpdate}
             onAwardPoints={handleScoreChange}
             onGetActionHandlers={setGameActionHandlers}
+            onGameTimerStateChange={setGameTimerRunning}
+            onCurrentScreenChange={setNearestWinsCurrentScreen}
+            onGameTimerUpdate={(remaining, total) => {
+              setGameTimerTimeRemaining(remaining);
+              setGameTimerTotalTime(total);
+            }}
           />
         </div>
       );
@@ -2706,8 +3149,12 @@ export function QuizHost() {
             isVisible={
               // Show for quiz pack mode when in question mode
               (flowState.isQuestionMode && showQuizPackDisplay) ||
-              // Show for on-the-spot game modes
-              showKeypadInterface || showNearestWinsInterface || showBuzzInMode
+              // Show for on-the-spot keypad when in a game-playing screen or results
+              (showKeypadInterface && ['letters-game', 'multiple-choice-game', 'numbers-game', 'sequence-game', 'quiz-pack-question', 'results'].includes(keypadCurrentScreen)) ||
+              // Show for on-the-spot nearest wins when playing
+              (showNearestWinsInterface && nearestWinsCurrentScreen === 'playing') ||
+              // Show for buzz in mode
+              showBuzzInMode
             }
             isQuizPackMode={isQuizPackMode}
             flowState={flowState}
@@ -2721,6 +3168,16 @@ export function QuizHost() {
             currentQuestion={loadedQuizQuestions[currentLoadedQuestionIndex]}
             questionNumber={currentLoadedQuestionIndex + 1}
             totalQuestions={loadedQuizQuestions.length}
+            isOnTheSpotsMode={showKeypadInterface || showNearestWinsInterface || showBuzzInMode}
+            isOnTheSpotTimerRunning={gameTimerRunning}
+            timeRemaining={gameTimerRunning ? gameTimerTimeRemaining : timer.timeRemaining}
+            totalTime={gameTimerRunning ? gameTimerTotalTime : timer.totalTime}
+            onTheSpotTimerFinished={gameTimerFinished}
+            onTheSpotAnswerRevealed={gameAnswerRevealed}
+            onTheSpotFastestRevealed={gameFastestRevealed}
+            isSendQuestionDisabled={isSendQuestionDisabled}
+            hasTeamsAnsweredCorrectly={teamsAnsweredCorrectly}
+            onTheSpotAnswerSelected={gameAnswerSelected}
           />
 
           {/* Status bar */}
@@ -2759,7 +3216,7 @@ export function QuizHost() {
             showNearestWinsInterface={showNearestWinsInterface}
             showWheelSpinnerInterface={showWheelSpinnerInterface}
             showBuzzInMode={showBuzzInMode}
-            showQuizPackDisplay={showQuizPackDisplay && flowState.isQuestionMode}
+            showQuizPackDisplay={showQuizPackDisplay}
             onEndRound={handleEndRound}
             onOpenBuzzersManagement={handleOpenBuzzersManagement}
             hostControllerEnabled={hostControllerEnabled}
