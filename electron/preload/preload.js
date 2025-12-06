@@ -58,18 +58,6 @@ contextBridge.exposeInMainWorld('api', {
     getAllPlayers: () => invoke('network/all-players'),
     approveTeam: (data) => invoke('network/approve-team', data),
     declineTeam: (data) => invoke('network/decline-team', data),
-    // Send messages to players
-    sendQuestionReady: (data) => invoke('network/send-question-ready', data),
-    sendQuestion: (data) => invoke('network/send-question', data),
-    sendPicture: (data) => invoke('network/send-picture', data),
-    sendTimerStart: (data) => invoke('network/send-timer-start', data),
-    sendTimer: (data) => invoke('network/send-timer', data),
-    sendTimeUp: () => invoke('network/send-timeup', {}),
-    sendReveal: (data) => invoke('network/send-reveal', data),
-    sendAnswerConfirmation: (data) => invoke('network/send-answer-confirmation', data),
-    sendFastest: (data) => invoke('network/send-fastest', data),
-    sendNext: () => invoke('network/send-next', {}),
-    sendEndRound: () => invoke('network/send-end-round', {}),
   },
 
   // --- 🔹 IPC event helpers (for external display, etc.) ---

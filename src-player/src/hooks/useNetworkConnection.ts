@@ -15,7 +15,6 @@ export function useNetworkConnection({
   onDisconnect,
 }: UseNetworkConnectionProps) {
   const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [error, setError] = useState<string | null>(null);
   const [ws, setWs] = useState<WebSocket | null>(null);
 
@@ -47,7 +46,6 @@ export function useNetworkConnection({
         const wsUrl = `${protocol}//${window.location.host}/events`;
 
         console.log(`[Player Connection Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS}] Connecting to: ${wsUrl}`);
-        setConnectionStatus('connecting');
         wsInstance = new WebSocket(wsUrl);
 
         // Set a timeout for connection attempt
@@ -63,7 +61,6 @@ export function useNetworkConnection({
           clearTimeout(connectionTimeout);
           console.log('✅ Player connected to host');
           setIsConnected(true);
-          setConnectionStatus('connected');
           setError(null);
           setWs(wsInstance);
           reconnectAttempts = 0; // Reset on successful connection
@@ -86,7 +83,6 @@ export function useNetworkConnection({
           console.error('❌ WebSocket error:', event);
           setError('Connection error. Host may not be available.');
           setIsConnected(false);
-          setConnectionStatus('disconnected');
         };
 
         wsInstance.onclose = () => {
@@ -94,7 +90,6 @@ export function useNetworkConnection({
           if (!isMounted) return;
           console.log('⚠️  Disconnected from host');
           setIsConnected(false);
-          setConnectionStatus('disconnected');
           onDisconnect?.();
 
           if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
@@ -141,5 +136,5 @@ export function useNetworkConnection({
     };
   }, [onConnect, onMessage, onDisconnect]);
 
-  return { isConnected, connectionStatus, error, ws };
+  return { isConnected, error, ws };
 }

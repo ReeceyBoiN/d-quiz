@@ -25,7 +25,7 @@ interface LeftSidebarProps {
   onNameChange: (teamId: string, newName: string) => void;
   onDeleteTeam: (teamId: string, teamName: string, score: number) => void;
   onTeamDoubleClick?: (teamId: string) => void;
-  teamAnswers?: {[teamId: string]: string | string[]};
+  teamAnswers?: {[teamId: string]: string};
   teamResponseTimes?: {[teamId: string]: number};
   showAnswers?: boolean;
   scoresPaused?: boolean;
@@ -246,12 +246,9 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
                   )}
                   {/* Answer box - only show when team has submitted an answer */}
                   {teamAnswers[quiz.id] && (
-                    <div className="max-w-[80px] bg-black border border-sidebar-border rounded px-2 py-1 flex items-center justify-center">
-                      <span className="text-white text-xs font-bold text-center truncate" title={Array.isArray(teamAnswers[quiz.id]) ? teamAnswers[quiz.id].join(', ') : teamAnswers[quiz.id]}>
-                        {Array.isArray(teamAnswers[quiz.id])
-                          ? teamAnswers[quiz.id].join(', ')
-                          : teamAnswers[quiz.id]
-                        }
+                    <div className="w-10 h-6 bg-black border border-sidebar-border rounded flex items-center justify-center">
+                      <span className="text-white text-xs font-bold">
+                        {teamAnswers[quiz.id]}
                       </span>
                     </div>
                   )}

@@ -1,17 +1,17 @@
 /**
- * WebSocket Host Networking Module
- *
- * This module broadcasts quiz state to player devices via WebSocket
- * by calling Electron IPC handlers. When running in Electron, it uses the IPC
- * API to communicate with the backend server which then broadcasts to all
- * connected players.
- *
- * When running in browser mode (dev), these calls are logged.
+ * WebSocket Host Networking Scaffold
+ * 
+ * This module provides a simple networking layer for broadcasting
+ * quiz state to player devices and external displays via WebSocket.
+ * 
+ * Later, when the player phone app is built, it will connect to this
+ * server via: new WebSocket('ws://host-ip:8787')
+ * 
+ * For now, this is set up as a foundation for future integration.
  */
 
 export type NetworkMessageType =
   | 'PICTURE'
-  | 'QUESTION_READY'
   | 'QUESTION'
   | 'TIMER_START'
   | 'TIMER'
@@ -33,21 +33,8 @@ export interface NetworkPayload {
 }
 
 /**
- * Get the Electron IPC API, if available
- */
-function getIpcApi() {
-  return (window as any)?.api?.network;
-}
-
-/**
- * Check if we're running in Electron (IPC API available)
- */
-function isElectron() {
-  return !!getIpcApi();
-}
-
-/**
- * Host network class for broadcasting to players
+ * Host network state for managing broadcast connections.
+ * This will eventually connect to a WebSocket server for LAN communication.
  */
 class HostNetwork {
   private enabled = false;
@@ -57,95 +44,35 @@ class HostNetwork {
 
   /**
    * Initialize host network (called once on app start).
+   * Currently a placeholder; will create ws.WebSocketServer in Electron main when ready.
    */
   public init(options?: { enabled?: boolean; port?: number }) {
     if (options?.enabled !== undefined) this.enabled = options.enabled;
     if (options?.port) this.port = options.port;
-
-    const electronAvailable = isElectron();
+    
     console.log(
-      `[HostNetwork] Initialized (port: ${this.port}, enabled: ${this.enabled}, electron: ${electronAvailable})`
+      `[HostNetwork] Initialized (port: ${this.port}, enabled: ${this.enabled})`
     );
+    // TODO: Start WebSocketServer on Electron main process or in dev via Node.js
+    // For now, this is a foundation for broadcasting via other means (IPC, etc.)
   }
 
   /**
-   * Send a message to all connected players via IPC or fallback to local broadcast
+   * Broadcast a message to all connected players and displays.
+   * Currently logs; will send over WebSocket when server is active.
    */
-  private async sendToPlayers(messageType: string, data?: any) {
-    const ipcApi = getIpcApi();
-
-    if (ipcApi) {
-      // Running in Electron - use IPC to send to backend
-      try {
-        switch (messageType) {
-          case 'PICTURE':
-            await ipcApi.sendPicture({ imageUrl: data?.image });
-            break;
-          case 'QUESTION_READY':
-            await ipcApi.sendQuestionReady({
-              options: data?.options,
-              type: data?.type,
-              maxAnswers: data?.maxAnswers,
-            });
-            break;
-          case 'QUESTION':
-            await ipcApi.sendQuestion({
-              text: data?.text,
-              options: data?.options,
-              type: data?.type,
-              maxAnswers: data?.maxAnswers,
-            });
-            break;
-          case 'TIMER_START':
-            await ipcApi.sendTimerStart({
-              seconds: data?.seconds,
-              silent: data?.silent,
-            });
-            break;
-          case 'TIMER':
-            await ipcApi.sendTimer({ seconds: data?.seconds });
-            break;
-          case 'TIMEUP':
-            await ipcApi.sendTimeUp();
-            break;
-          case 'LOCK':
-            // Lock is sent with TIMEUP in backend
-            break;
-          case 'REVEAL':
-            await ipcApi.sendReveal({
-              answer: data?.answer,
-              correctIndex: data?.correctIndex,
-              type: data?.type,
-            });
-            break;
-          case 'ANSWER_CONFIRMED':
-            await ipcApi.sendAnswerConfirmation({
-              playerId: data?.playerId,
-              teamName: data?.teamName,
-            });
-            break;
-          case 'FASTEST':
-            await ipcApi.sendFastest({
-              teamName: data?.teamName,
-              questionNumber: data?.questionNumber,
-            });
-            break;
-          case 'NEXT':
-            await ipcApi.sendNext();
-            break;
-          case 'END_ROUND':
-            await ipcApi.sendEndRound();
-            break;
-          default:
-            console.warn(`[HostNetwork] Unknown message type: ${messageType}`);
-        }
-      } catch (err) {
-        console.error(`[HostNetwork] IPC send error for ${messageType}:`, err);
-      }
-    } else {
-      // Browser mode - just log
-      console.log(`[HostNetwork] ${messageType}:`, data);
+  public broadcast(payload: NetworkPayload) {
+    if (!this.enabled) {
+      console.log('[HostNetwork] Broadcast (disabled):', payload);
+      return;
     }
+
+    const msg = { ...payload, timestamp: Date.now() };
+    console.log('[HostNetwork] Broadcasting:', msg);
+
+    // TODO: When ws server is live, iterate clients and ws.send(JSON.stringify(msg))
+    // For now, you can use this to trigger local callbacks (see .on() below)
+    this.triggerListeners(payload.type, payload.data);
   }
 
   /**
@@ -176,80 +103,85 @@ class HostNetwork {
   /**
    * Helper to send picture to players and external display.
    */
-  public async sendPicture(imageDataUrl: string) {
-    await this.sendToPlayers('PICTURE', { image: imageDataUrl });
-  }
-
-  /**
-   * Helper to send question ready signal to players (before question text is shown).
-   * This allows player apps to display the input interface while keeping the question hidden.
-   */
-  public async sendQuestionReady(options?: string[], type?: string, maxAnswers?: number) {
-    await this.sendToPlayers('QUESTION_READY', { options, type, maxAnswers });
+  public sendPicture(imageDataUrl: string) {
+    this.broadcast({
+      type: 'PICTURE',
+      data: { image: imageDataUrl },
+    });
   }
 
   /**
    * Helper to send question to players and external display.
    */
-  public async sendQuestion(text: string, options?: string[], type?: string, maxAnswers?: number) {
-    await this.sendToPlayers('QUESTION', { text, options, type, maxAnswers });
+  public sendQuestion(text: string, options?: string[], type?: string) {
+    this.broadcast({
+      type: 'QUESTION',
+      data: { text, options, type },
+    });
   }
 
   /**
    * Helper to start timer on players and external display.
    */
-  public async sendTimerStart(seconds: number, silent: boolean = false) {
-    await this.sendToPlayers('TIMER_START', { seconds, silent });
+  public sendTimerStart(seconds: number, silent: boolean = false) {
+    this.broadcast({
+      type: 'TIMER_START',
+      data: { seconds, silent },
+    });
     // Also send TIMER for external display countdown animation
-    await this.sendToPlayers('TIMER', { seconds });
+    this.broadcast({
+      type: 'TIMER',
+      data: { seconds },
+    });
   }
 
   /**
    * Helper to signal time up (lock submissions).
    */
-  public async sendTimeUp() {
-    await this.sendToPlayers('TIMEUP', {});
-    await this.sendToPlayers('LOCK', {});
+  public sendTimeUp() {
+    this.broadcast({ type: 'TIMEUP' });
+    this.broadcast({ type: 'LOCK' });
   }
 
   /**
    * Helper to reveal the correct answer.
    */
-  public async sendReveal(answer: string, correctIndex?: number, type?: string) {
-    await this.sendToPlayers('REVEAL', { answer, correctIndex, type });
-  }
-
-  /**
-   * Helper to confirm answer was received from player.
-   */
-  public async sendAnswerConfirmation(playerId: string, teamName: string) {
-    await this.sendToPlayers('ANSWER_CONFIRMED', { playerId, teamName, timestamp: Date.now() });
+  public sendReveal(answer: string, correctIndex?: number, type?: string) {
+    this.broadcast({
+      type: 'REVEAL',
+      data: { answer, correctIndex, type },
+    });
   }
 
   /**
    * Helper to show fastest team.
    */
-  public async sendFastest(teamName: string, questionNumber: number) {
-    await this.sendToPlayers('FASTEST', { teamName, questionNumber });
+  public sendFastest(teamName: string, questionNumber: number) {
+    this.broadcast({
+      type: 'FASTEST',
+      data: { teamName, questionNumber },
+    });
   }
 
   /**
    * Helper to signal next question or end round.
    */
-  public async sendNext() {
-    await this.sendToPlayers('NEXT', {});
+  public sendNext() {
+    this.broadcast({ type: 'NEXT' });
   }
 
-  public async sendEndRound() {
-    await this.sendToPlayers('END_ROUND', {});
+  public sendEndRound() {
+    this.broadcast({ type: 'END_ROUND' });
   }
 
   /**
    * Helper to update scores on external display.
    */
-  public async sendScores(scores: { teamId: string; teamName: string; score: number }[]) {
-    // Scores are typically displayed on external display only, not sent to players
-    console.log('[HostNetwork] Scores update:', scores);
+  public sendScores(scores: { teamId: string; teamName: string; score: number }[]) {
+    this.broadcast({
+      type: 'SCORES',
+      data: { scores },
+    });
   }
 
   /**
@@ -257,6 +189,10 @@ class HostNetwork {
    */
   public registerNetworkPlayer(playerId: string, teamName: string) {
     this.networkPlayers.set(playerId, { teamName, timestamp: Date.now() });
+    this.broadcast({
+      type: 'PLAYER_JOIN',
+      data: { playerId, teamName },
+    });
   }
 
   /**
@@ -264,6 +200,10 @@ class HostNetwork {
    */
   public unregisterNetworkPlayer(playerId: string) {
     this.networkPlayers.delete(playerId);
+    this.broadcast({
+      type: 'PLAYER_DISCONNECT',
+      data: { playerId },
+    });
   }
 
   /**
@@ -296,44 +236,8 @@ export function initHostNetwork(options?: { enabled?: boolean; port?: number }) 
   hostNetwork.init(options);
 }
 
-export async function sendPictureToPlayers(imageDataUrl: string) {
-  return hostNetwork.sendPicture(imageDataUrl);
-}
-
-export async function sendQuestionReadyToPlayers(options?: string[], type?: string, maxAnswers?: number) {
-  return hostNetwork.sendQuestionReady(options, type, maxAnswers);
-}
-
-export async function sendQuestionToPlayers(text: string, options?: string[], type?: string, maxAnswers?: number) {
-  return hostNetwork.sendQuestion(text, options, type, maxAnswers);
-}
-
-export async function sendTimerToPlayers(seconds: number, silent: boolean = false) {
-  return hostNetwork.sendTimerStart(seconds, silent);
-}
-
-export async function sendRevealToPlayers(answer: string, correctIndex?: number, type?: string) {
-  return hostNetwork.sendReveal(answer, correctIndex, type);
-}
-
-export async function sendAnswerConfirmationToPlayer(playerId: string, teamName: string) {
-  return hostNetwork.sendAnswerConfirmation(playerId, teamName);
-}
-
-export async function sendFastestToDisplay(teamName: string, questionNumber: number) {
-  return hostNetwork.sendFastest(teamName, questionNumber);
-}
-
-export async function sendNextQuestion() {
-  return hostNetwork.sendNext();
-}
-
-export async function sendEndRound() {
-  return hostNetwork.sendEndRound();
-}
-
-export async function sendScoresToDisplay(scores: { teamId: string; teamName: string; score: number }[]) {
-  return hostNetwork.sendScores(scores);
+export function broadcastMessage(payload: NetworkPayload) {
+  hostNetwork.broadcast(payload);
 }
 
 export function onNetworkMessage(
@@ -341,6 +245,38 @@ export function onNetworkMessage(
   callback: (data: any) => void
 ) {
   hostNetwork.on(type, callback);
+}
+
+export function sendPictureToPlayers(imageDataUrl: string) {
+  hostNetwork.sendPicture(imageDataUrl);
+}
+
+export function sendQuestionToPlayers(text: string, options?: string[], type?: string) {
+  hostNetwork.sendQuestion(text, options, type);
+}
+
+export function sendTimerToPlayers(seconds: number, silent: boolean = false) {
+  hostNetwork.sendTimerStart(seconds, silent);
+}
+
+export function sendRevealToPlayers(answer: string, correctIndex?: number, type?: string) {
+  hostNetwork.sendReveal(answer, correctIndex, type);
+}
+
+export function sendFastestToDisplay(teamName: string, questionNumber: number) {
+  hostNetwork.sendFastest(teamName, questionNumber);
+}
+
+export function sendNextQuestion() {
+  hostNetwork.sendNext();
+}
+
+export function sendEndRound() {
+  hostNetwork.sendEndRound();
+}
+
+export function sendScoresToDisplay(scores: { teamId: string; teamName: string; score: number }[]) {
+  hostNetwork.sendScores(scores);
 }
 
 export function registerNetworkPlayer(playerId: string, teamName: string) {

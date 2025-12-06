@@ -1,6 +1,5 @@
 export type HostMessageType =
   | 'PICTURE'
-  | 'QUESTION_READY'
   | 'QUESTION'
   | 'TIMER_START'
   | 'TIMER'
@@ -15,9 +14,7 @@ export type HostMessageType =
   | 'PLAYER_LIST'
   | 'TEAM_APPROVED'
   | 'APPROVAL_PENDING'
-  | 'TEAM_DECLINED'
-  | 'ANSWER_CONFIRMED'
-  | 'ANSWER_ACK';
+  | 'TEAM_DECLINED';
 
 export interface HostMessage {
   type: HostMessageType;
@@ -25,10 +22,8 @@ export interface HostMessage {
   timestamp?: number;
 }
 
-export type QuestionType = 'letters' | 'multi' | 'numbers' | 'nearest' | 'buzzin' | 'sequence' | string;
-
 export interface Question {
-  type: QuestionType;
+  type: string;
   text?: string;
   q?: string;
   options?: string[];
@@ -36,6 +31,4 @@ export interface Question {
   imageUrl?: string;
   revealed?: boolean;
   revealedAnswer?: string;
-  shown?: boolean; // Whether the question text should be displayed
-  maxAnswers?: number; // Maximum number of answers allowed (default 1, or 2+ for go wide mode)
 }

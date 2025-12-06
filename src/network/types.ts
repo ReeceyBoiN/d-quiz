@@ -10,7 +10,6 @@ export type PlayerMessageType =
 
 export type HostMessageType =
   | 'PICTURE'
-  | 'QUESTION_READY'
   | 'QUESTION'
   | 'TIMER_START'
   | 'TIMER'
@@ -22,8 +21,7 @@ export type HostMessageType =
   | 'NEXT'
   | 'END_ROUND'
   | 'PLAYER_REGISTERED'  // Host confirms player registration
-  | 'PLAYER_LIST'        // Send list of current players
-  | 'ANSWER_CONFIRMED';  // Host confirms answer was received
+  | 'PLAYER_LIST';        // Send list of current players
 
 export interface PlayerMessage {
   type: PlayerMessageType;

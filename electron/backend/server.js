@@ -92,75 +92,37 @@ async function startBackend({ port = 4310 } = {}) {
           playerId = data.playerId;
           log.info(`[WS-${connectionId}] 🎯 Player join request: ${data.teamName} (device: ${deviceId}, player: ${playerId})`);
 
-          // Check if this device was previously approved
-          const existingPlayer = networkPlayers.get(deviceId);
-          if (existingPlayer && existingPlayer.status === 'approved') {
-            // Auto-approve returning player
-            log.info(`[WS-${connectionId}] ✅ Auto-approving returning player: ${data.teamName}`);
-            networkPlayers.set(deviceId, {
-              ws,
+          // Store the player connection
+          networkPlayers.set(deviceId, {
+            ws,
+            playerId,
+            teamName: data.teamName,
+            status: 'pending', // pending, approved, declined
+            timestamp: Date.now()
+          });
+
+          log.info(`[WS-${connectionId}] Stored player connection. Total players: ${networkPlayers.size}`);
+
+          // Broadcast PLAYER_JOIN to other clients (host) so they can approve/reject
+          const otherClients = Array.from(wss.clients).filter(client => client.readyState === 1 && client !== ws);
+          log.info(`[WS-${connectionId}] Broadcasting PLAYER_JOIN to ${otherClients.length} other clients`);
+
+          otherClients.forEach(client => {
+            client.send(JSON.stringify({
+              type: 'PLAYER_JOIN',
               playerId,
+              deviceId,
               teamName: data.teamName,
-              status: 'approved',
               timestamp: Date.now()
-            });
+            }));
+          });
 
-            // Send TEAM_APPROVED immediately
-            if (ws.readyState === 1) {
-              ws.send(JSON.stringify({
-                type: 'TEAM_APPROVED',
-                data: { teamName: data.teamName, deviceId },
-                timestamp: Date.now()
-              }));
-              log.info(`[WS-${connectionId}] ✅ Sent TEAM_APPROVED to returning player: ${data.teamName}`);
-            }
-          } else {
-            // New player or previously declined - require approval
-            log.info(`[WS-${connectionId}] ⏳ New or re-joining player requires approval`);
-
-            // Store the player connection
-            networkPlayers.set(deviceId, {
-              ws,
-              playerId,
-              teamName: data.teamName,
-              status: 'pending', // pending, approved, declined
-              timestamp: Date.now()
-            });
-
-            log.info(`[WS-${connectionId}] Stored player connection. Total players: ${networkPlayers.size}`);
-
-            // Broadcast PLAYER_JOIN to other clients (host) so they can approve/reject
-            const otherClients = Array.from(wss.clients).filter(client => client.readyState === 1 && client !== ws);
-            log.info(`[WS-${connectionId}] Broadcasting PLAYER_JOIN to ${otherClients.length} other clients`);
-
-            otherClients.forEach(client => {
-              client.send(JSON.stringify({
-                type: 'PLAYER_JOIN',
-                playerId,
-                deviceId,
-                teamName: data.teamName,
-                timestamp: Date.now()
-              }));
-            });
-
-            if (otherClients.length === 0) {
-              log.warn(`[WS-${connectionId}] ⚠️  No other clients connected to receive PLAYER_JOIN message!`);
-            }
+          if (otherClients.length === 0) {
+            log.warn(`[WS-${connectionId}] ⚠️  No other clients connected to receive PLAYER_JOIN message!`);
           }
         } else if (data.type === 'PLAYER_ANSWER') {
           log.info(`[WS-${connectionId}] 📝 Player answer: ${data.teamName} answered: ${data.answer}`);
-
-          // Send immediate ACK back to the player (fast feedback)
-          if (ws.readyState === 1) {
-            ws.send(JSON.stringify({
-              type: 'ANSWER_ACK',
-              data: { receivedAt: Date.now(), playerTimestamp: data.timestamp },
-              timestamp: Date.now()
-            }));
-            log.info(`[WS-${connectionId}] ✅ Sent ANSWER_ACK to player`);
-          }
-
-          // Broadcast to other clients (host) for processing
+          // Broadcast to other clients (host)
           wss.clients.forEach(client => {
             if (client.readyState === 1 && client !== ws) {
               client.send(JSON.stringify({
@@ -334,146 +296,7 @@ async function startBackend({ port = 4310 } = {}) {
     return players;
   }
 
-  // Broadcast message to all connected players
-  function broadcastToPlayers(message) {
-    const jsonMsg = JSON.stringify(message);
-    let sentCount = 0;
-    wss.clients.forEach(client => {
-      if (client.readyState === 1) {
-        client.send(jsonMsg);
-        sentCount++;
-      }
-    });
-    log.info(`[Broadcast] Sent to ${sentCount} players:`, message.type);
-  }
-
-  // Send picture to all players
-  function sendPictureToPlayers(imageUrl) {
-    broadcastToPlayers({
-      type: 'PICTURE',
-      data: { image: imageUrl },
-      timestamp: Date.now()
-    });
-  }
-
-  // Send question ready signal to players (before question text is shown)
-  function sendQuestionReadyToPlayers(options, type, maxAnswers) {
-    broadcastToPlayers({
-      type: 'QUESTION_READY',
-      data: { options, type, maxAnswers },
-      timestamp: Date.now()
-    });
-  }
-
-  // Send question to all players
-  function sendQuestionToPlayers(text, options, type, maxAnswers) {
-    broadcastToPlayers({
-      type: 'QUESTION',
-      data: { text, options, type, maxAnswers },
-      timestamp: Date.now()
-    });
-  }
-
-  // Send timer start signal
-  function sendTimerStartToPlayers(seconds, silent = false) {
-    broadcastToPlayers({
-      type: 'TIMER_START',
-      data: { seconds, silent },
-      timestamp: Date.now()
-    });
-    // Also send TIMER for external display
-    broadcastToPlayers({
-      type: 'TIMER',
-      data: { seconds },
-      timestamp: Date.now()
-    });
-  }
-
-  // Send timer update
-  function sendTimerToPlayers(seconds) {
-    broadcastToPlayers({
-      type: 'TIMER',
-      data: { seconds },
-      timestamp: Date.now()
-    });
-  }
-
-  // Send time up signal
-  function sendTimeUpToPlayers() {
-    broadcastToPlayers({
-      type: 'TIMEUP',
-      timestamp: Date.now()
-    });
-    broadcastToPlayers({
-      type: 'LOCK',
-      timestamp: Date.now()
-    });
-  }
-
-  // Send reveal answer signal
-  function sendRevealToPlayers(answer, correctIndex, type) {
-    broadcastToPlayers({
-      type: 'REVEAL',
-      data: { answer, correctIndex, type },
-      timestamp: Date.now()
-    });
-  }
-
-  // Send answer confirmation to specific player
-  function sendAnswerConfirmationToPlayer(playerId, teamName) {
-    broadcastToPlayers({
-      type: 'ANSWER_CONFIRMED',
-      data: { playerId, teamName },
-      timestamp: Date.now()
-    });
-  }
-
-  // Send fastest team signal
-  function sendFastestToPlayers(teamName, questionNumber) {
-    broadcastToPlayers({
-      type: 'FASTEST',
-      data: { teamName, questionNumber },
-      timestamp: Date.now()
-    });
-  }
-
-  // Send next question signal
-  function sendNextToPlayers() {
-    broadcastToPlayers({
-      type: 'NEXT',
-      timestamp: Date.now()
-    });
-  }
-
-  // Send end round signal
-  function sendEndRoundToPlayers() {
-    broadcastToPlayers({
-      type: 'END_ROUND',
-      timestamp: Date.now()
-    });
-  }
-
-  return {
-    port,
-    server,
-    wss,
-    approveTeam,
-    declineTeam,
-    getPendingTeams,
-    getAllNetworkPlayers,
-    broadcastToPlayers,
-    sendPictureToPlayers,
-    sendQuestionReadyToPlayers,
-    sendQuestionToPlayers,
-    sendTimerStartToPlayers,
-    sendTimerToPlayers,
-    sendTimeUpToPlayers,
-    sendRevealToPlayers,
-    sendAnswerConfirmationToPlayer,
-    sendFastestToPlayers,
-    sendNextToPlayers,
-    sendEndRoundToPlayers
-  };
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers };
 }
 
 module.exports = { startBackend };
