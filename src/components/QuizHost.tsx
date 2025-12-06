@@ -36,7 +36,7 @@ import { useQuizData } from "../utils/QuizDataContext";
 import { useTimer } from "../hooks/useTimer";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage } from "../state/flowState";
-import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage } from "../network/wsHost";
+import { sendPictureToPlayers, sendQuestionReadyToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, sendAnswerConfirmationToPlayer, registerNetworkPlayer, onNetworkMessage } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { Resizable } from "re-resizable";
 import { Button } from "./ui/button";
@@ -325,8 +325,8 @@ export function QuizHost() {
   // Emoji debug screen state
   const [showEmojiDebug, setShowEmojiDebug] = useState(false);
   
-  // Team answers state
-  const [teamAnswers, setTeamAnswers] = useState<{[teamId: string]: string}>({});
+  // Team answers state (can be single answer or multiple for go wide mode)
+  const [teamAnswers, setTeamAnswers] = useState<{[teamId: string]: string | string[]}>({});
   const [teamResponseTimes, setTeamResponseTimes] = useState<{[teamId: string]: number}>({});
   const [lastResponseTimes, setLastResponseTimes] = useState<{[teamId: string]: number}>({});
   const [showTeamAnswers, setShowTeamAnswers] = useState(false);
@@ -456,6 +456,17 @@ export function QuizHost() {
       }
     }
   }, [currentLoadedQuestionIndex, showQuizPackDisplay, loadedQuizQuestions, gameModeTimers, flowState.currentQuestionIndex, timer, flowState.isQuestionMode]);
+
+  // Send QUESTION_READY to players when question is ready (before user clicks Send Question)
+  useEffect(() => {
+    if (flowState.flow === 'ready' && isQuizPackMode && showQuizPackDisplay) {
+      const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+      if (currentQuestion) {
+        const maxAnswers = goWideEnabled ? 2 : 1;
+        sendQuestionReadyToPlayers(currentQuestion.options, currentQuestion.type, maxAnswers);
+      }
+    }
+  }, [flowState.flow, currentLoadedQuestionIndex, loadedQuizQuestions, isQuizPackMode, showQuizPackDisplay, goWideEnabled]);
 
   // Handle timer when flow state changes to 'running'
   useEffect(() => {
@@ -970,7 +981,7 @@ export function QuizHost() {
   };
 
   // Handle team answer updates from game interfaces
-  const handleTeamAnswerUpdate = useCallback((answers: {[teamId: string]: string}) => {
+  const handleTeamAnswerUpdate = useCallback((answers: {[teamId: string]: string | string[]}) => {
     setTeamAnswers(answers);
     setShowTeamAnswers(Object.keys(answers).length > 0);
   }, []);
@@ -992,18 +1003,32 @@ export function QuizHost() {
 
     const newStatuses: {[teamId: string]: 'correct' | 'incorrect' | 'no-answer'} = {};
     const correctTeams: {teamId: string, responseTime: number}[] = [];
-    
+
     quizzes.forEach(team => {
       const teamAnswer = teamAnswers[team.id];
-      
-      if (!teamAnswer || teamAnswer.trim() === '') {
+
+      // Check if answer is empty
+      if (!teamAnswer || (typeof teamAnswer === 'string' && teamAnswer.trim() === '') || (Array.isArray(teamAnswer) && teamAnswer.length === 0)) {
         newStatuses[team.id] = 'no-answer';
-      } else if (teamAnswer === correctAnswer) {
-        newStatuses[team.id] = 'correct';
-        const responseTime = teamResponseTimes[team.id] || 0;
-        correctTeams.push({ teamId: team.id, responseTime });
       } else {
-        newStatuses[team.id] = 'incorrect';
+        // Check if answer is correct
+        let isCorrect = false;
+
+        if (Array.isArray(teamAnswer)) {
+          // For multiple answers (go wide mode), check if correct answer is in the array
+          isCorrect = teamAnswer.includes(correctAnswer);
+        } else {
+          // For single answer
+          isCorrect = teamAnswer === correctAnswer;
+        }
+
+        if (isCorrect) {
+          newStatuses[team.id] = 'correct';
+          const responseTime = teamResponseTimes[team.id] || 0;
+          correctTeams.push({ teamId: team.id, responseTime });
+        } else {
+          newStatuses[team.id] = 'incorrect';
+        }
       }
     });
     
@@ -1127,33 +1152,39 @@ export function QuizHost() {
             pictureSent: true,
           }));
         } else {
-          // No picture, send question directly
-          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
-          if (externalWindow) {
-            // Only include options for sequence and multiple-choice questions
-            const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
-            sendToExternalDisplay(
-              {
-                type: 'DISPLAY_UPDATE',
-                mode: 'question-with-timer',
-                data: {
-                  text: hideQuestionMode ? null : currentQuestion.q,
-                  options: shouldIncludeOptions && !hideQuestionMode ? currentQuestion.options : [],
-                  type: currentQuestion.type,
-                  questionNumber: currentLoadedQuestionIndex + 1,
-                  totalQuestions: loadedQuizQuestions.length,
-                  hidden: hideQuestionMode,
-                  timerValue: flowState.totalTime,
+          // No picture, send question directly with 500ms buffer for network sync
+          const maxAnswers = goWideEnabled ? 2 : 1;
+
+          // Add 500ms delay to allow devices to sync and prepare
+          setTimeout(() => {
+            void sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type, maxAnswers);
+            if (externalWindow) {
+              // Only include options for sequence and multiple-choice questions
+              const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
+              sendToExternalDisplay(
+                {
+                  type: 'DISPLAY_UPDATE',
+                  mode: 'question-with-timer',
+                  data: {
+                    text: hideQuestionMode ? null : currentQuestion.q,
+                    options: shouldIncludeOptions && !hideQuestionMode ? currentQuestion.options : [],
+                    type: currentQuestion.type,
+                    questionNumber: currentLoadedQuestionIndex + 1,
+                    totalQuestions: loadedQuizQuestions.length,
+                    hidden: hideQuestionMode,
+                    timerValue: flowState.totalTime,
+                    totalTime: flowState.totalTime,
+                    countdownStyle: countdownStyle,
+                    showProgressBar: false,
+                    imageDataUrl: currentQuestion.imageDataUrl || null
+                  },
                   totalTime: flowState.totalTime,
-                  countdownStyle: countdownStyle,
-                  showProgressBar: false,
-                  imageDataUrl: currentQuestion.imageDataUrl || null
-                },
-                totalTime: flowState.totalTime,
-                countdownStyle: countdownStyle
-              }
-            );
-          }
+                  countdownStyle: countdownStyle
+                }
+              );
+            }
+          }, 500);
+
           setFlowState(prev => ({
             ...prev,
             flow: 'sent-question',
@@ -1164,34 +1195,38 @@ export function QuizHost() {
       }
 
       case 'sent-picture': {
-        // Send question after picture (unless hideQuestionMode is true)
+        // Send question after picture (unless hideQuestionMode is true) with 500ms buffer
         if (!hideQuestionMode) {
-          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
-          if (externalWindow) {
-            // Only include options for sequence and multiple-choice questions
-            const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
-            sendToExternalDisplay(
-              {
-                type: 'DISPLAY_UPDATE',
-                mode: 'question-with-timer',
-                data: {
-                  text: currentQuestion.q,
-                  options: shouldIncludeOptions ? currentQuestion.options : [],
-                  type: currentQuestion.type,
-                  questionNumber: currentLoadedQuestionIndex + 1,
-                  totalQuestions: loadedQuizQuestions.length,
-                  hidden: false,
-                  timerValue: flowState.totalTime,
+          const maxAnswers = goWideEnabled ? 2 : 1;
+
+          setTimeout(() => {
+            void sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type, maxAnswers);
+            if (externalWindow) {
+              // Only include options for sequence and multiple-choice questions
+              const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
+              sendToExternalDisplay(
+                {
+                  type: 'DISPLAY_UPDATE',
+                  mode: 'question-with-timer',
+                  data: {
+                    text: currentQuestion.q,
+                    options: shouldIncludeOptions ? currentQuestion.options : [],
+                    type: currentQuestion.type,
+                    questionNumber: currentLoadedQuestionIndex + 1,
+                    totalQuestions: loadedQuizQuestions.length,
+                    hidden: false,
+                    timerValue: flowState.totalTime,
+                    totalTime: flowState.totalTime,
+                    countdownStyle: countdownStyle,
+                    showProgressBar: false,
+                    imageDataUrl: null
+                  },
                   totalTime: flowState.totalTime,
-                  countdownStyle: countdownStyle,
-                  showProgressBar: false,
-                  imageDataUrl: null
-                },
-                totalTime: flowState.totalTime,
-                countdownStyle: countdownStyle
-              }
-            );
-          }
+                  countdownStyle: countdownStyle
+                }
+              );
+            }
+          }, 500);
         } else if (externalWindow) {
           // Send hidden question marker even in hide mode
           sendToExternalDisplay(
@@ -1226,7 +1261,7 @@ export function QuizHost() {
 
       case 'sent-question': {
         // Start audible timer
-        sendTimerToPlayers(flowState.totalTime, false);
+        void sendTimerToPlayers(flowState.totalTime, false);
         // Play countdown audio with normal sound
         playCountdownAudio(flowState.totalTime, false).catch(error => {
           console.error('[QuizHost] Error playing countdown audio:', error);
@@ -1279,7 +1314,7 @@ export function QuizHost() {
             );
           }
         }
-        sendRevealToPlayers(getAnswerText(currentQuestion), currentQuestion.correctIndex, currentQuestion.type);
+        void sendRevealToPlayers(getAnswerText(currentQuestion), currentQuestion.correctIndex, currentQuestion.type);
 
         const isOnTheSpotMode = showKeypadInterface && !isQuizPackMode;
 
@@ -1296,7 +1331,7 @@ export function QuizHost() {
             : null;
 
           if (fastestTeam) {
-            sendFastestToDisplay(fastestTeam.name, currentLoadedQuestionIndex + 1);
+            void sendFastestToDisplay(fastestTeam.name, currentLoadedQuestionIndex + 1);
             if (externalWindow) {
               sendToExternalDisplay(
                 { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name } }
@@ -1360,7 +1395,7 @@ export function QuizHost() {
         if (isOnTheSpotMode) {
           // For on-the-spot: Close keypad interface and return to question selection
           handleKeypadClose();
-          sendNextQuestion();
+          void sendNextQuestion();
           // Reset team answers and statuses for next question
           setTeamAnswers({});
           setTeamResponseTimes({});
@@ -1380,7 +1415,7 @@ export function QuizHost() {
             setShowAnswer(false); // Reset answer visibility for next question
             setFastestTeamRevealTime(null); // Reset reveal time
             setIsSendQuestionDisabled(true); // Disable Send Question for 2 seconds
-            sendNextQuestion();
+            void sendNextQuestion();
 
             // Revert external display to default mode with fade transition
             if (externalWindow) {
@@ -1408,7 +1443,7 @@ export function QuizHost() {
               flow: 'complete',
             }));
             setIsSendQuestionDisabled(true); // Disable Send Question for 2 seconds
-            sendEndRound();
+            void sendEndRound();
             if (externalWindow) {
               sendToExternalDisplay({ type: 'END_ROUND' });
             }
@@ -1458,7 +1493,7 @@ export function QuizHost() {
    * Silent timer handler - starts timer with silent countdown audio.
    */
   const handleSilentTimer = useCallback(() => {
-    sendTimerToPlayers(flowState.totalTime, true);
+    void sendTimerToPlayers(flowState.totalTime, true);
     if (externalWindow) {
       sendToExternalDisplay(
         { type: 'TIMER', data: { seconds: flowState.totalTime, totalTime: flowState.totalTime }, totalTime: flowState.totalTime }
@@ -1933,6 +1968,17 @@ export function QuizHost() {
     };
 
     onNetworkMessage('PLAYER_JOIN', handleNetworkPlayerJoin);
+
+    // Handle player answer submissions - send confirmation back to player
+    const handleNetworkPlayerAnswer = (data: any) => {
+      const { playerId, teamName, answer } = data;
+      console.log(`[QuizHost] Player answer from ${teamName}: `, answer);
+
+      // Send confirmation to player that answer was received
+      sendAnswerConfirmationToPlayer(playerId, teamName);
+    };
+
+    onNetworkMessage('PLAYER_ANSWER', handleNetworkPlayerAnswer);
   }, [quizzes]);
 
   const handleRevealAnswer = () => {

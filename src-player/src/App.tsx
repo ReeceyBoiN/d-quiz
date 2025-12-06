@@ -2,24 +2,57 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { TeamNameEntry } from './components/TeamNameEntry';
 import { QuestionDisplay } from './components/QuestionDisplay';
 import { WaitingScreen } from './components/WaitingScreen';
+import { LoadingScreen } from './components/LoadingScreen';
 import { NetworkContext } from './context/NetworkContext';
 import { useNetworkConnection } from './hooks/useNetworkConnection';
 import { getOrCreateDeviceId } from './lib/deviceId';
 import type { HostMessage } from './types/network';
+import type { SubmissionState } from './components/SubmissionFeedback';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'waiting' | 'approval' | 'declined' | 'question'>('team-entry');
-  const [teamName, setTeamName] = useState('');
-  const [playerId] = useState(() => `player-${Math.random().toString(36).slice(2, 9)}`);
+  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'waiting' | 'approval' | 'declined' | 'question' | 'loading'>('team-entry');
+
+  // Initialize playerId from localStorage or generate new one
+  const [playerId] = useState(() => {
+    const saved = localStorage.getItem('popquiz_player_id');
+    if (saved) return saved;
+    const newId = `player-${Math.random().toString(36).slice(2, 9)}`;
+    localStorage.setItem('popquiz_player_id', newId);
+    return newId;
+  });
+
+  // Initialize teamName from localStorage
+  const [teamName, setTeamName] = useState(() => {
+    return localStorage.getItem('popquiz_team_name') || '';
+  });
+
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [showTimer, setShowTimer] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
+  const [totalTimeRemaining, setTotalTimeRemaining] = useState(30);
+  const [submissionState, setSubmissionState] = useState<SubmissionState>('idle');
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
+  const [playerSelectedIndex, setPlayerSelectedIndex] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const nextQuestionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleConnect = useCallback((ws: WebSocket) => {
     wsRef.current = ws;
-  }, []);
+
+    // Auto-rejoin if there's a saved team name (reconnection after disconnect)
+    if (teamName && ws.readyState === WebSocket.OPEN) {
+      console.log(`[Player] Auto-rejoining as team: ${teamName}`);
+      ws.send(JSON.stringify({
+        type: 'PLAYER_JOIN',
+        playerId,
+        deviceId,
+        teamName,
+        timestamp: Date.now(),
+      }));
+      setCurrentScreen('approval');
+    }
+  }, [teamName, playerId, deviceId]);
 
   const handleMessage = useCallback((message: HostMessage) => {
     switch (message.type) {
@@ -35,13 +68,38 @@ export default function App() {
       case 'TEAM_DECLINED':
         setCurrentScreen('declined');
         break;
+      case 'QUESTION_READY':
+        // Question data received but not yet shown to players
+        // Show input interface, hide question text
+        // Clear any loading timers and transition from loading to question screen
+        if (nextQuestionTimerRef.current) {
+          clearTimeout(nextQuestionTimerRef.current);
+        }
+        setCurrentQuestion(message.data ? { ...message.data, shown: false } : null);
+        setCurrentScreen('question');
+        setSubmissionState('idle');
+        break;
       case 'QUESTION':
-        setCurrentQuestion(message.data);
+        // Question is now being shown to players
+        // Reveal question text and options (with 500ms delay after QUESTION_READY)
+        // Clear any loading timers
+        if (nextQuestionTimerRef.current) {
+          clearTimeout(nextQuestionTimerRef.current);
+        }
+        setCurrentQuestion((prev: any) => {
+          if (prev) {
+            return { ...prev, shown: true };
+          }
+          // If no previous question, treat as full question with shown=true
+          return { ...message.data, shown: true };
+        });
         setCurrentScreen('question');
         break;
       case 'TIMER_START':
         setShowTimer(true);
-        setTimeRemaining(message.data?.seconds || 30);
+        const totalSeconds = message.data?.seconds || 30;
+        setTotalTimeRemaining(totalSeconds);
+        setTimeRemaining(totalSeconds);
         break;
       case 'TIMER':
         setTimeRemaining(message.data?.seconds || 0);
@@ -49,19 +107,46 @@ export default function App() {
       case 'TIMEUP':
         setShowTimer(false);
         break;
+      case 'ANSWER_ACK':
+        // Backend received and acknowledged the answer immediately
+        // This provides fast feedback without waiting for host processing
+        setSubmissionState('confirmed');
+        // Auto-hide confirmation after 2 seconds
+        setTimeout(() => {
+          setSubmissionState('idle');
+        }, 2000);
+        break;
       case 'REVEAL':
         setCurrentQuestion((prev: any) => ({
           ...prev,
           revealed: true,
           revealedAnswer: message.data?.answer,
+          correctIndex: message.data?.correctIndex,
+          playerSelectedIndex,
         }));
         break;
+      case 'ANSWER_CONFIRMED':
+        // Host confirmed answer was received
+        setSubmissionState('confirmed');
+        // Auto-hide confirmation after 2 seconds
+        setTimeout(() => {
+          setSubmissionState('idle');
+        }, 2000);
+        break;
       case 'NEXT':
-        setCurrentQuestion(null);
-        setCurrentScreen('waiting');
+        // Clear question and show loading screen while next question is prepared
+        if (nextQuestionTimerRef.current) {
+          clearTimeout(nextQuestionTimerRef.current);
+        }
+        nextQuestionTimerRef.current = setTimeout(() => {
+          setCurrentQuestion(null);
+          setSubmissionState('idle');
+          setShowTimer(false);
+          setCurrentScreen('loading');
+        }, 500);
         break;
       case 'PICTURE':
-        setCurrentScreen('waiting');
+        // Update image but don't switch screen to waiting
         if (message.data?.image) {
           setCurrentQuestion((prev: any) => ({
             ...prev,
@@ -72,14 +157,36 @@ export default function App() {
     }
   }, []);
 
-  const { isConnected, error } = useNetworkConnection({
+  const { isConnected, error, connectionStatus: wsConnectionStatus } = useNetworkConnection({
     playerId,
     onConnect: handleConnect,
     onMessage: handleMessage,
   });
 
+  // Update app connection status based on WebSocket status
+  useEffect(() => {
+    if (!isConnected) {
+      setConnectionStatus('disconnected');
+    } else if (wsConnectionStatus === 'connecting') {
+      setConnectionStatus('connecting');
+    } else {
+      setConnectionStatus('connected');
+    }
+  }, [isConnected, wsConnectionStatus]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (nextQuestionTimerRef.current) {
+        clearTimeout(nextQuestionTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleTeamNameSubmit = (name: string) => {
     setTeamName(name);
+    // Persist team name to localStorage for auto-reconnect
+    localStorage.setItem('popquiz_team_name', name);
     setCurrentScreen('approval');
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -93,15 +200,25 @@ export default function App() {
     }
   };
 
-  const handleAnswerSubmit = (answer: any) => {
+  const handleAnswerSubmit = (answerPayload: any) => {
+    setSubmissionState('submitting');
+    // Capture the selected answer index for multi-choice questions (used for reveal animation)
+    if (answerPayload.selectedAnswerIndex !== undefined) {
+      setPlayerSelectedIndex(answerPayload.selectedAnswerIndex);
+    }
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'PLAYER_ANSWER',
         playerId,
         teamName,
-        answer,
+        answer: answerPayload.answer,
         timestamp: Date.now(),
       }));
+    } else {
+      setSubmissionState('error');
+      setTimeout(() => {
+        setSubmissionState('idle');
+      }, 2000);
     }
   };
 
@@ -142,6 +259,7 @@ export default function App() {
               <button
                 onClick={() => {
                   setTeamName('');
+                  localStorage.removeItem('popquiz_team_name');
                   setCurrentScreen('team-entry');
                 }}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
@@ -156,11 +274,18 @@ export default function App() {
           <WaitingScreen teamName={teamName} />
         )}
 
+        {isConnected && currentScreen === 'loading' && (
+          <LoadingScreen />
+        )}
+
         {isConnected && currentScreen === 'question' && currentQuestion && (
           <QuestionDisplay
             question={currentQuestion}
             timeRemaining={timeRemaining}
+            totalTimeRemaining={totalTimeRemaining}
             showTimer={showTimer}
+            submissionState={submissionState}
+            connectionStatus={connectionStatus}
             onAnswerSubmit={handleAnswerSubmit}
           />
         )}
