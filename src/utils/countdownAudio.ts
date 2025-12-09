@@ -2,8 +2,11 @@
 // Plays Countdown.wav (normal) or Countdown Silent.wav (silent mode)
 // Handles dynamic start time based on timer duration
 
-import countdownAudio from '../../resorces/sounds/Countdown/Countdown.wav';
-import countdownSilentAudio from '../../resorces/sounds/Countdown/Countdown Silent.wav';
+import { getCountdownAudioPath } from './pathManager';
+
+// Fallback paths for when not in Electron context
+const FALLBACK_COUNTDOWN = '../../resorces/sounds/Countdown/Countdown.wav';
+const FALLBACK_COUNTDOWN_SILENT = '../../resorces/sounds/Countdown/Countdown Silent.wav';
 
 interface AudioPlayer {
   audio: HTMLAudioElement | null;
@@ -20,8 +23,22 @@ let currentPlayer: AudioPlayer = {
  * @param isSilent - If true, uses silent countdown audio; otherwise uses normal countdown
  * @returns URL to the audio file
  */
-function getAudioUrl(isSilent: boolean): string {
-  return isSilent ? countdownSilentAudio : countdownAudio;
+async function getAudioUrl(isSilent: boolean): Promise<string> {
+  try {
+    const isElectron = typeof window !== 'undefined' &&
+                       typeof (window as any).api !== 'undefined' &&
+                       typeof (window as any).api.ipc !== 'undefined';
+
+    if (isElectron) {
+      return await getCountdownAudioPath(isSilent);
+    } else {
+      // Fallback for non-Electron context
+      return isSilent ? FALLBACK_COUNTDOWN_SILENT : FALLBACK_COUNTDOWN;
+    }
+  } catch (error) {
+    console.warn('[CountdownAudio] Error getting dynamic audio path, using fallback:', error);
+    return isSilent ? FALLBACK_COUNTDOWN_SILENT : FALLBACK_COUNTDOWN;
+  }
 }
 
 /**
@@ -39,7 +56,7 @@ export async function playCountdownAudio(timerDuration: number, isSilent: boolea
     // Stop any currently playing audio
     stopCountdownAudio();
 
-    const audioUrl = getAudioUrl(isSilent);
+    const audioUrl = await getAudioUrl(isSilent);
     const audio = new Audio(audioUrl);
 
     // Set up audio properties

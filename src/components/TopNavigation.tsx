@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import { Settings, Maximize, User, AlertTriangle, Home, Smartphone } from "lucide-react";
+import { Settings, Maximize, User, AlertTriangle, Home, Smartphone, Lock } from "lucide-react";
 import { DisplayModeToggle } from "./DisplayModeToggle";
 import { LoginDialog } from "./LoginDialog";
 import { useAuth } from "../utils/AuthContext";
@@ -42,7 +42,7 @@ export function TopNavigation({
   const { isLoggedIn, user } = useAuth();
   const { version } = useSettings();
   const [showLoginDialog, setShowLoginDialog] = useState(false);
-  
+
   const tabs = [
     { id: "home", label: "Home" },
     { id: "leaderboard-reveal", label: "Leaderboard" },
@@ -133,7 +133,7 @@ export function TopNavigation({
             {/* Settings Button */}
             <button
               onClick={onPlayerDevicesSettings}
-              className="h-8 px-0.5 bg-[#3d5166] text-[#ecf0f1] hover:bg-[#4a617a] hover:text-white border border-[#4a5568] rounded-l-md transition-all duration-200 hover:scale-102 flex items-center justify-center border-r-0"
+              className="h-9 px-0.5 bg-[#3d5166] text-[#ecf0f1] hover:bg-[#4a617a] hover:text-white border border-[#4a5568] rounded-l-md transition-all duration-200 hover:scale-102 flex items-center justify-center border-r-0"
               title="Player Devices Settings"
             >
               <Settings className="w-4 h-4" />
@@ -142,16 +142,21 @@ export function TopNavigation({
             {/* Thin separator line */}
             <div className="w-[1px] h-6 bg-[#4a5568]"></div>
             
-            {/* Player Devices Button - Toggleable */}
+            {/* Player Devices Button - Toggleable with broadcast debounce delay */}
             <button
               onClick={() => {
+                console.log('[TopNavigation] Player button clicked, current mode:', playerDevicesDisplayMode);
                 const modes: ("basic" | "slideshow" | "scores")[] = ["basic", "slideshow", "scores"];
                 const currentIndex = modes.indexOf(playerDevicesDisplayMode);
                 const nextIndex = (currentIndex + 1) % modes.length;
-                onPlayerDevicesDisplayModeChange?.(modes[nextIndex]);
+                const nextMode = modes[nextIndex];
+
+                console.log('[TopNavigation] Switching to next mode:', nextMode);
+                // Call parent handler - debounce is handled in parent for broadcast
+                onPlayerDevicesDisplayModeChange?.(nextMode);
               }}
-              className="h-8 w-24 border border-[#4a5568] rounded-r-md transition-all duration-200 hover:scale-102 flex flex-col items-center justify-center text-[#ecf0f1] bg-[#3d5166] hover:bg-[#4a617a] hover:text-white border-l-0"
-              title={`Player Devices Display Mode: ${playerDevicesDisplayMode} (click to cycle)`}
+              className="h-9 w-24 border border-[#4a5568] rounded-r-md transition-all duration-200 flex flex-col items-center justify-center text-[#ecf0f1] bg-[#3d5166] hover:bg-[#4a617a] hover:text-white border-l-0 relative hover:scale-102"
+              title={`Player Devices Display Mode: ${playerDevicesDisplayMode} (click to cycle - broadcasts after 2s of inactivity)`}
             >
               <div className="text-xs opacity-75 leading-tight">Player</div>
               <div className="flex items-center gap-0.5">

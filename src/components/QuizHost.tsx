@@ -181,6 +181,7 @@ export function QuizHost() {
 
   // Player devices display mode state
   const [playerDevicesDisplayMode, setPlayerDevicesDisplayMode] = useState<"basic" | "slideshow" | "scores">("basic");
+  const [playerDevicesSlideshowSeconds, setPlayerDevicesSlideshowSeconds] = useState<number>(10);
   const [showPlayerDevicesSettings, setShowPlayerDevicesSettings] = useState(false);
   const [playerDevicesImages, setPlayerDevicesImages] = useState<StoredImage[]>([]);
 
@@ -653,8 +654,30 @@ export function QuizHost() {
                 // Auto-approve via IPC (only works in Electron)
                 try {
                   if ((window as any).api?.network?.approveTeam) {
-                    console.log('Calling approveTeam IPC:', { deviceId, teamName });
-                    await (window as any).api.network.approveTeam({ deviceId, teamName });
+                    // Prepare display mode data for the newly approved player
+                    const displayData: any = {
+                      mode: playerDevicesDisplayMode
+                    };
+
+                    if (playerDevicesDisplayMode === 'slideshow') {
+                      displayData.images = playerDevicesImages.map((img, idx) => ({
+                        id: `img-${idx}`,
+                        path: img.url,
+                        name: img.name || `Image ${idx + 1}`
+                      }));
+                      displayData.rotationInterval = playerDevicesSlideshowSeconds * 1000;
+                    } else if (playerDevicesDisplayMode === 'scores') {
+                      const sortedQuizzes = [...quizzes].sort((a, b) => (b.score || 0) - (a.score || 0));
+                      displayData.scores = sortedQuizzes.map((q, idx) => ({
+                        id: q.id,
+                        name: q.name,
+                        score: q.score || 0,
+                        position: idx + 1
+                      }));
+                    }
+
+                    console.log('Calling approveTeam IPC with displayData:', { deviceId, teamName, displayData });
+                    await (window as any).api.network.approveTeam({ deviceId, teamName, displayData });
                     console.log('✅ Team auto-approved');
                   } else {
                     console.warn('api.network.approveTeam not available');
@@ -753,7 +776,30 @@ export function QuizHost() {
       // Approve via IPC (only works in Electron)
       if ((window as any).api?.network?.approveTeam) {
         console.log('Calling approveTeam IPC...');
-        const result = await (window as any).api.network.approveTeam({ deviceId, teamName });
+
+        // Prepare display mode data to send to the newly approved player
+        const displayData: any = {
+          mode: playerDevicesDisplayMode
+        };
+
+        if (playerDevicesDisplayMode === 'slideshow') {
+          displayData.images = playerDevicesImages.map((img, idx) => ({
+            id: `img-${idx}`,
+            path: img.url,
+            name: img.name || `Image ${idx + 1}`
+          }));
+          displayData.rotationInterval = playerDevicesSlideshowSeconds * 1000; // Convert seconds to milliseconds
+        } else if (playerDevicesDisplayMode === 'scores') {
+          const sortedQuizzes = [...quizzes].sort((a, b) => (b.score || 0) - (a.score || 0));
+          displayData.scores = sortedQuizzes.map((q, idx) => ({
+            id: q.id,
+            name: q.name,
+            score: q.score || 0,
+            position: idx + 1
+          }));
+        }
+
+        const result = await (window as any).api.network.approveTeam({ deviceId, teamName, displayData });
         console.log('✅ approveTeam result:', result);
       } else {
         console.warn('⚠️  api.network.approveTeam not available');
@@ -2044,6 +2090,15 @@ export function QuizHost() {
     setCurrentRoundSpeedBonus(defaultSpeedBonus);
   }, [defaultPoints, defaultSpeedBonus]);
 
+  // Cleanup broadcast timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (playerModeBroadcastTimeoutRef.current) {
+        clearTimeout(playerModeBroadcastTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleDisplaySettings = () => {
     setShowDisplaySettings(true);
   };
@@ -2057,9 +2112,82 @@ export function QuizHost() {
     setShowPlayerDevicesSettings(true);
   };
 
-  const handlePlayerDevicesDisplayModeChange = (mode: "basic" | "slideshow" | "scores") => {
+  // Ref for debouncing player display mode broadcast
+  const playerModeBroadcastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingPlayerModeRef = useRef<"basic" | "slideshow" | "scores" | null>(null);
+
+  const PLAYER_MODE_BROADCAST_DELAY = 2000; // 2 seconds
+
+  const handlePlayerDevicesDisplayModeChange = async (mode: "basic" | "slideshow" | "scores") => {
+    console.log('[QuizHost] handlePlayerDevicesDisplayModeChange called with mode:', mode);
+    // Immediately update the UI
     setPlayerDevicesDisplayMode(mode);
+    console.log('[QuizHost] UI state updated to:', mode);
+
+    // Store pending mode for broadcast
+    pendingPlayerModeRef.current = mode;
+
+    // Clear any existing timeout
+    if (playerModeBroadcastTimeoutRef.current) {
+      console.log('[QuizHost] Clearing previous broadcast timeout');
+      clearTimeout(playerModeBroadcastTimeoutRef.current);
+    }
+
+    // Debounce the broadcast - only send after 2 seconds of inactivity
+    console.log('[QuizHost] Setting new broadcast timeout for mode:', mode);
+    playerModeBroadcastTimeoutRef.current = setTimeout(() => {
+      console.log('[QuizHost] Broadcast timeout fired, broadcasting mode:', pendingPlayerModeRef.current);
+      if (pendingPlayerModeRef.current) {
+        broadcastPlayerDisplayMode(pendingPlayerModeRef.current);
+      }
+    }, PLAYER_MODE_BROADCAST_DELAY);
   };
+
+  const handlePlayerDevicesSlideshowSecondsChange = async (seconds: number) => {
+    setPlayerDevicesSlideshowSeconds(seconds);
+    // Broadcast speed change immediately for slideshow
+    await broadcastPlayerDisplayMode(playerDevicesDisplayMode);
+  };
+
+  const broadcastPlayerDisplayMode = useCallback(async (mode: "basic" | "slideshow" | "scores") => {
+    // Broadcast display mode to all connected player devices
+    try {
+      if ((window as any).api?.network?.broadcastDisplayMode) {
+        const broadcastData: any = {
+          displayMode: mode,
+        };
+
+        if (mode === 'slideshow') {
+          broadcastData.images = playerDevicesImages.map((img, idx) => ({
+            id: `img-${idx}`,
+            path: img.url,
+            name: img.name || `Image ${idx + 1}`
+          }));
+          broadcastData.rotationInterval = playerDevicesSlideshowSeconds * 1000; // Convert seconds to milliseconds
+        } else if (mode === 'scores') {
+          // Get current scores from the current quizzes
+          console.log('[QuizHost] Building scores from quizzes array, count:', quizzes?.length || 0);
+          const sortedQuizzes = [...quizzes].sort((a, b) => (b.score || 0) - (a.score || 0));
+          broadcastData.scores = sortedQuizzes.map((q, idx) => ({
+            id: q.id,
+            name: q.name,
+            score: q.score || 0,
+            position: idx + 1
+          }));
+          console.log('[QuizHost] Scores being broadcasted:', broadcastData.scores);
+          console.log('[QuizHost] Full broadcastData for scores mode:', broadcastData);
+        }
+
+        console.log('[QuizHost] Full broadcast data:', broadcastData);
+        await (window as any).api.network.broadcastDisplayMode(broadcastData);
+        console.log('[QuizHost] Display mode broadcasted to players:', mode);
+      } else {
+        console.error('[QuizHost] broadcastDisplayMode API not available');
+      }
+    } catch (error) {
+      console.error('[QuizHost] Error broadcasting display mode:', error);
+    }
+  }, [quizzes, playerDevicesImages, playerDevicesSlideshowSeconds]);
 
   const handlePlayerDevicesImagesChange = (images: StoredImage[]) => {
     setPlayerDevicesImages(images);
@@ -2083,9 +2211,32 @@ export function QuizHost() {
     setShowSettings(true);
   };
 
+  // Re-broadcast scores to players when quizzes change and display mode is 'scores'
+  useEffect(() => {
+    if (playerDevicesDisplayMode === 'scores') {
+      console.log('[QuizHost] Quiz scores changed, re-broadcasting to players in scores mode');
+      // Use a small debounce to avoid sending too many updates
+      const timeoutId = setTimeout(() => {
+        broadcastPlayerDisplayMode('scores');
+      }, 300);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [quizzes, playerDevicesDisplayMode, broadcastPlayerDisplayMode]);
+
+  // Periodic heartbeat to sync player display mode - ensures reliability even if messages are missed
+  // Broadcasts every 2 seconds to guarantee devices receive updates (respects the 2s debounce delay for initial broadcast)
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      console.log('[QuizHost] Periodic sync (2s) - re-broadcasting current mode:', playerDevicesDisplayMode);
+      broadcastPlayerDisplayMode(playerDevicesDisplayMode);
+    }, 2000); // Every 2 seconds for reliable delivery
+
+    return () => clearInterval(syncInterval);
+  }, [playerDevicesDisplayMode, broadcastPlayerDisplayMode]);
+
   const handleSpeedChange = (speed: number) => {
     setSlideshowSpeed(speed);
-    
+
     // Update external display if open
     if (externalWindow && !externalWindow.closed) {
       updateExternalDisplay(externalWindow, displayMode);
@@ -3243,6 +3394,8 @@ export function QuizHost() {
           onImagesChange={handlePlayerDevicesImagesChange}
           playerDevicesDisplayMode={playerDevicesDisplayMode}
           onClose={() => setShowPlayerDevicesSettings(false)}
+          onSlideshowSecondsChange={handlePlayerDevicesSlideshowSecondsChange}
+          currentSlideshowSeconds={playerDevicesSlideshowSeconds}
         />
       )}
 

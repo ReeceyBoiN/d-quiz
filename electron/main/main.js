@@ -6,6 +6,7 @@ const { createMainWindow, createExternalWindow } = require('./windows');
 const { applySecurity } = require('./security');
 const { createIpcRouter } = require('../ipc/ipcRouter');
 const { startBackend } = require('../backend/server');
+const { initializePaths, getResourcePaths } = require('../backend/pathInitializer');
 
 let mainWindow;
 
@@ -23,6 +24,9 @@ function setupAppEvents() {
 async function boot() {
   applySecurity();
   await app.whenReady();
+
+  // Initialize PopQuiz resource folders in Documents
+  initializePaths();
 
   const isDev = !!process.env.VITE_DEV_SERVER_URL || !app.isPackaged;
 
@@ -125,8 +129,8 @@ async function boot() {
     if (!backend || !backend.approveTeam) {
       throw new Error('Backend not initialized');
     }
-    const { deviceId, teamName } = payload;
-    backend.approveTeam(deviceId, teamName);
+    const { deviceId, teamName, displayData } = payload;
+    backend.approveTeam(deviceId, teamName, displayData);
     return { approved: true };
   });
 
@@ -173,6 +177,43 @@ async function boot() {
       path: path.join(dirPath, d.name),
     }));
     return { entries };
+  });
+
+  // Get resource paths for PopQuiz (sounds, images, etc.)
+  ipcMain.handle('get-resource-paths', async () => {
+    return getResourcePaths();
+  });
+
+  // Broadcast display mode to player devices
+  router.mount('network/broadcast-display-mode', async (payload) => {
+    if (!backend || !backend.broadcastDisplayMode) {
+      throw new Error('Backend not initialized');
+    }
+    const { displayMode, images, rotationInterval, scores, scrollSpeed } = payload;
+
+    console.log('[IPC] Broadcast-display-mode received:', { displayMode, hasImages: !!images, hasScores: !!scores, scoresLength: scores?.length });
+
+    const displayData = {
+      mode: displayMode,
+    };
+
+    if (displayMode === 'slideshow' && images) {
+      displayData.images = images;
+      displayData.rotationInterval = rotationInterval || 10000;
+      console.log('[IPC] Added slideshow data');
+    }
+
+    if (displayMode === 'scores' && scores) {
+      displayData.scores = scores;
+      displayData.scrollSpeed = scrollSpeed || 'medium';
+      console.log('[IPC] Added scores data:', scores);
+    } else if (displayMode === 'scores') {
+      console.warn('[IPC] Scores mode requested but no scores data!');
+    }
+
+    console.log('[IPC] Final displayData:', displayData);
+    backend.broadcastDisplayMode(displayMode, displayData);
+    return { broadcasted: true };
   });
 
   log.info('App boot complete');

@@ -392,7 +392,6 @@ export function PersistentImageManager({ onImagesChange, className = "" }: Persi
             </p>
             <div className="text-xs text-[#7f8c8d] space-y-1">
               <div>📄 Supported: PNG, JPG, GIF, WebP</div>
-              <div>📏 Max size: 2MB per file</div>
               <div>🔄 Multiple files supported</div>
               <div>💾 Stored in project (persists across sessions)</div>
             </div>

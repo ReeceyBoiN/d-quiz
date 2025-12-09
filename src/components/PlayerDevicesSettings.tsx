@@ -1,5 +1,5 @@
-import React from "react";
-import { Settings, Smartphone, X, Users, Image } from "lucide-react";
+import React, { useState } from "react";
+import { Settings, Smartphone, X, Users, Image, Zap } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { PersistentImageManager } from "./PersistentImageManager";
@@ -10,14 +10,19 @@ interface PlayerDevicesSettingsProps {
   onImagesChange: (images: StoredImage[]) => void;
   images: StoredImage[];
   playerDevicesDisplayMode: "basic" | "slideshow" | "scores";
+  onSlideshowSecondsChange?: (seconds: number) => void;
+  currentSlideshowSeconds?: number;
 }
 
 export function PlayerDevicesSettings({
   onClose,
   onImagesChange,
   images,
-  playerDevicesDisplayMode
+  playerDevicesDisplayMode,
+  onSlideshowSecondsChange,
+  currentSlideshowSeconds = 10
 }: PlayerDevicesSettingsProps) {
+  const [slideshowSeconds, setSlideshowSeconds] = useState<number>(currentSlideshowSeconds);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -102,13 +107,64 @@ export function PlayerDevicesSettings({
                 </div>
               </div>
 
+              {/* Speed Control for Slideshow Only */}
+              {playerDevicesDisplayMode === 'slideshow' && (
+                <div className="bg-[#34495e] rounded-lg p-4 border border-[#4a5568]">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Zap className="w-4 h-4 text-[#f39c12]" />
+                    <h4 className="text-[#ecf0f1] font-medium">Slideshow Speed</h4>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min="2"
+                        max="60"
+                        value={slideshowSeconds}
+                        onChange={(e) => {
+                          const newValue = parseInt(e.target.value);
+                          setSlideshowSeconds(newValue);
+                          onSlideshowSecondsChange?.(newValue);
+                        }}
+                        className="flex-1 h-2 bg-[#2c3e50] rounded-lg appearance-none cursor-pointer accent-[#f39c12]"
+                      />
+                      <input
+                        type="number"
+                        min="2"
+                        max="60"
+                        value={slideshowSeconds}
+                        onChange={(e) => {
+                          const newValue = Math.max(2, Math.min(60, parseInt(e.target.value) || currentSlideshowSeconds));
+                          setSlideshowSeconds(newValue);
+                          onSlideshowSecondsChange?.(newValue);
+                        }}
+                        className="w-16 px-2 py-1 bg-[#2c3e50] text-[#ecf0f1] border border-[#4a5568] rounded text-sm"
+                      />
+                      <span className="text-[#95a5a6] text-sm min-w-fit">seconds</span>
+                    </div>
+                    <div className="text-xs text-[#95a5a6] mt-2">
+                      Each image will display for {slideshowSeconds} seconds before rotating to the next one
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Instructions */}
               <div className="bg-[#34495e] rounded-lg p-4 border border-[#4a5568]">
-                <h4 className="text-[#ecf0f1] font-medium mb-2">How It Works</h4>
-                <div className="text-xs text-[#95a5a6] space-y-2">
-                  <p>1. Upload images using the manager on the right</p>
-                  <p>2. Images will be synced to all connected player devices</p>
-                  <p>3. Use the display mode toggle in the top bar to switch between Basic, Slideshow, and Scores views</p>
+                <h4 className="text-[#ecf0f1] font-medium mb-2">Display Modes</h4>
+                <div className="text-xs text-[#95a5a6] space-y-3">
+                  <div>
+                    <p className="font-medium text-[#f39c12]">Basic</p>
+                    <p>Shows "Pop Quiz" with animated background. Perfect for between rounds.</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-[#9b59b6]">Slideshow</p>
+                    <p>Cycles through images from the Phone Slideshow folder.</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-[#3498db]">Scores</p>
+                    <p>Displays the live leaderboard with scrolling animation. Updates automatically as scores change.</p>
+                  </div>
                 </div>
               </div>
             </div>

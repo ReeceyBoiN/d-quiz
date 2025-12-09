@@ -14,7 +14,11 @@ export type HostMessageType =
   | 'PLAYER_LIST'
   | 'TEAM_APPROVED'
   | 'APPROVAL_PENDING'
-  | 'TEAM_DECLINED';
+  | 'TEAM_DECLINED'
+  | 'DISPLAY_MODE'
+  | 'DISPLAY_UPDATE'
+  | 'LEADERBOARD_UPDATE'
+  | 'SLIDESHOW_UPDATE';
 
 export interface HostMessage {
   type: HostMessageType;

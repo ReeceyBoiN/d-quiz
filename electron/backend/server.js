@@ -206,7 +206,7 @@ async function startBackend({ port = 4310 } = {}) {
   log.info(`Host can access player app at: http://${localIP}:${port}`);
 
   // Helper function to approve a team
-  function approveTeam(deviceId, teamName) {
+  function approveTeam(deviceId, teamName, displayData = {}) {
     log.info(`✅ approveTeam called: ${teamName} (${deviceId})`);
     const player = networkPlayers.get(deviceId);
 
@@ -229,7 +229,7 @@ async function startBackend({ port = 4310 } = {}) {
     player.status = 'approved';
     player.ws.send(JSON.stringify({
       type: 'TEAM_APPROVED',
-      data: { teamName, deviceId },
+      data: { teamName, deviceId, displayData },
       timestamp: Date.now()
     }));
     log.info(`✅ TEAM_APPROVED sent to: ${teamName} (${deviceId})`);
@@ -296,7 +296,71 @@ async function startBackend({ port = 4310 } = {}) {
     return players;
   }
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers };
+  // Helper function to broadcast display mode to all connected players
+  function broadcastDisplayMode(displayMode, data = {}) {
+    log.info(`[broadcastDisplayMode] Mode: ${displayMode}, Data keys: ${Object.keys(data).join(', ')}`);
+
+    const messageData = {
+      mode: displayMode,
+      ...data
+    };
+
+    if (displayMode === 'scores') {
+      log.info(`[broadcastDisplayMode] Broadcasting ${data.scores?.length || 0} scores to players`);
+    }
+
+    const message = JSON.stringify({
+      type: 'DISPLAY_MODE',
+      data: messageData,
+      timestamp: Date.now()
+    });
+
+    let successCount = 0;
+    let failCount = 0;
+    const approvedPlayerCount = Array.from(networkPlayers.values()).filter(p => p.ws && p.ws.readyState === 1 && p.status === 'approved').length;
+
+    networkPlayers.forEach((player, deviceId) => {
+      if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+        try {
+          player.ws.send(message);
+          successCount++;
+        } catch (error) {
+          log.warn(`Failed to send display mode to ${deviceId}:`, error.message);
+          failCount++;
+        }
+      }
+    });
+
+    log.info(`📺 Broadcast DISPLAY_MODE (${displayMode}) to ${successCount}/${approvedPlayerCount} approved players` + (failCount > 0 ? `, ${failCount} failed` : ''));
+  }
+
+  // Helper function to send display update to all connected players
+  function broadcastDisplayUpdate(updateData) {
+    const message = JSON.stringify({
+      type: 'DISPLAY_UPDATE',
+      data: updateData,
+      timestamp: Date.now()
+    });
+
+    let successCount = 0;
+    let failCount = 0;
+
+    networkPlayers.forEach((player, deviceId) => {
+      if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+        try {
+          player.ws.send(message);
+          successCount++;
+        } catch (error) {
+          log.warn(`Failed to send display update to ${deviceId}:`, error.message);
+          failCount++;
+        }
+      }
+    });
+
+    log.info(`📺 Broadcast DISPLAY_UPDATE to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed` : ''));
+  }
+
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, broadcastDisplayMode, broadcastDisplayUpdate };
 }
 
 module.exports = { startBackend };
