@@ -70,32 +70,55 @@ export function useNetworkConnection({
         wsInstance.onmessage = (event) => {
           if (!isMounted) return;
           try {
-            const message: HostMessage = JSON.parse(event.data);
+            let message: HostMessage;
+            try {
+              message = JSON.parse(event.data);
+            } catch (parseErr) {
+              console.error('❌ [Player] Failed to parse message:', parseErr);
+              console.error('[Player] Raw event data (first 200 chars):', event.data?.toString().substring(0, 200));
+              return;
+            }
+
+            console.log('[Player] Successfully parsed message type:', message.type);
             onMessage?.(message);
           } catch (err) {
-            console.error('Failed to parse message:', err);
+            console.error('❌ [Player] Error in onMessage handler:', err);
+            if (err instanceof Error) {
+              console.error('[Player] Error stack:', err.stack);
+            }
           }
         };
 
         wsInstance.onerror = (event) => {
           clearTimeout(connectionTimeout);
           if (!isMounted) return;
-          console.error('❌ WebSocket error:', event);
+          console.error('❌ [Player] WebSocket error event:', event);
+          if (event instanceof Event) {
+            console.error('[Player] Error type:', event.type);
+            console.error('[Player] Error target readyState:', (event.target as any)?.readyState);
+          } else if (typeof event === 'object') {
+            console.error('[Player] Error object keys:', Object.keys(event));
+            console.error('[Player] Error details:', event);
+          }
           setError('Connection error. Host may not be available.');
           setIsConnected(false);
         };
 
-        wsInstance.onclose = () => {
+        wsInstance.onclose = (event) => {
           clearTimeout(connectionTimeout);
           if (!isMounted) return;
-          console.log('⚠️  Disconnected from host');
+          console.log('⚠️  [Player] Disconnected from host');
+          console.log(`[Player] Close code: ${event.code}, Reason: ${event.reason || 'none'}, Clean: ${event.wasClean}`);
+          if (event.code === 1005) {
+            console.warn('[Player] ⚠️  Connection closed abnormally (code 1005) - possible server error');
+          }
           setIsConnected(false);
           onDisconnect?.();
 
           if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttempts++;
             const delayMs = getDelayMs(reconnectAttempts - 1);
-            console.log(`📍 Scheduling reconnect in ${delayMs}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+            console.log(`📍 [Player] Scheduling reconnect in ${delayMs}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
             reconnectTimeout = setTimeout(connect, delayMs);
           }
         };

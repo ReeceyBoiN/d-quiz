@@ -126,21 +126,61 @@ async function boot() {
   });
 
   router.mount('network/approve-team', async (payload) => {
-    if (!backend || !backend.approveTeam) {
-      throw new Error('Backend not initialized');
+    try {
+      log.info('[IPC] network/approve-team called with:', { deviceId: payload?.deviceId, teamName: payload?.teamName, hasDisplayData: !!payload?.displayData });
+
+      if (!backend || !backend.approveTeam) {
+        log.error('[IPC] Backend not initialized for network/approve-team');
+        throw new Error('Backend not initialized');
+      }
+
+      const { deviceId, teamName, displayData } = payload;
+      log.info('[IPC] displayData details:', { hasImages: !!displayData?.images, scoresLength: displayData?.scores?.length, mode: displayData?.mode });
+      if (displayData?.images) {
+        log.info('[IPC] displayData.images count:', displayData.images.length);
+      }
+      if (displayData?.scores) {
+        log.info('[IPC] displayData.scores count:', displayData.scores.length);
+        log.info('[IPC] displayData.scores sample:', displayData.scores.slice(0, 1));
+      }
+      log.info('[IPC] Calling backend.approveTeam...');
+      try {
+        backend.approveTeam(deviceId, teamName, displayData);
+        log.info('[IPC] backend.approveTeam completed successfully');
+      } catch (approveErr) {
+        log.error('[IPC] backend.approveTeam threw error:', approveErr.message);
+        if (approveErr.stack) {
+          log.error('[IPC] approveTeam error stack:', approveErr.stack);
+        }
+        throw approveErr;
+      }
+
+      return { approved: true };
+    } catch (err) {
+      log.error('[IPC] network/approve-team error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
     }
-    const { deviceId, teamName, displayData } = payload;
-    backend.approveTeam(deviceId, teamName, displayData);
-    return { approved: true };
   });
 
   router.mount('network/decline-team', async (payload) => {
-    if (!backend || !backend.declineTeam) {
-      throw new Error('Backend not initialized');
+    try {
+      log.info('[IPC] network/decline-team called with:', { deviceId: payload?.deviceId, teamName: payload?.teamName });
+
+      if (!backend || !backend.declineTeam) {
+        log.error('[IPC] Backend not initialized for network/decline-team');
+        throw new Error('Backend not initialized');
+      }
+      const { deviceId, teamName } = payload;
+      log.info('[IPC] Calling backend.declineTeam...');
+      backend.declineTeam(deviceId, teamName);
+      log.info('[IPC] backend.declineTeam completed successfully');
+      return { declined: true };
+    } catch (err) {
+      log.error('[IPC] network/decline-team error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
     }
-    const { deviceId, teamName } = payload;
-    backend.declineTeam(deviceId, teamName);
-    return { declined: true };
   });
   
   // Open user's Documents/PopQuiz/Question Packs; create it if missing
@@ -186,34 +226,55 @@ async function boot() {
 
   // Broadcast display mode to player devices
   router.mount('network/broadcast-display-mode', async (payload) => {
-    if (!backend || !backend.broadcastDisplayMode) {
-      throw new Error('Backend not initialized');
+    try {
+      log.info('[IPC] network/broadcast-display-mode called with:', { displayMode: payload?.displayMode, hasImages: !!payload?.images, hasScores: !!payload?.scores, scoresLength: payload?.scores?.length, displayTransitionDelay: payload?.displayTransitionDelay });
+
+      if (!backend || !backend.broadcastDisplayMode) {
+        log.error('[IPC] Backend not initialized for broadcast-display-mode');
+        throw new Error('Backend not initialized');
+      }
+      const { displayMode, images, rotationInterval, scores, scrollSpeed, displayTransitionDelay } = payload;
+
+      log.info('[IPC] Broadcast-display-mode received:', { displayMode, hasImages: !!images, hasScores: !!scores, scoresLength: scores?.length, displayTransitionDelay });
+
+      const displayData = {
+        mode: displayMode,
+        displayTransitionDelay: displayTransitionDelay || 0,
+      };
+
+      if (displayMode === 'slideshow' && images) {
+        displayData.images = images;
+        displayData.rotationInterval = rotationInterval || 10000;
+        log.info('[IPC] Added slideshow data');
+      }
+
+      if (displayMode === 'scores' && scores) {
+        displayData.scores = scores;
+        displayData.scrollSpeed = scrollSpeed || 'medium';
+        log.info('[IPC] Added scores data:', scores);
+      } else if (displayMode === 'scores') {
+        log.warn('[IPC] Scores mode requested but no scores data!');
+      }
+
+      log.info('[IPC] Final displayData keys:', Object.keys(displayData));
+      log.info('[IPC] Final displayData:', { mode: displayData.mode, displayTransitionDelay: displayData.displayTransitionDelay, hasImages: !!displayData.images, hasScores: !!displayData.scores });
+      log.info('[IPC] Calling backend.broadcastDisplayMode...');
+      try {
+        backend.broadcastDisplayMode(displayMode, displayData);
+        log.info('[IPC] backend.broadcastDisplayMode completed successfully');
+      } catch (broadcastErr) {
+        log.error('[IPC] backend.broadcastDisplayMode threw error:', broadcastErr.message);
+        if (broadcastErr.stack) {
+          log.error('[IPC] broadcastDisplayMode error stack:', broadcastErr.stack);
+        }
+        throw broadcastErr;
+      }
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-display-mode error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
     }
-    const { displayMode, images, rotationInterval, scores, scrollSpeed } = payload;
-
-    console.log('[IPC] Broadcast-display-mode received:', { displayMode, hasImages: !!images, hasScores: !!scores, scoresLength: scores?.length });
-
-    const displayData = {
-      mode: displayMode,
-    };
-
-    if (displayMode === 'slideshow' && images) {
-      displayData.images = images;
-      displayData.rotationInterval = rotationInterval || 10000;
-      console.log('[IPC] Added slideshow data');
-    }
-
-    if (displayMode === 'scores' && scores) {
-      displayData.scores = scores;
-      displayData.scrollSpeed = scrollSpeed || 'medium';
-      console.log('[IPC] Added scores data:', scores);
-    } else if (displayMode === 'scores') {
-      console.warn('[IPC] Scores mode requested but no scores data!');
-    }
-
-    console.log('[IPC] Final displayData:', displayData);
-    backend.broadcastDisplayMode(displayMode, displayData);
-    return { broadcasted: true };
   });
 
   log.info('App boot complete');

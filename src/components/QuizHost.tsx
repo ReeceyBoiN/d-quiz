@@ -752,7 +752,7 @@ export function QuizHost() {
         wsInstance.close();
       }
     };
-  }, [quizzes, pendingTeams]);
+  }, []);
 
   // Handler to approve a pending team
   const handleApproveTeam = async (deviceId: string, teamName: string) => {
@@ -1958,8 +1958,8 @@ export function QuizHost() {
     const handleNetworkPlayerJoin = (data: any) => {
       const { playerId, teamName } = data;
 
-      // Check if player already registered
-      if (!quizzes.find(q => q.id === playerId)) {
+      // Check if player already registered (using ref to access latest quizzes)
+      if (!quizzesRef.current.find(q => q.id === playerId)) {
         const newTeam: Quiz = {
           id: playerId,
           name: teamName,
@@ -1978,8 +1978,12 @@ export function QuizHost() {
       }
     };
 
-    onNetworkMessage('PLAYER_JOIN', handleNetworkPlayerJoin);
-  }, [quizzes]);
+    // Register listener and get unsubscribe function
+    const unsubscribe = onNetworkMessage('PLAYER_JOIN', handleNetworkPlayerJoin);
+
+    // Clean up listener on unmount
+    return unsubscribe;
+  }, []); // Empty dependency array - register once on mount
 
   const handleRevealAnswer = () => {
     setShowAnswer(true);
@@ -2090,15 +2094,6 @@ export function QuizHost() {
     setCurrentRoundSpeedBonus(defaultSpeedBonus);
   }, [defaultPoints, defaultSpeedBonus]);
 
-  // Cleanup broadcast timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (playerModeBroadcastTimeoutRef.current) {
-        clearTimeout(playerModeBroadcastTimeoutRef.current);
-      }
-    };
-  }, []);
-
   const handleDisplaySettings = () => {
     setShowDisplaySettings(true);
   };
@@ -2112,49 +2107,54 @@ export function QuizHost() {
     setShowPlayerDevicesSettings(true);
   };
 
-  // Ref for debouncing player display mode broadcast
-  const playerModeBroadcastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingPlayerModeRef = useRef<"basic" | "slideshow" | "scores" | null>(null);
-
-  const PLAYER_MODE_BROADCAST_DELAY = 2000; // 2 seconds
+  // State and ref for debouncing mode changes
+  const broadcastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const modeChangedAtRef = useRef<number>(0); // Track when mode was last changed to avoid interfering broadcasts
 
   const handlePlayerDevicesDisplayModeChange = async (mode: "basic" | "slideshow" | "scores") => {
     console.log('[QuizHost] handlePlayerDevicesDisplayModeChange called with mode:', mode);
-    // Immediately update the UI
+
+    // Track that mode was just changed (to prevent scores effect from interfering)
+    modeChangedAtRef.current = Date.now();
+
+    // Immediately update the UI for responsiveness
     setPlayerDevicesDisplayMode(mode);
     console.log('[QuizHost] UI state updated to:', mode);
 
-    // Store pending mode for broadcast
-    pendingPlayerModeRef.current = mode;
-
     // Clear any existing timeout
-    if (playerModeBroadcastTimeoutRef.current) {
-      console.log('[QuizHost] Clearing previous broadcast timeout');
-      clearTimeout(playerModeBroadcastTimeoutRef.current);
+    if (broadcastTimeoutRef.current) {
+      console.log('[QuizHost] Clearing previous broadcast timeout (rapid click detected)');
+      clearTimeout(broadcastTimeoutRef.current);
     }
 
-    // Debounce the broadcast - only send after 2 seconds of inactivity
-    console.log('[QuizHost] Setting new broadcast timeout for mode:', mode);
-    playerModeBroadcastTimeoutRef.current = setTimeout(() => {
-      console.log('[QuizHost] Broadcast timeout fired, broadcasting mode:', pendingPlayerModeRef.current);
-      if (pendingPlayerModeRef.current) {
-        broadcastPlayerDisplayMode(pendingPlayerModeRef.current);
+    // Schedule the broadcast for 2 seconds from now
+    // Use the mode parameter directly (not state) to capture the correct value in the closure
+    console.log('[QuizHost] Scheduling broadcast in 2 seconds for mode:', mode);
+    broadcastTimeoutRef.current = setTimeout(() => {
+      console.log('[QuizHost] 2-second delay complete, broadcasting mode:', mode);
+      if (mode) {
+        broadcastPlayerDisplayMode(mode, true);
       }
-    }, PLAYER_MODE_BROADCAST_DELAY);
+      broadcastTimeoutRef.current = null;
+    }, 2000);
   };
 
   const handlePlayerDevicesSlideshowSecondsChange = async (seconds: number) => {
     setPlayerDevicesSlideshowSeconds(seconds);
-    // Broadcast speed change immediately for slideshow
-    await broadcastPlayerDisplayMode(playerDevicesDisplayMode);
+    // Broadcast speed change immediately for slideshow (not an explicit mode change, so no transition delay)
+    broadcastPlayerDisplayMode(playerDevicesDisplayMode, false);
   };
 
-  const broadcastPlayerDisplayMode = useCallback(async (mode: "basic" | "slideshow" | "scores") => {
+  const broadcastPlayerDisplayMode = useCallback(async (mode: "basic" | "slideshow" | "scores", isExplicitChange: boolean = false) => {
     // Broadcast display mode to all connected player devices
     try {
-      if ((window as any).api?.network?.broadcastDisplayMode) {
+      const api = (window as any).api;
+      const hasApi = api?.network?.broadcastDisplayMode;
+
+      if (hasApi) {
         const broadcastData: any = {
           displayMode: mode,
+          displayTransitionDelay: isExplicitChange ? 2000 : 0, // 2s delay only for explicit user-triggered changes
         };
 
         if (mode === 'slideshow') {
@@ -2165,9 +2165,10 @@ export function QuizHost() {
           }));
           broadcastData.rotationInterval = playerDevicesSlideshowSeconds * 1000; // Convert seconds to milliseconds
         } else if (mode === 'scores') {
-          // Get current scores from the current quizzes
-          console.log('[QuizHost] Building scores from quizzes array, count:', quizzes?.length || 0);
-          const sortedQuizzes = [...quizzes].sort((a, b) => (b.score || 0) - (a.score || 0));
+          // Get current scores from the current quizzes (using ref to avoid dependency)
+          const currentQuizzes = quizzesRef.current;
+          console.log('[QuizHost] Building scores from quizzes array, count:', currentQuizzes?.length || 0);
+          const sortedQuizzes = [...currentQuizzes].sort((a, b) => (b.score || 0) - (a.score || 0));
           broadcastData.scores = sortedQuizzes.map((q, idx) => ({
             id: q.id,
             name: q.name,
@@ -2182,12 +2183,22 @@ export function QuizHost() {
         await (window as any).api.network.broadcastDisplayMode(broadcastData);
         console.log('[QuizHost] Display mode broadcasted to players:', mode);
       } else {
-        console.error('[QuizHost] broadcastDisplayMode API not available');
+        console.warn('[QuizHost] broadcastDisplayMode API not available (may be running in browser mode without backend)');
       }
     } catch (error) {
       console.error('[QuizHost] Error broadcasting display mode:', error);
     }
-  }, [quizzes, playerDevicesImages, playerDevicesSlideshowSeconds]);
+  }, [playerDevicesImages, playerDevicesSlideshowSeconds]);
+
+  // Cleanup broadcast timeout on component unmount
+  useEffect(() => {
+    return () => {
+      if (broadcastTimeoutRef.current) {
+        console.log('[QuizHost] Cleaning up broadcast timeout on unmount');
+        clearTimeout(broadcastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handlePlayerDevicesImagesChange = (images: StoredImage[]) => {
     setPlayerDevicesImages(images);
@@ -2214,6 +2225,13 @@ export function QuizHost() {
   // Re-broadcast scores to players when quizzes change and display mode is 'scores'
   useEffect(() => {
     if (playerDevicesDisplayMode === 'scores') {
+      // Check if mode was just switched - if so, skip this broadcast to let the main handler's 2-second delay take effect
+      const timeSinceModeChange = Date.now() - modeChangedAtRef.current;
+      if (timeSinceModeChange < 3000) {
+        console.log('[QuizHost] Mode just switched, skipping scores broadcast to avoid interfering with 2-second delay');
+        return;
+      }
+
       console.log('[QuizHost] Quiz scores changed, re-broadcasting to players in scores mode');
       // Use a small debounce to avoid sending too many updates
       const timeoutId = setTimeout(() => {

@@ -78,12 +78,34 @@ class HostNetwork {
   /**
    * Register a callback for incoming message type.
    * Used by external display and player devices to listen for updates.
+   * Returns an unsubscribe function to clean up the listener.
    */
-  public on(type: NetworkMessageType, callback: (data: any) => void) {
+  public on(type: NetworkMessageType, callback: (data: any) => void): (() => void) {
     if (!this.listeners.has(type)) {
       this.listeners.set(type, []);
     }
     this.listeners.get(type)!.push(callback);
+
+    // Return an unsubscribe function
+    return () => {
+      this.off(type, callback);
+    };
+  }
+
+  /**
+   * Unregister a callback for a message type.
+   * Removes the callback from the listeners array.
+   */
+  public off(type: NetworkMessageType, callback: (data: any) => void) {
+    if (!this.listeners.has(type)) {
+      return;
+    }
+    const callbacks = this.listeners.get(type)!;
+    const index = callbacks.indexOf(callback);
+    if (index >= 0) {
+      callbacks.splice(index, 1);
+      console.log(`[HostNetwork] Unregistered listener for ${type}`);
+    }
   }
 
   /**
@@ -243,8 +265,8 @@ export function broadcastMessage(payload: NetworkPayload) {
 export function onNetworkMessage(
   type: NetworkMessageType,
   callback: (data: any) => void
-) {
-  hostNetwork.on(type, callback);
+): (() => void) {
+  return hostNetwork.on(type, callback);
 }
 
 export function sendPictureToPlayers(imageDataUrl: string) {

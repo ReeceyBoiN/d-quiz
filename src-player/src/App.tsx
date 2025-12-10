@@ -38,41 +38,61 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
 
   const handleConnect = useCallback((ws: WebSocket) => {
+    console.log('[Player] handleConnect callback - storing WebSocket reference');
     wsRef.current = ws;
+    console.log('[Player] WebSocket stored, readyState:', ws.readyState, '(1=open)');
   }, []);
 
   const handleMessage = useCallback((message: HostMessage) => {
     switch (message.type) {
       case 'TEAM_APPROVED':
-        console.log('[Player] Team approved, displayData:', message.data?.displayData);
-        setCurrentScreen('approval');
+        try {
+          console.log('[Player] Team approved, displayData:', message.data?.displayData);
+          setCurrentScreen('approval');
 
-        // Extract display mode data from the approval message
-        if (message.data?.displayData) {
-          const { mode, images, rotationInterval, scores } = message.data.displayData;
+          // Extract display mode data from the approval message
+          if (message.data?.displayData) {
+            try {
+              const { mode, images, rotationInterval, scores } = message.data.displayData;
 
-          if (mode) {
-            console.log('[Player] Setting initial display mode from approval:', mode);
-            setDisplayMode(mode);
-          }
-          if (mode === 'slideshow' && images) {
-            console.log('[Player] Setting initial slideshow images:', images.length);
-            setSlideshowImages(images);
-            if (rotationInterval) {
-              setRotationInterval(rotationInterval);
+              if (mode) {
+                console.log('[Player] Setting initial display mode from approval:', mode);
+                setDisplayMode(mode);
+              }
+              if (mode === 'slideshow' && images) {
+                console.log('[Player] Setting initial slideshow images:', images.length);
+                setSlideshowImages(images);
+                if (rotationInterval) {
+                  setRotationInterval(rotationInterval);
+                }
+              }
+              if (mode === 'scores' && scores) {
+                console.log('[Player] Setting initial scores:', scores);
+                setLeaderboardScores(scores);
+              }
+            } catch (dataErr) {
+              console.error('❌ [Player] Error extracting displayData from TEAM_APPROVED:', dataErr);
             }
+          } else {
+            console.log('[Player] No displayData in TEAM_APPROVED, using defaults');
           }
-          if (mode === 'scores' && scores) {
-            console.log('[Player] Setting initial scores:', scores);
-            setLeaderboardScores(scores);
-          }
-        } else {
-          console.log('[Player] No displayData in TEAM_APPROVED, using defaults');
-        }
 
-        setTimeout(() => {
-          setCurrentScreen('display');
-        }, 2000);
+          const approvalTimer = setTimeout(() => {
+            try {
+              console.log('[Player] Approval screen delay complete, transitioning to display');
+              setCurrentScreen('display');
+            } catch (screenErr) {
+              console.error('❌ [Player] Error during approval screen transition:', screenErr);
+            }
+          }, 2000);
+
+          return () => clearTimeout(approvalTimer);
+        } catch (approvalErr) {
+          console.error('❌ [Player] Error in TEAM_APPROVED handler:', approvalErr);
+          if (approvalErr instanceof Error) {
+            console.error('[Player] Error stack:', approvalErr.stack);
+          }
+        }
         break;
       case 'APPROVAL_PENDING':
         setCurrentScreen('approval');
@@ -116,59 +136,90 @@ export default function App() {
         break;
       case 'DISPLAY_MODE':
       case 'DISPLAY_UPDATE':
-        console.log('[Player] Received DISPLAY_MODE/UPDATE:', message);
-        if (message.data?.mode) {
-          console.log('[Player] Setting display mode to:', message.data.mode);
+        try {
+          console.log('[Player] Received DISPLAY_MODE/UPDATE:', message);
+          if (message.data?.mode) {
+            try {
+              const newMode = message.data.mode;
+              const transitionDelay = message.data?.displayTransitionDelay || 0;
+              console.log('[Player] Setting display mode to:', newMode, 'with transition delay:', transitionDelay, 'ms');
 
-          // Clear state for modes being exited to prevent stale state interference
-          if (message.data.mode !== 'slideshow') {
-            console.log('[Player] Clearing slideshow state (exiting slideshow mode)');
-            setSlideshowImages([]);
-            setRotationInterval(10000);
-          }
+              // Clear state for modes being exited to prevent stale state interference
+              if (newMode !== 'slideshow') {
+                console.log('[Player] Clearing slideshow state (exiting slideshow mode)');
+                setSlideshowImages([]);
+                setRotationInterval(10000);
+              }
 
-          if (message.data.mode !== 'scores') {
-            console.log('[Player] Clearing scores state (exiting scores mode)');
-            setLeaderboardScores([]);
-          }
+              if (newMode !== 'scores') {
+                console.log('[Player] Clearing scores state (exiting scores mode)');
+                setLeaderboardScores([]);
+              }
 
-          // Set new display mode
-          setDisplayMode(message.data.mode);
+              // Update display mode state immediately
+              console.log('[Player] Updating display mode state immediately to:', newMode);
+              setDisplayMode(newMode);
 
-          // Always set the screen to 'display' to ensure UI updates
-          setCurrentScreen('display');
+              // Populate mode-specific data immediately
+              if (newMode === 'slideshow' && message.data.images) {
+                console.log('[Player] Setting slideshow images:', message.data.images.length);
+                setSlideshowImages(message.data.images);
+                if (message.data.rotationInterval) {
+                  setRotationInterval(message.data.rotationInterval);
+                }
+              } else if (newMode === 'slideshow') {
+                console.warn('[Player] ⚠️  Slideshow mode but no images data');
+              }
 
-          if (message.data.mode === 'slideshow' && message.data.images) {
-            console.log('[Player] Setting slideshow images:', message.data.images.length);
-            setSlideshowImages(message.data.images);
-            if (message.data.rotationInterval) {
-              setRotationInterval(message.data.rotationInterval);
+              if (newMode === 'scores' && message.data.scores) {
+                console.log('[Player] Setting leaderboard scores:', message.data.scores);
+                setLeaderboardScores(message.data.scores);
+              } else if (newMode === 'scores' && !message.data.scores) {
+                console.warn('[Player] ⚠️  Scores mode but no scores data:', message.data);
+                setLeaderboardScores([]); // Clear scores if none provided
+              }
+
+              if (newMode === 'basic') {
+                console.log('[Player] Switching to basic display mode');
+              }
+
+              // Delay the visual screen transition based on host's directive
+              if (transitionDelay > 0) {
+                console.log('[Player] Delaying screen transition for', transitionDelay, 'ms (preventing immediate team visibility)');
+                const transitionTimer = setTimeout(() => {
+                  try {
+                    console.log('[Player] Screen transition delay complete, updating display');
+                    setCurrentScreen('display');
+                  } catch (transitionErr) {
+                    console.error('❌ [Player] Error during screen transition:', transitionErr);
+                  }
+                }, transitionDelay);
+
+                // Return cleanup for when component unmounts (optional)
+                return () => clearTimeout(transitionTimer);
+              } else {
+                console.log('[Player] No transition delay, updating display immediately');
+                setCurrentScreen('display');
+              }
+            } catch (modeErr) {
+              console.error('❌ [Player] Error processing mode change:', modeErr);
+              if (modeErr instanceof Error) {
+                console.error('[Player] Error stack:', modeErr.stack);
+              }
             }
-          } else if (message.data.mode === 'slideshow') {
-            console.warn('[Player] Slideshow mode but no images data');
+          } else {
+            console.warn('[Player] ⚠️  DISPLAY_MODE received but no mode in data:', message.data);
           }
-
-          if (message.data.mode === 'scores' && message.data.scores) {
-            console.log('[Player] Setting leaderboard scores:', message.data.scores);
-            setLeaderboardScores(message.data.scores);
-          } else if (message.data.mode === 'scores' && !message.data.scores) {
-            console.warn('[Player] Scores mode but no scores data:', message.data);
-            setLeaderboardScores([]); // Clear scores if none provided
+        } catch (displayErr) {
+          console.error('❌ [Player] Error in DISPLAY_MODE/UPDATE handler:', displayErr);
+          if (displayErr instanceof Error) {
+            console.error('[Player] Error stack:', displayErr.stack);
           }
-
-          if (message.data.mode === 'basic') {
-            console.log('[Player] Switching to basic display mode');
-          }
-        } else {
-          console.warn('[Player] DISPLAY_MODE received but no mode in data:', message.data);
         }
         break;
       case 'LEADERBOARD_UPDATE':
         if (message.data?.scores) {
           setLeaderboardScores(message.data.scores);
-          if (displayMode === 'scores') {
-            setCurrentScreen('display');
-          }
         }
         break;
       case 'SLIDESHOW_UPDATE':
@@ -177,13 +228,10 @@ export default function App() {
           if (message.data.rotationInterval) {
             setRotationInterval(message.data.rotationInterval);
           }
-          if (displayMode === 'slideshow') {
-            setCurrentScreen('display');
-          }
         }
         break;
     }
-  }, [displayMode]);
+  }, []);
 
   const { isConnected, error } = useNetworkConnection({
     playerId,
