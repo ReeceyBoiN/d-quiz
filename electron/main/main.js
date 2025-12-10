@@ -277,6 +277,38 @@ async function boot() {
     }
   });
 
+  // Broadcast question to player devices
+  router.mount('network/broadcast-question', async (payload) => {
+    try {
+      log.info('[IPC] network/broadcast-question called with:', { hasQuestion: !!payload?.question, questionType: payload?.question?.type });
+
+      if (!backend || !backend.broadcastQuestion) {
+        log.error('[IPC] Backend not initialized for broadcast-question');
+        throw new Error('Backend not initialized');
+      }
+
+      const questionData = payload.question || payload;
+      log.info('[IPC] Broadcasting question:', { type: questionData.type, hasText: !!questionData.text, optionsCount: questionData.options?.length || 0 });
+
+      try {
+        backend.broadcastQuestion(questionData);
+        log.info('[IPC] backend.broadcastQuestion completed successfully');
+      } catch (broadcastErr) {
+        log.error('[IPC] backend.broadcastQuestion threw error:', broadcastErr.message);
+        if (broadcastErr.stack) {
+          log.error('[IPC] broadcastQuestion error stack:', broadcastErr.stack);
+        }
+        throw broadcastErr;
+      }
+
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-question error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
+    }
+  });
+
   log.info('App boot complete');
 }
 

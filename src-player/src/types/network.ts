@@ -18,7 +18,8 @@ export type HostMessageType =
   | 'DISPLAY_MODE'
   | 'DISPLAY_UPDATE'
   | 'LEADERBOARD_UPDATE'
-  | 'SLIDESHOW_UPDATE';
+  | 'SLIDESHOW_UPDATE'
+  | 'GO_WIDE';
 
 export interface HostMessage {
   type: HostMessageType;
@@ -27,7 +28,7 @@ export interface HostMessage {
 }
 
 export interface Question {
-  type: string;
+  type?: string;
   text?: string;
   q?: string;
   options?: string[];
@@ -35,4 +36,12 @@ export interface Question {
   imageUrl?: string;
   revealed?: boolean;
   revealedAnswer?: string;
+  goWideEnabled?: boolean;
+}
+
+export interface TeamPhotoMessage {
+  type: 'TEAM_PHOTO_UPDATE';
+  teamName: string;
+  photoData: string; // Base64 encoded image
+  timestamp: number;
 }

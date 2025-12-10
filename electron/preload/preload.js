@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('api', {
     approveTeam: (data) => invoke('network/approve-team', data),
     declineTeam: (data) => invoke('network/decline-team', data),
     broadcastDisplayMode: (data) => invoke('network/broadcast-display-mode', data),
+    broadcastQuestion: (data) => invoke('network/broadcast-question', data),
   },
 
   // --- 🔹 IPC event helpers (for external display, etc.) ---

@@ -547,7 +547,51 @@ async function startBackend({ port = 4310 } = {}) {
     log.info(`📺 Broadcast DISPLAY_UPDATE to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed` : ''));
   }
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, broadcastDisplayMode, broadcastDisplayUpdate };
+  // Helper function to broadcast question to all connected players
+  function broadcastQuestion(questionData) {
+    try {
+      log.info(`[broadcastQuestion] Broadcasting question with type: ${questionData.type || 'default'}`);
+
+      const message = JSON.stringify({
+        type: 'QUESTION',
+        data: questionData,
+        timestamp: Date.now()
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+      const failedDevices = [];
+
+      networkPlayers.forEach((player, deviceId) => {
+        if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+          try {
+            log.info(`[broadcastQuestion] Sending question to ${deviceId}...`);
+            player.ws.send(message, (err) => {
+              if (err) {
+                log.error(`❌ [broadcastQuestion] ws.send callback error for ${deviceId}:`, err.message);
+              } else {
+                log.debug(`[broadcastQuestion] Successfully sent question to ${deviceId}`);
+              }
+            });
+            successCount++;
+          } catch (error) {
+            log.error(`❌ Failed to send question to ${deviceId}:`, error.message);
+            failCount++;
+            failedDevices.push(deviceId);
+          }
+        }
+      });
+
+      log.info(`📋 Broadcast QUESTION to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed (${failedDevices.join(', ')})` : ''));
+    } catch (err) {
+      log.error(`❌ broadcastQuestion error:`, err.message);
+      if (err && err.stack) {
+        log.error(`[broadcastQuestion] Error stack:`, err.stack);
+      }
+    }
+  }
+
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion };
 }
 
 module.exports = { startBackend };

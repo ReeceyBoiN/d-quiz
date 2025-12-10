@@ -3,8 +3,10 @@ import { TeamNameEntry } from './components/TeamNameEntry';
 import { QuestionDisplay } from './components/QuestionDisplay';
 import { WaitingScreen } from './components/WaitingScreen';
 import { PlayerDisplayManager } from './components/PlayerDisplayManager';
+import { SettingsBar } from './components/SettingsBar';
 import { NetworkContext } from './context/NetworkContext';
 import { useNetworkConnection } from './hooks/useNetworkConnection';
+import { usePlayerSettings } from './hooks/usePlayerSettings';
 import { getOrCreateDeviceId } from './lib/deviceId';
 import type { HostMessage } from './types/network';
 
@@ -24,18 +26,27 @@ interface LeaderboardEntry {
 }
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'waiting' | 'approval' | 'declined' | 'question' | 'display'>('team-entry');
+  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display'>('team-entry');
   const [teamName, setTeamName] = useState('');
   const [playerId] = useState(() => `player-${Math.random().toString(36).slice(2, 9)}`);
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [showTimer, setShowTimer] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
+  const [totalTimerLength, setTotalTimerLength] = useState(30);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('basic');
   const [slideshowImages, setSlideshowImages] = useState<SlideshowImage[]>([]);
   const [rotationInterval, setRotationInterval] = useState(10000);
   const [leaderboardScores, setLeaderboardScores] = useState<LeaderboardEntry[]>([]);
+  const [goWideEnabled, setGoWideEnabled] = useState(false);
+  const [answerRevealed, setAnswerRevealed] = useState(false);
+  const [correctAnswer, setCorrectAnswer] = useState<string | number | (string | number)[] | undefined>();
+  const [selectedAnswers, setSelectedAnswers] = useState<any[]>([]);
+
   const wsRef = useRef<WebSocket | null>(null);
+  const displayModeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { settings, isLoaded: playerSettingsLoaded } = usePlayerSettings();
 
   const handleConnect = useCallback((ws: WebSocket) => {
     console.log('[Player] handleConnect callback - storing WebSocket reference');
@@ -101,12 +112,32 @@ export default function App() {
         setCurrentScreen('declined');
         break;
       case 'QUESTION':
+        // Cancel any pending display mode timer when question arrives
+        if (displayModeTimerRef.current) {
+          clearTimeout(displayModeTimerRef.current);
+          displayModeTimerRef.current = null;
+          console.log('[Player] Cancelled display mode timer - question arrived');
+        }
+
+        // Extract go wide flag from question
+        const goWideFlag = message.data?.goWideEnabled ?? false;
+        setGoWideEnabled(goWideFlag);
+        console.log('[Player] Question received, go wide enabled:', goWideFlag);
+
+        // Reset reveal state
+        setAnswerRevealed(false);
+        setCorrectAnswer(undefined);
+        setSelectedAnswers([]);
+
         setCurrentQuestion(message.data);
+        // Transition to 'question' screen regardless of current screen state
         setCurrentScreen('question');
         break;
       case 'TIMER_START':
+        const timerDuration = message.data?.seconds || 30;
+        setTotalTimerLength(timerDuration);
+        setTimeRemaining(timerDuration);
         setShowTimer(true);
-        setTimeRemaining(message.data?.seconds || 30);
         break;
       case 'TIMER':
         setTimeRemaining(message.data?.seconds || 0);
@@ -115,15 +146,35 @@ export default function App() {
         setShowTimer(false);
         break;
       case 'REVEAL':
+        console.log('[Player] REVEAL message received:', message.data?.answer);
+        setAnswerRevealed(true);
+        setCorrectAnswer(message.data?.answer ?? message.data?.correctAnswer);
+        if (message.data?.selectedAnswers) {
+          setSelectedAnswers(message.data.selectedAnswers);
+        }
         setCurrentQuestion((prev: any) => ({
           ...prev,
           revealed: true,
-          revealedAnswer: message.data?.answer,
+          revealedAnswer: message.data?.answer ?? message.data?.correctAnswer,
         }));
         break;
       case 'NEXT':
+        console.log('[Player] NEXT message received - showing keypad immediately');
         setCurrentQuestion(null);
-        setCurrentScreen('display');
+        setGoWideEnabled(false);
+        setAnswerRevealed(false);
+        setCorrectAnswer(undefined);
+        setSelectedAnswers([]);
+        setShowTimer(false);
+
+        // Show keypad with blank question area immediately
+        setCurrentScreen('ready-for-question');
+
+        // Cancel any existing display mode timer
+        if (displayModeTimerRef.current) {
+          clearTimeout(displayModeTimerRef.current);
+          displayModeTimerRef.current = null;
+        }
         break;
       case 'PICTURE':
         setCurrentScreen('display');
@@ -244,13 +295,20 @@ export default function App() {
     setCurrentScreen('approval');
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
+      const joinPayload: any = {
         type: 'PLAYER_JOIN',
         playerId,
         deviceId,
         teamName: name,
         timestamp: Date.now(),
-      }));
+      };
+
+      // Include team photo if available
+      if (settings.teamPhoto) {
+        joinPayload.teamPhoto = settings.teamPhoto;
+      }
+
+      wsRef.current.send(JSON.stringify(joinPayload));
     }
   };
 
@@ -267,61 +325,79 @@ export default function App() {
   };
 
   return (
-    <NetworkContext.Provider value={{ isConnected, playerId, teamName }}>
-      <div className="h-screen w-screen bg-gradient-to-b from-slate-900 to-slate-800">
-        {!isConnected && currentScreen === 'team-entry' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <h1 className="text-3xl font-bold text-white mb-4">Connecting to PopQuiz...</h1>
-              {error && <p className="text-red-400 mb-4">{error}</p>}
-              <div className="animate-spin inline-block h-8 w-8 border-4 border-white border-t-transparent rounded-full"></div>
+    <NetworkContext.Provider value={{ isConnected, playerId, teamName, playerSettings: settings, goWideEnabled, answerRevealed, correctAnswer, selectedAnswers }}>
+      <div className="h-screen w-screen bg-gradient-to-b from-slate-900 to-slate-800 flex flex-col">
+        <div className="flex-1 overflow-hidden">
+          {!isConnected && currentScreen === 'team-entry' && (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <h1 className="text-3xl font-bold text-white mb-4">Connecting to PopQuiz...</h1>
+                {error && <p className="text-red-400 mb-4">{error}</p>}
+                <div className="animate-spin inline-block h-8 w-8 border-4 border-white border-t-transparent rounded-full"></div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {isConnected && currentScreen === 'team-entry' && (
-          <TeamNameEntry onSubmit={handleTeamNameSubmit} />
-        )}
+          {isConnected && currentScreen === 'team-entry' && (
+            <TeamNameEntry onSubmit={handleTeamNameSubmit} />
+          )}
 
-        {isConnected && currentScreen === 'approval' && (
-          <WaitingScreen teamName={teamName} />
-        )}
+          {isConnected && currentScreen === 'approval' && (
+            <WaitingScreen teamName={teamName} />
+          )}
 
-        {isConnected && currentScreen === 'declined' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center max-w-md px-6">
-              <div className="text-6xl mb-4">❌</div>
-              <h1 className="text-2xl font-bold text-white mb-2">Access Denied</h1>
-              <p className="text-slate-300 mb-6">The host has declined your team's entry. You can try again.</p>
-              <button
-                onClick={() => {
-                  setTeamName('');
-                  setCurrentScreen('team-entry');
-                }}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
-              >
-                Try Again
-              </button>
+          {isConnected && currentScreen === 'declined' && (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center max-w-md px-6">
+                <div className="text-6xl mb-4">❌</div>
+                <h1 className="text-2xl font-bold text-white mb-2">Access Denied</h1>
+                <p className="text-slate-300 mb-6">The host has declined your team's entry. You can try again.</p>
+                <button
+                  onClick={() => {
+                    setTeamName('');
+                    setCurrentScreen('team-entry');
+                  }}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+                >
+                  Try Again
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {isConnected && currentScreen === 'display' && (
-          <PlayerDisplayManager
-            mode={displayMode}
-            images={slideshowImages}
-            rotationInterval={rotationInterval}
-            scores={leaderboardScores}
-          />
-        )}
+          {isConnected && currentScreen === 'display' && (
+            <PlayerDisplayManager
+              mode={displayMode}
+              images={slideshowImages}
+              rotationInterval={rotationInterval}
+              scores={leaderboardScores}
+            />
+          )}
 
-        {isConnected && currentScreen === 'question' && currentQuestion && (
-          <QuestionDisplay
-            question={currentQuestion}
-            timeRemaining={timeRemaining}
-            showTimer={showTimer}
-            onAnswerSubmit={handleAnswerSubmit}
-          />
+          {isConnected && currentScreen === 'ready-for-question' && (
+            <QuestionDisplay
+              question={undefined}
+              timeRemaining={timeRemaining}
+              showTimer={showTimer}
+              totalTimerLength={totalTimerLength}
+              onAnswerSubmit={handleAnswerSubmit}
+            />
+          )}
+
+          {isConnected && currentScreen === 'question' && currentQuestion && (
+            <QuestionDisplay
+              question={currentQuestion}
+              timeRemaining={timeRemaining}
+              showTimer={showTimer}
+              totalTimerLength={totalTimerLength}
+              onAnswerSubmit={handleAnswerSubmit}
+            />
+          )}
+        </div>
+
+        {/* Settings bar always visible when connected */}
+        {isConnected && currentScreen !== 'team-entry' && (
+          <SettingsBar />
         )}
       </div>
     </NetworkContext.Provider>

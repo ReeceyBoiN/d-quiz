@@ -223,6 +223,23 @@ export function QuizHost() {
     }
   };
 
+  // Helper function to broadcast question to player devices via backend
+  const broadcastQuestionToPlayers = async (questionData: any) => {
+    try {
+      if ((window as any).api?.network?.broadcastQuestion) {
+        console.log('[QuizHost] Broadcasting question to players via IPC:', questionData);
+        await (window as any).api.network.broadcastQuestion({
+          question: questionData
+        });
+        console.log('[QuizHost] Question broadcasted to players');
+      } else {
+        console.warn('[QuizHost] api.network.broadcastQuestion not available');
+      }
+    } catch (err) {
+      console.error('[QuizHost] Error broadcasting question:', err);
+    }
+  };
+
   // Sidebar width state for status bar positioning
   const [sidebarWidth, setSidebarWidth] = useState(345); // Match the defaultSize width
   
@@ -1175,6 +1192,16 @@ export function QuizHost() {
         } else {
           // No picture, send question directly
           sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
+
+          // Broadcast question to player devices via backend
+          broadcastQuestionToPlayers({
+            text: currentQuestion.q,
+            q: currentQuestion.q,
+            options: currentQuestion.options || [],
+            type: currentQuestion.type || 'multiple-choice',
+            imageUrl: currentQuestion.imageDataUrl || null,
+          });
+
           if (externalWindow) {
             // Only include options for sequence and multiple-choice questions
             const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
@@ -1213,6 +1240,16 @@ export function QuizHost() {
         // Send question after picture (unless hideQuestionMode is true)
         if (!hideQuestionMode) {
           sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
+
+          // Broadcast question to player devices via backend
+          broadcastQuestionToPlayers({
+            text: currentQuestion.q,
+            q: currentQuestion.q,
+            options: currentQuestion.options || [],
+            type: currentQuestion.type || 'multiple-choice',
+            imageUrl: currentQuestion.imageDataUrl || null,
+          });
+
           if (externalWindow) {
             // Only include options for sequence and multiple-choice questions
             const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
