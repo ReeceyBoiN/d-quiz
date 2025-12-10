@@ -77,10 +77,6 @@ export function PlayerDevicesSettings({
                       <span>Connected Devices:</span>
                       <span className="text-[#27ae60] font-medium">0</span>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span>Status:</span>
-                      <span className="text-[#95a5a6] font-medium">Offline</span>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -95,14 +91,6 @@ export function PlayerDevicesSettings({
                   <div className="flex justify-between">
                     <span>Images Available:</span>
                     <span className="text-[#f39c12]">{images.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Auto Sync:</span>
-                    <span className="text-[#27ae60]">Enabled</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Content Type:</span>
-                    <span className="text-[#3498db]">Images</span>
                   </div>
                 </div>
               </div>
@@ -158,7 +146,7 @@ export function PlayerDevicesSettings({
                     <p>Shows "Pop Quiz" with animated background. Perfect for between rounds.</p>
                   </div>
                   <div>
-                    <p className="font-medium text-[#9b59b6]">Slideshow</p>
+                    <p className="font-medium text-[#00ff4c]">Slideshow</p>
                     <p>Cycles through images from the Phone Slideshow folder.</p>
                   </div>
                   <div>

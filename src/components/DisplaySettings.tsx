@@ -100,18 +100,6 @@ export function DisplaySettings({
                     <span>Images Loaded:</span>
                     <span className="text-[#f39c12]">{images.length}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Loop Images:</span>
-                    <span className="text-[#27ae60]">Enabled</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Auto Advance:</span>
-                    <span className="text-[#27ae60]">Yes</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Transition:</span>
-                    <span className="text-[#f39c12]">Fade</span>
-                  </div>
                 </div>
               </div>
             </div>

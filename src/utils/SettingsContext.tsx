@@ -65,7 +65,7 @@ interface SettingsProviderProps {
 
 export function SettingsProvider({ children }: SettingsProviderProps) {
   // Application version - read-only, not saved to localStorage
-  const version = "25.10.7";
+  const version = "25.12.10";
   
   const [defaultPoints, setDefaultPoints] = useState(4);
   const [defaultSpeedBonus, setDefaultSpeedBonus] = useState(2);

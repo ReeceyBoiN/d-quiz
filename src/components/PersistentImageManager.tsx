@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Progress } from "./ui/progress";
-import { Upload, X, Trash2, Image as ImageIcon, AlertCircle, HardDrive, GripVertical, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
+import { Upload, X, Trash2, Image as ImageIcon, GripVertical, ArrowUp, ArrowDown, RotateCcw } from "lucide-react";
 import { projectImageStorage, StoredImage, formatFileSize, isValidImageFile, isValidImageSize } from "../utils/projectImageStorage";
 import { toast } from "sonner";
 // Note: Using native HTML5 drag and drop instead of react-dnd for better compatibility
@@ -332,26 +331,6 @@ export function PersistentImageManager({ onImagesChange, className = "" }: Persi
               Clear All
             </Button>
           </div>
-        </div>
-
-        {/* Storage Info */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2 text-[#95a5a6]">
-              <HardDrive className="w-4 h-4" />
-              Storage Used
-            </div>
-            <span className="text-[#ecf0f1]">
-              {formatFileSize(storageInfo.used)} / {formatFileSize(storageInfo.used + storageInfo.available)}
-            </span>
-          </div>
-          <Progress value={storageUsedPercent} className="h-2" />
-          {storageUsedPercent > 80 && (
-            <div className="flex items-center gap-2 text-[#f39c12] text-xs">
-              <AlertCircle className="w-3 h-3" />
-              Storage space running low
-            </div>
-          )}
         </div>
       </div>
 
