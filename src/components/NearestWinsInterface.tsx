@@ -8,7 +8,7 @@ import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
 interface NearestWinsInterfaceProps {
   onBack: () => void;
-  onDisplayUpdate: (data: any) => void;
+  onExternalDisplayUpdate?: (data: any) => void;
   teams?: Array<{id: string, name: string, score?: number}>; // Teams data from main app
   onTeamAnswerUpdate?: (answers: {[teamId: string]: string}) => void; // Team answer update callback
   onAwardPoints?: (correctTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner", fastestTeamId?: string) => void; // Award points callback
@@ -22,16 +22,12 @@ interface NearestWinsInterfaceProps {
   onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
 }
 
-export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTeamAnswerUpdate, onAwardPoints, currentRoundWinnerPoints, onCurrentRoundWinnerPointsChange, onTimerLockChange, externalWindow, onGetActionHandlers, onGameTimerStateChange, onCurrentScreenChange, onGameTimerUpdate }: NearestWinsInterfaceProps) {
+export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = [], onTeamAnswerUpdate, onAwardPoints, currentRoundWinnerPoints, onCurrentRoundWinnerPointsChange, onTimerLockChange, externalWindow, onGetActionHandlers, onGameTimerStateChange, onCurrentScreenChange, onGameTimerUpdate }: NearestWinsInterfaceProps) {
   const { nearestWinsTimer, gameModePoints, voiceCountdown, keypadDesign } = useSettings();
 
   // Wrapper function to clear team answers when going back
   const handleBackWithCleanup = () => {
     console.log('NearestWins: handleBackWithCleanup called');
-    
-    // Clear all timeouts first
-    simulationTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-    simulationTimeoutsRef.current = [];
     
     // Reset all local state
     setCurrentScreen('config');
@@ -61,7 +57,9 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
     // Return external display to basic mode with a slight delay to ensure cleanup
     setTimeout(() => {
       console.log('NearestWins: Setting display to basic mode');
-      onDisplayUpdate('basic');
+      if (onExternalDisplayUpdate) {
+        onExternalDisplayUpdate('basic');
+      }
     }, 100);
     
     // Call the original onBack function with a delay
@@ -73,10 +71,6 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
   // Wrapper function to clear team answers when going back to config
   const handleBackToConfig = () => {
     console.log('NearestWins: handleBackToConfig called');
-    
-    // Clear all timeouts first
-    simulationTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-    simulationTimeoutsRef.current = [];
     
     // Reset game state
     setGameActive(false);
@@ -105,7 +99,9 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
     // Return external display to basic mode when returning to config
     setTimeout(() => {
       console.log('NearestWins: Setting display to basic mode from config');
-      onDisplayUpdate('basic');
+      if (onExternalDisplayUpdate) {
+        onExternalDisplayUpdate('basic');
+      }
     }, 50);
     
     setTimeout(() => {
@@ -147,7 +143,6 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
   const [correctAnswer, setCorrectAnswer] = useState<number | null>(null);
   const [teamAnswers, setTeamAnswers] = useState<{[teamId: string]: number}>({});
   const [questionNumber, setQuestionNumber] = useState(1);
-  const simulationTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
   const [timerLocked, setTimerLocked] = useState(false); // Lock state to prevent submissions after timer ends
   
   // Keypad Design Configurations (matching KeypadInterface)
@@ -295,15 +290,35 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
     
     // Update external display
     setTimeout(() => {
-      onDisplayUpdate('nearest-wins-question', {
-        targetNumber: targetNumber[0],
-        questionNumber: 1,
-        gameInfo: {
+      if (onExternalDisplayUpdate) {
+        onExternalDisplayUpdate('nearest-wins-question', {
           targetNumber: targetNumber[0],
-          tolerance: tolerance[0]
-        }
-      });
+          questionNumber: 1,
+          gameInfo: {
+            targetNumber: targetNumber[0],
+            tolerance: tolerance[0]
+          }
+        });
+      }
     }, 0);
+
+    // Broadcast QUESTION message to player portal devices to ensure they show the question screen
+    // instead of display modes (BASIC/SCORES/SLIDESHOW)
+    try {
+      (window as any).api?.ipc?.invoke('network/broadcast-question', {
+        question: {
+          type: 'nearestwins',
+          text: `Target: ${targetNumber[0]}`,
+          tolerance: tolerance[0],
+          timestamp: Date.now()
+        }
+      }).catch((error: any) => {
+        console.warn('[NearestWins] Failed to broadcast question to players:', error);
+        // This is non-critical - if players aren't connected, it's fine
+      });
+    } catch (err) {
+      console.warn('[NearestWins] Error calling broadcast-question IPC:', err);
+    }
   };
 
   // Handle keypad input
@@ -353,81 +368,18 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
       speechSynthesis.speak(utterance);
     }
     
-    // Simulate team answers
-    simulateTeamAnswers();
+
     
     // Update external display to show timer immediately with full timer value
-    if (externalWindow && !externalWindow.closed) {
+    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
       console.log('NearestWins: Actually sending INITIAL timer update to external display');
-      onDisplayUpdate('nearest-wins-timer', initialDisplayData);
+      onExternalDisplayUpdate('nearest-wins-timer', initialDisplayData);
     } else {
       console.log('NearestWins: NOT sending INITIAL timer update - external window not available or closed');
     }
   };
 
-  // Simulate team answers for nearest wins with staggered timing
-  const simulateTeamAnswers = useCallback(() => {
-    // Clear existing answers and timeouts
-    setTeamAnswers({});
-    
-    // Clear any existing timeouts
-    simulationTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-    simulationTimeoutsRef.current = [];
-    
-    // Generate random delays for each team
-    const newTimeouts: NodeJS.Timeout[] = [];
-    
-    submissions.forEach(submission => {
-      const randomDelay = Math.floor(Math.random() * (nearestWinsTimer - 1) * 1000); // Random delay within timer duration
-      const willSubmit = Math.random() > 0.2; // 80% submission rate
-      
-      if (willSubmit) {
-        const timeout = setTimeout(() => {
-          // Check if timer is locked before allowing submission
-          if (timerLocked) {
-            console.log(`Team ${submission.name} tried to submit after timer ended - submission blocked`);
-            return;
-          }
-          
-          const randomAnswer = Math.floor(Math.random() * 100001); // 0 to 100000
-          
-          // Update team answers
-          setTeamAnswers(prevAnswers => {
-            const updatedAnswers = {
-              ...prevAnswers,
-              [submission.id]: randomAnswer
-            };
-            
-            // Use queueMicrotask instead of setTimeout for better performance
-            if (onTeamAnswerUpdate) {
-              queueMicrotask(() => {
-                const stringAnswers: {[teamId: string]: string} = {};
-                Object.entries(updatedAnswers).forEach(([teamId, answer]) => {
-                  stringAnswers[teamId] = answer.toString();
-                });
-                onTeamAnswerUpdate(stringAnswers);
-              });
-            }
-            
-            return updatedAnswers;
-          });
-          
-          // Update submissions to mark this team as submitted
-          setSubmissions(prevSubmissions => 
-            prevSubmissions.map(sub => 
-              sub.id === submission.id 
-                ? { ...sub, guess: randomAnswer, submitted: true }
-                : sub
-            )
-          );
-        }, randomDelay);
-        
-        newTimeouts.push(timeout);
-      }
-    });
-    
-    simulationTimeoutsRef.current = newTimeouts;
-  }, [submissions, nearestWinsTimer]);
+
 
   // Timer countdown effect
   useEffect(() => {
@@ -463,9 +415,7 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
               onTimerLockChange(true);
             }
             
-            // Clear all pending simulation timeouts to prevent late submissions
-            simulationTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-            simulationTimeoutsRef.current = [];
+
             
             // Say "Time's up!" at the end - only if voice countdown is enabled
             if (voiceCountdown) {
@@ -513,14 +463,14 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
       });
       
       // Update display immediately for timer updates
-      if (externalWindow && !externalWindow.closed) {
+      if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
         console.log('NearestWins: Actually sending timer update to external display');
-        onDisplayUpdate('nearest-wins-timer', displayData);
+        onExternalDisplayUpdate('nearest-wins-timer', displayData);
       } else {
         console.log('NearestWins: NOT sending timer update - external window not available or closed');
       }
     }
-  }, [countdown, isTimerRunning, targetNumber[0], tolerance[0], nearestWinsTimer, onDisplayUpdate, externalWindow]);
+  }, [countdown, isTimerRunning, targetNumber[0], tolerance[0], nearestWinsTimer, onExternalDisplayUpdate, externalWindow]);
 
   // Memoize results calculation to prevent infinite loops
   const calculatedResults = useMemo(() => {
@@ -567,30 +517,20 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
       if (!answerRevealed) {
         // Defer the display update to prevent setState-during-render warnings
         setTimeout(() => {
-          onDisplayUpdate('nearest-wins-results', {
-            targetNumber: targetNumber[0],
-            correctAnswer: correctAnswer,
-            results: resultsToSend,
-            answerRevealed: false
-          });
+          if (onExternalDisplayUpdate) {
+            onExternalDisplayUpdate('nearest-wins-results', {
+              targetNumber: targetNumber[0],
+              correctAnswer: correctAnswer,
+              results: resultsToSend,
+              answerRevealed: false
+            });
+          }
         }, 0);
       }
     }
   }, [currentScreen, correctAnswer, calculatedResults, targetNumber, answerRevealed]);
 
-  // Cleanup simulation timeouts when screen changes
-  useEffect(() => {
-    return () => {
-      simulationTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-    };
-  }, [currentScreen]);
 
-  // Cleanup all timeouts on unmount
-  useEffect(() => {
-    return () => {
-      simulationTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-    };
-  }, []);
 
   // Spacebar shortcut for progression buttons
   useEffect(() => {
@@ -617,6 +557,87 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [currentScreen, timerHasBeenStarted, answerConfirmed, answerRevealed]);
+
+  // Reveal results
+  const handleRevealResults = useCallback(() => {
+    setAnswerRevealed(true);
+
+    // Use calculatedResults if available, otherwise fallback to mockResults for demonstration
+    const resultsToSend = calculatedResults.winner ? calculatedResults : mockResults;
+
+    console.log('NearestWins: Revealing results', {
+      answerRevealed: true,
+      correctAnswer,
+      resultsToSend,
+      calculatedResults,
+      mockResults
+    });
+
+    // Award points to the winner
+    if (onAwardPoints && calculatedResults.winner && calculatedResults.winner.id) {
+      const winnerTeamId = calculatedResults.winner.id;
+      console.log('NearestWins: Awarding points to winner', {
+        winnerTeamId,
+        points: effectiveWinnerPoints
+      });
+      onAwardPoints([winnerTeamId], 'nearestwins');
+    }
+
+    setTimeout(() => {
+      if (onExternalDisplayUpdate) {
+        onExternalDisplayUpdate('nearest-wins-results', {
+          targetNumber: targetNumber[0],
+          correctAnswer: correctAnswer,
+          results: resultsToSend,
+          answerRevealed: true
+        });
+      }
+    }, 0);
+  }, [targetNumber, correctAnswer, calculatedResults, onAwardPoints, effectiveWinnerPoints, onExternalDisplayUpdate]);
+
+  // Next round - reset for new question
+  const handleNextRound = () => {
+    // Reset all game state for new question
+    setAnswerRevealed(false);
+    setCountdown(null);
+    setIsTimerRunning(false);
+    setTimerHasBeenStarted(false);
+    setAnswer(''); // Clear the number pad
+    setAnswerConfirmed(false);
+    setCorrectAnswer(null);
+    setTeamAnswers({});
+    setQuestionNumber(prev => prev + 1); // Increment question number
+
+    // Reset submissions for all teams
+    const teamData = teams.length > 0 ? teams : mockTeams;
+    setSubmissions(teamData.map(team => ({
+      ...team,
+      guess: 0,
+      submitted: false
+    })));
+
+    // Clear team answers in the parent component (teams column)
+    if (onTeamAnswerUpdate) {
+      onTeamAnswerUpdate({});
+    }
+
+    // Stay in playing mode and show new question
+    setCurrentScreen('playing');
+
+    // Update external display to show new question
+    setTimeout(() => {
+      if (onExternalDisplayUpdate) {
+        onExternalDisplayUpdate('nearest-wins-question', {
+          targetNumber: targetNumber[0],
+          questionNumber: questionNumber + 1,
+          gameInfo: {
+            targetNumber: targetNumber[0],
+            tolerance: tolerance[0]
+          }
+        });
+      }
+    }, 0);
+  };
 
   // Expose action handlers to parent for nav bar integration
   useEffect(() => {
@@ -649,87 +670,6 @@ export function NearestWinsInterface({ onBack, onDisplayUpdate, teams = [], onTe
       onGameTimerUpdate(countdown || 0, totalTimerLength);
     }
   }, [countdown, totalTimerLength, isTimerRunning, onGameTimerUpdate]);
-
-  // Reveal results
-  const handleRevealResults = useCallback(() => {
-    setAnswerRevealed(true);
-    
-    // Use calculatedResults if available, otherwise fallback to mockResults for demonstration
-    const resultsToSend = calculatedResults.winner ? calculatedResults : mockResults;
-    
-    console.log('NearestWins: Revealing results', {
-      answerRevealed: true,
-      correctAnswer,
-      resultsToSend,
-      calculatedResults,
-      mockResults
-    });
-    
-    // Award points to the winner
-    if (onAwardPoints && calculatedResults.winner && calculatedResults.winner.id) {
-      const winnerTeamId = calculatedResults.winner.id;
-      console.log('NearestWins: Awarding points to winner', {
-        winnerTeamId,
-        points: effectiveWinnerPoints
-      });
-      onAwardPoints([winnerTeamId], 'nearestwins');
-    }
-    
-    setTimeout(() => {
-      onDisplayUpdate('nearest-wins-results', {
-        targetNumber: targetNumber[0],
-        correctAnswer: correctAnswer,
-        results: resultsToSend,
-        answerRevealed: true
-      });
-    }, 0);
-  }, [targetNumber, correctAnswer, calculatedResults, onAwardPoints, effectiveWinnerPoints]);
-
-  // Next round - reset for new question
-  const handleNextRound = () => {
-    // Reset all game state for new question
-    setAnswerRevealed(false);
-    setCountdown(null);
-    setIsTimerRunning(false);
-    setTimerHasBeenStarted(false);
-    setAnswer(''); // Clear the number pad
-    setAnswerConfirmed(false);
-    setCorrectAnswer(null);
-    setTeamAnswers({});
-    setQuestionNumber(prev => prev + 1); // Increment question number
-    
-    // Clear any running simulation timeouts
-    simulationTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-    simulationTimeoutsRef.current = [];
-    
-    // Reset submissions for all teams
-    const teamData = teams.length > 0 ? teams : mockTeams;
-    setSubmissions(teamData.map(team => ({ 
-      ...team, 
-      guess: 0, 
-      submitted: false 
-    })));
-    
-    // Clear team answers in the parent component (teams column)
-    if (onTeamAnswerUpdate) {
-      onTeamAnswerUpdate({});
-    }
-    
-    // Stay in playing mode and show new question
-    setCurrentScreen('playing');
-    
-    // Update external display to show new question
-    setTimeout(() => {
-      onDisplayUpdate('nearest-wins-question', {
-        targetNumber: targetNumber[0],
-        questionNumber: questionNumber + 1,
-        gameInfo: {
-          targetNumber: targetNumber[0],
-          tolerance: tolerance[0]
-        }
-      });
-    }, 0);
-  };
 
   // Configuration Screen
   if (currentScreen === 'config') {

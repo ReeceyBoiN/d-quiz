@@ -44,7 +44,7 @@ const COLORS = [
   '#ff5722', '#8e44ad', '#795548', '#ff9800', '#4caf50'
 ];
 
-export function WheelSpinnerInterface({ quizzes, onBack, onHome, onAwardPoints, externalWindow, onExternalDisplayUpdate }: WheelSpinnerInterfaceProps) {
+export function WheelSpinnerInterface({ quizzes = [], onBack, onHome, onAwardPoints, externalWindow, onExternalDisplayUpdate }: WheelSpinnerInterfaceProps) {
   const [contentType, setContentType] = useState<WheelContentType>('teams');
   const [wheelItems, setWheelItems] = useState<WheelItem[]>([]);
   const [customPointValues, setCustomPointValues] = useState<number[]>([50, 100, 150, 200, 250, 300, 350, 400, 450, 500]);

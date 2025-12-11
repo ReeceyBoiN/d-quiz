@@ -27,6 +27,7 @@ interface QuizPackDisplayProps {
   totalTeams?: number;
   onAwardPoints?: (correctTeamIds: string[], gameMode: string, fastestTeamId?: string) => void;
   onStartQuiz?: () => void; // Called when "START QUIZ" button is clicked
+  onStartRoundWithQuestion?: (questionData: { type: string; options?: string[]; q: string; questionIndex: number }) => void; // Called with question data when round starts
   onPointsChange?: (points: number) => void; // Callback when points slider changes
   onSpeedBonusChange?: (speedBonus: number) => void; // Callback when speed bonus slider changes
   currentRoundPoints?: number | null; // Current round points from parent
@@ -42,6 +43,7 @@ export function QuizPackDisplay({
   totalTeams = 0,
   onAwardPoints,
   onStartQuiz,
+  onStartRoundWithQuestion,
   onPointsChange,
   onSpeedBonusChange,
   currentRoundPoints,
@@ -100,7 +102,19 @@ export function QuizPackDisplay({
     audioPlayedRef.current = false;
 
     onStartQuiz?.();
-  }, [onStartQuiz]);
+
+    // Signal round start with question data to broadcast to players immediately
+    // This allows players to see the correct input pads (letters/numbers/multiple-choice)
+    // before the actual question text is sent
+    if (currentQuestion && onStartRoundWithQuestion) {
+      onStartRoundWithQuestion({
+        type: currentQuestion.type,
+        options: currentQuestion.options,
+        q: currentQuestion.q,
+        questionIndex: currentQuestionIndex
+      });
+    }
+  }, [onStartQuiz, onStartRoundWithQuestion, currentQuestion, currentQuestionIndex]);
 
   // Timer effect - handles countdown
   useEffect(() => {

@@ -309,6 +309,68 @@ async function boot() {
     }
   });
 
+  // Broadcast reveal to player devices
+  router.mount('network/broadcast-reveal', async (payload) => {
+    try {
+      log.info('[IPC] network/broadcast-reveal called with:', { answer: payload?.answer, correctIndex: payload?.correctIndex, type: payload?.type });
+
+      if (!backend || !backend.broadcastReveal) {
+        log.error('[IPC] Backend not initialized for broadcast-reveal');
+        throw new Error('Backend not initialized');
+      }
+
+      log.info('[IPC] Broadcasting reveal:', { answer: payload.answer, type: payload.type });
+
+      try {
+        backend.broadcastReveal(payload);
+        log.info('[IPC] backend.broadcastReveal completed successfully');
+      } catch (broadcastErr) {
+        log.error('[IPC] backend.broadcastReveal threw error:', broadcastErr.message);
+        if (broadcastErr.stack) {
+          log.error('[IPC] broadcastReveal error stack:', broadcastErr.stack);
+        }
+        throw broadcastErr;
+      }
+
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-reveal error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
+    }
+  });
+
+  // Broadcast fastest team to player devices
+  router.mount('network/broadcast-fastest', async (payload) => {
+    try {
+      log.info('[IPC] network/broadcast-fastest called with:', { teamName: payload?.teamName, questionNumber: payload?.questionNumber, hasPhoto: !!payload?.teamPhoto });
+
+      if (!backend || !backend.broadcastFastest) {
+        log.error('[IPC] Backend not initialized for broadcast-fastest');
+        throw new Error('Backend not initialized');
+      }
+
+      log.info('[IPC] Broadcasting fastest team:', { teamName: payload.teamName, questionNumber: payload.questionNumber });
+
+      try {
+        backend.broadcastFastest(payload);
+        log.info('[IPC] backend.broadcastFastest completed successfully');
+      } catch (broadcastErr) {
+        log.error('[IPC] backend.broadcastFastest threw error:', broadcastErr.message);
+        if (broadcastErr.stack) {
+          log.error('[IPC] broadcastFastest error stack:', broadcastErr.stack);
+        }
+        throw broadcastErr;
+      }
+
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-fastest error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
+    }
+  });
+
   log.info('App boot complete');
 }
 

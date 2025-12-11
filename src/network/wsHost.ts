@@ -178,10 +178,10 @@ class HostNetwork {
   /**
    * Helper to show fastest team.
    */
-  public sendFastest(teamName: string, questionNumber: number) {
+  public sendFastest(teamName: string, questionNumber: number, teamPhoto?: string) {
     this.broadcast({
       type: 'FASTEST',
-      data: { teamName, questionNumber },
+      data: { teamName, questionNumber, teamPhoto },
     });
   }
 
@@ -285,8 +285,8 @@ export function sendRevealToPlayers(answer: string, correctIndex?: number, type?
   hostNetwork.sendReveal(answer, correctIndex, type);
 }
 
-export function sendFastestToDisplay(teamName: string, questionNumber: number) {
-  hostNetwork.sendFastest(teamName, questionNumber);
+export function sendFastestToDisplay(teamName: string, questionNumber: number, teamPhoto?: string) {
+  hostNetwork.sendFastest(teamName, questionNumber, teamPhoto);
 }
 
 export function sendNextQuestion() {

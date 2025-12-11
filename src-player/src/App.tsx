@@ -4,11 +4,13 @@ import { QuestionDisplay } from './components/QuestionDisplay';
 import { WaitingScreen } from './components/WaitingScreen';
 import { PlayerDisplayManager } from './components/PlayerDisplayManager';
 import { SettingsBar } from './components/SettingsBar';
+import { FastestTeamOverlay } from './components/FastestTeamOverlay';
 import { NetworkContext } from './context/NetworkContext';
 import { useNetworkConnection } from './hooks/useNetworkConnection';
 import { usePlayerSettings } from './hooks/usePlayerSettings';
 import { getOrCreateDeviceId } from './lib/deviceId';
 import type { HostMessage } from './types/network';
+import { normalizeQuestionType } from './types/network';
 
 type DisplayMode = 'basic' | 'slideshow' | 'scores';
 
@@ -42,11 +44,39 @@ export default function App() {
   const [answerRevealed, setAnswerRevealed] = useState(false);
   const [correctAnswer, setCorrectAnswer] = useState<string | number | (string | number)[] | undefined>();
   const [selectedAnswers, setSelectedAnswers] = useState<any[]>([]);
+  const [showFastestTeam, setShowFastestTeam] = useState(false);
+  const [fastestTeamName, setFastestTeamName] = useState<string>('');
+  const [fastestTeamPhoto, setFastestTeamPhoto] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const displayModeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fastestTeamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { settings, isLoaded: playerSettingsLoaded } = usePlayerSettings();
+
+  // Handle 5-second display of fastest team overlay
+  useEffect(() => {
+    if (showFastestTeam) {
+      console.log('[Player] Starting 5-second fastest team display timer');
+      // Clear any existing timer
+      if (fastestTeamTimerRef.current) {
+        clearTimeout(fastestTeamTimerRef.current);
+      }
+      // Set 5-second timer to hide fastest team overlay
+      fastestTeamTimerRef.current = setTimeout(() => {
+        console.log('[Player] 5-second fastest team display timer ended');
+        setShowFastestTeam(false);
+        setFastestTeamName('');
+        setFastestTeamPhoto(null);
+      }, 5000);
+    }
+
+    return () => {
+      if (fastestTeamTimerRef.current) {
+        clearTimeout(fastestTeamTimerRef.current);
+      }
+    };
+  }, [showFastestTeam]);
 
   const handleConnect = useCallback((ws: WebSocket) => {
     console.log('[Player] handleConnect callback - storing WebSocket reference');
@@ -129,7 +159,15 @@ export default function App() {
         setCorrectAnswer(undefined);
         setSelectedAnswers([]);
 
-        setCurrentQuestion(message.data);
+        // Normalize the question type from host to standard player type
+        const normalizedQuestionData = {
+          ...message.data,
+          type: normalizeQuestionType(message.data?.type),
+        };
+        console.log('[Player] Original type:', message.data?.type, '-> Normalized type:', normalizedQuestionData.type);
+        console.log('[Player] Question options count:', normalizedQuestionData.options?.length || 0, 'Options:', normalizedQuestionData.options);
+
+        setCurrentQuestion(normalizedQuestionData);
         // Transition to 'question' screen regardless of current screen state
         setCurrentScreen('question');
         break;
@@ -159,13 +197,22 @@ export default function App() {
         }));
         break;
       case 'NEXT':
-        console.log('[Player] NEXT message received - showing keypad immediately');
+        console.log('[Player] NEXT message received - clearing all question state immediately');
         setCurrentQuestion(null);
         setGoWideEnabled(false);
         setAnswerRevealed(false);
         setCorrectAnswer(undefined);
         setSelectedAnswers([]);
         setShowTimer(false);
+        setShowFastestTeam(false);
+        setFastestTeamName('');
+        setFastestTeamPhoto(null);
+
+        // Cancel fastest team timer if running
+        if (fastestTeamTimerRef.current) {
+          clearTimeout(fastestTeamTimerRef.current);
+          fastestTeamTimerRef.current = null;
+        }
 
         // Show keypad with blank question area immediately
         setCurrentScreen('ready-for-question');
@@ -189,6 +236,15 @@ export default function App() {
       case 'DISPLAY_UPDATE':
         try {
           console.log('[Player] Received DISPLAY_MODE/UPDATE:', message);
+
+          // Don't switch away from question/ready-for-question screens during active game
+          // This prevents display modes (BASIC/SCORES/SLIDESHOW) from interrupting the question interface
+          const isInGameScreen = currentScreen === 'question' || currentScreen === 'ready-for-question';
+          if (isInGameScreen) {
+            console.log('[Player] ⚠️  Ignoring DISPLAY_MODE message - question/input screen is currently active, deferring display mode change');
+            break;
+          }
+
           if (message.data?.mode) {
             try {
               const newMode = message.data.mode;
@@ -237,6 +293,10 @@ export default function App() {
               // Delay the visual screen transition based on host's directive
               if (transitionDelay > 0) {
                 console.log('[Player] Delaying screen transition for', transitionDelay, 'ms (preventing immediate team visibility)');
+                // Clear any existing timer before setting new one
+                if (displayModeTimerRef.current) {
+                  clearTimeout(displayModeTimerRef.current);
+                }
                 const transitionTimer = setTimeout(() => {
                   try {
                     console.log('[Player] Screen transition delay complete, updating display');
@@ -246,8 +306,8 @@ export default function App() {
                   }
                 }, transitionDelay);
 
-                // Return cleanup for when component unmounts (optional)
-                return () => clearTimeout(transitionTimer);
+                // Store timer in ref so QUESTION handler can cancel it
+                displayModeTimerRef.current = transitionTimer;
               } else {
                 console.log('[Player] No transition delay, updating display immediately');
                 setCurrentScreen('display');
@@ -279,6 +339,22 @@ export default function App() {
           if (message.data.rotationInterval) {
             setRotationInterval(message.data.rotationInterval);
           }
+        }
+        break;
+      case 'FASTEST':
+        try {
+          console.log('[Player] FASTEST message received:', message.data);
+          const { teamName, teamPhoto } = message.data || {};
+          if (teamName) {
+            setFastestTeamName(teamName);
+            setFastestTeamPhoto(teamPhoto || null);
+            setShowFastestTeam(true);
+            console.log('[Player] Showing fastest team:', teamName);
+          } else {
+            console.warn('[Player] ⚠️  FASTEST message received but no teamName in data');
+          }
+        } catch (fastestErr) {
+          console.error('❌ [Player] Error in FASTEST handler:', fastestErr);
         }
         break;
     }
@@ -385,13 +461,21 @@ export default function App() {
           )}
 
           {isConnected && currentScreen === 'question' && currentQuestion && (
-            <QuestionDisplay
-              question={currentQuestion}
-              timeRemaining={timeRemaining}
-              showTimer={showTimer}
-              totalTimerLength={totalTimerLength}
-              onAnswerSubmit={handleAnswerSubmit}
-            />
+            <>
+              <QuestionDisplay
+                question={currentQuestion}
+                timeRemaining={timeRemaining}
+                showTimer={showTimer}
+                totalTimerLength={totalTimerLength}
+                onAnswerSubmit={handleAnswerSubmit}
+              />
+              {showFastestTeam && (
+                <FastestTeamOverlay
+                  teamName={fastestTeamName}
+                  teamPhoto={fastestTeamPhoto}
+                />
+              )}
+            </>
           )}
         </div>
 

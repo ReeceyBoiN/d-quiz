@@ -96,6 +96,47 @@ const fixEmojiString = (str: string | undefined): string => {
   return correctionMap[str] || str;
 };
 
+/**
+ * Normalize question types from quiz loader format to broadcast format
+ * Maps quiz loader types (from parseQuestion) to standardized types for broadcasting to players
+ *
+ * Maps:
+ * - 'letters' → 'letters'
+ * - 'multi' → 'multiple-choice'
+ * - 'numbers'/'nearest' → 'numbers'
+ * - 'sequence' → 'sequence'
+ * - 'buzzin' → 'buzzin'
+ * - undefined/null → 'buzzin' (default fallback)
+ */
+const normalizeQuestionTypeForBroadcast = (type: string | undefined): string => {
+  if (!type) return 'buzzin';
+
+  const normalized = type.toLowerCase().trim();
+
+  switch (normalized) {
+    case 'letters':
+      return 'letters';
+    case 'multi':
+      return 'multiple-choice';
+    case 'multiple-choice':
+      return 'multiple-choice';
+    case 'numbers':
+      return 'numbers';
+    case 'nearest':
+    case 'nearestwins':
+      return 'numbers';
+    case 'sequence':
+      return 'sequence';
+    case 'buzzin':
+    case 'buzz-in':
+    case 'buzz':
+      return 'buzzin';
+    default:
+      console.warn(`[QuizHost] Unknown question type "${type}", defaulting to buzzin`);
+      return 'buzzin';
+  }
+};
+
 const mockQuestions: Question[] = [
   {
     id: 1,
@@ -471,6 +512,33 @@ export function QuizHost() {
           answerSubmitted: undefined,
         }));
         timer.reset(totalTime);
+
+        // Broadcast placeholder question to players immediately so they see answer pads right away
+        try {
+          let placeholderCount =
+            currentQuestion.type === 'letters' ? 6 : // A-F
+            currentQuestion.type === 'multi' || currentQuestion.type === 'multiple-choice' ? 4 : // 4 options
+            currentQuestion.type === 'numbers' ? 4 : // 4 numbers
+            currentQuestion.type === 'nearest' ? 4 : // 4 numbers
+            currentQuestion.type === 'sequence' ? currentQuestion.options?.length || 3 : // Use actual options count
+            1; // 1 for buzzin
+
+          const placeholderOptions = Array.from({ length: placeholderCount }, (_, i) => `option_${i + 1}`);
+
+          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          broadcastQuestionToPlayers({
+            text: 'Waiting for question...',
+            q: 'Waiting for question...',
+            options: placeholderOptions,
+            type: normalizedType,
+            imageUrl: currentQuestion.imageDataUrl || null,
+            isPlaceholder: true,
+          });
+
+          console.log('[QuizHost] Broadcasting placeholder question with type:', currentQuestion.type, '-> normalized:', normalizedType, 'options count:', placeholderCount);
+        } catch (err) {
+          console.error('[QuizHost] Error broadcasting placeholder question:', err);
+        }
       }
     }
   }, [currentLoadedQuestionIndex, showQuizPackDisplay, loadedQuizQuestions, gameModeTimers, flowState.currentQuestionIndex, timer, flowState.isQuestionMode]);
@@ -1006,7 +1074,10 @@ export function QuizHost() {
 
   // Handle END ROUND button - navigate to home and play explosion sound or end quiz pack
   const handleEndRound = () => {
-    // If in quiz pack question mode, reset flow state
+    // Stop countdown audio if playing
+    stopCountdownAudio();
+
+    // Reset quiz pack flow state if applicable
     if (showQuizPackDisplay && flowState.isQuestionMode) {
       setFlowState(prev => ({
         ...prev,
@@ -1015,13 +1086,35 @@ export function QuizHost() {
       }));
       setHideQuestionMode(false);
       timer.stop();
-      return;
     }
-    // Play explosion sound effect for regular game modes
+
+    // Clear loaded quiz questions to prevent on-the-spot mode from auto-detecting previous quiz pack question types
+    setLoadedQuizQuestions([]);
+    setCurrentLoadedQuestionIndex(0);
+
+    // Reset quiz pack display and mode flags
+    setShowQuizPackDisplay(false);
+    setIsQuizPackMode(false);
+
+    // Force KeypadInterface remount if it was active during the round
+    // This ensures complete state reset (including question type) when transitioning modes
+    if (showKeypadInterface) {
+      setKeypadInstanceKey(prev => prev + 1);
+    }
+
+    // Play explosion sound effect
     playExplosionSound();
 
-    // Close all game modes
+    // Close all game modes (keypad, buzz-in, nearest wins, wheel spinner)
     closeAllGameModes();
+
+    // Reset all game-related state
+    setTeamAnswers({});
+    setTeamResponseTimes({});
+    setShowTeamAnswers(false);
+    setTeamAnswerStatuses({});
+    setTeamCorrectRankings({});
+    setShowAnswer(false);
 
     // Navigate back to home screen
     setActiveTab("home");
@@ -1095,6 +1188,9 @@ export function QuizHost() {
   const handleKeypadClick = () => {
     closeAllGameModes(); // Close any other active modes first
     resetCurrentRoundScores(); // Reset scores to defaults when starting a new keypad round
+    // Clear loaded quiz questions to ensure on-the-spot mode doesn't auto-detect question type from previous quiz pack
+    setLoadedQuizQuestions([]);
+    setCurrentLoadedQuestionIndex(0);
     setShowKeypadInterface(true);
     setActiveTab("teams"); // Change active tab when keypad is opened
     setKeypadInstanceKey(prev => prev + 1); // Force re-render with fresh defaults
@@ -1191,14 +1287,15 @@ export function QuizHost() {
           }));
         } else {
           // No picture, send question directly
-          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
+          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType);
 
           // Broadcast question to player devices via backend
           broadcastQuestionToPlayers({
             text: currentQuestion.q,
             q: currentQuestion.q,
             options: currentQuestion.options || [],
-            type: currentQuestion.type || 'multiple-choice',
+            type: normalizedType,
             imageUrl: currentQuestion.imageDataUrl || null,
           });
 
@@ -1239,14 +1336,15 @@ export function QuizHost() {
       case 'sent-picture': {
         // Send question after picture (unless hideQuestionMode is true)
         if (!hideQuestionMode) {
-          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, currentQuestion.type);
+          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType);
 
           // Broadcast question to player devices via backend
           broadcastQuestionToPlayers({
             text: currentQuestion.q,
             q: currentQuestion.q,
             options: currentQuestion.options || [],
-            type: currentQuestion.type || 'multiple-choice',
+            type: normalizedType,
             imageUrl: currentQuestion.imageDataUrl || null,
           });
 
@@ -1379,10 +1477,26 @@ export function QuizHost() {
             : null;
 
           if (fastestTeam) {
-            sendFastestToDisplay(fastestTeam.name, currentLoadedQuestionIndex + 1);
+            sendFastestToDisplay(fastestTeam.name, currentLoadedQuestionIndex + 1, fastestTeam.photoUrl);
+
+            // Broadcast fastest team to player devices
+            if ((window as any).api?.network?.broadcastFastest) {
+              try {
+                const fastestData = {
+                  teamName: fastestTeam.name,
+                  questionNumber: currentLoadedQuestionIndex + 1,
+                  teamPhoto: fastestTeam.photoUrl || null
+                };
+                console.log('[QuizHost] Broadcasting fastest team to players:', fastestData);
+                (window as any).api.network.broadcastFastest(fastestData);
+              } catch (err) {
+                console.error('[QuizHost] Error broadcasting fastest team:', err);
+              }
+            }
+
             if (externalWindow) {
               sendToExternalDisplay(
-                { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name } }
+                { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name, teamPhoto: fastestTeam.photoUrl } }
               );
             }
           }
@@ -1412,7 +1526,7 @@ export function QuizHost() {
         const isOnTheSpotMode = showKeypadInterface && !isQuizPackMode;
 
         if (!isOnTheSpotMode && isQuizPackMode) {
-          // For quiz pack: Show fastest team on external display
+          // For quiz pack: Show fastest team on external display and player portals
           const correctTeams = quizzes.filter(team => teamAnswerStatuses[team.id] === 'correct');
           const fastestTeam = correctTeams.length > 0
             ? correctTeams.reduce((fastest, current) => {
@@ -1422,10 +1536,31 @@ export function QuizHost() {
               })
             : null;
 
-          if (fastestTeam && externalWindow) {
-            sendToExternalDisplay(
-              { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name } }
-            );
+          if (fastestTeam) {
+            // Send to player portals
+            sendFastestToDisplay(fastestTeam.name, currentLoadedQuestionIndex + 1, fastestTeam.photoUrl);
+
+            // Broadcast fastest team to player devices
+            if ((window as any).api?.network?.broadcastFastest) {
+              try {
+                const fastestData = {
+                  teamName: fastestTeam.name,
+                  questionNumber: currentLoadedQuestionIndex + 1,
+                  teamPhoto: fastestTeam.photoUrl || null
+                };
+                console.log('[QuizHost] Broadcasting fastest team to players:', fastestData);
+                (window as any).api.network.broadcastFastest(fastestData);
+              } catch (err) {
+                console.error('[QuizHost] Error broadcasting fastest team:', err);
+              }
+            }
+
+            // Send to external display
+            if (externalWindow) {
+              sendToExternalDisplay(
+                { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name, teamPhoto: fastestTeam.photoUrl } }
+              );
+            }
           }
         }
 
@@ -1458,6 +1593,12 @@ export function QuizHost() {
         } else {
           // For quiz pack: Move to next question or end round
           if (currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
+            // Clear team answers and statuses for next question
+            setTeamAnswers({});
+            setTeamResponseTimes({});
+            setTeamAnswerStatuses({});
+            setTeamCorrectRankings({});
+
             setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex + 1);
             setHideQuestionMode(false); // Reset hide question flag for next question
             setShowAnswer(false); // Reset answer visibility for next question
@@ -1660,6 +1801,50 @@ export function QuizHost() {
       timer.reset(totalTime);
     }
   }, [loadedQuizQuestions, currentLoadedQuestionIndex, gameModeTimers, timer]);
+
+  // Handle start round with question data - broadcast question to players immediately
+  // This allows players to see the correct input pads before the actual question text is sent
+  const handleStartRoundWithQuestion = useCallback(
+    (questionData: { type: string; options?: string[]; q: string; questionIndex: number }) => {
+      try {
+        // Ensure options array is populated so player portal can render the correct number of buttons
+        let optionsToSend = questionData.options || [];
+
+        // If options are not provided, generate placeholder options based on question type
+        if (!optionsToSend || optionsToSend.length === 0) {
+          const placeholderCount =
+            questionData.type === 'letters' ? 6 : // A-F (6 letters for demo)
+            questionData.type === 'multi' ? 4 : // Default 4 options for multiple choice
+            questionData.type === 'numbers' ? 4 : // Default 4 options for numbers
+            questionData.type === 'nearest' ? 4 : // Default 4 options for nearest
+            questionData.type === 'sequence' ? 3 : // Default 3 options for sequence
+            1; // 1 for buzzin or unknown types
+
+          // Generate placeholder options
+          optionsToSend = Array.from({ length: placeholderCount }, (_, i) => `option_${i + 1}`);
+          console.log('[QuizHost] Generated placeholder options for type:', questionData.type, 'count:', placeholderCount);
+        }
+
+        // Broadcast a QUESTION message with placeholder text and question type to players
+        // This will trigger players to show the appropriate input interface (letters/numbers/multiple-choice)
+        // with a blank question area waiting for the actual question text
+        const normalizedType = normalizeQuestionTypeForBroadcast(questionData.type);
+        broadcastQuestionToPlayers({
+          text: 'Waiting for question...',
+          q: 'Waiting for question...',
+          options: optionsToSend,
+          type: normalizedType,
+          questionIndex: questionData.questionIndex,
+          isPlaceholder: true, // Mark this as a placeholder message
+          timestamp: Date.now(),
+        });
+        console.log('[QuizHost] Broadcasted placeholder question to players with type:', questionData.type, '-> normalized:', normalizedType, 'options count:', optionsToSend.length);
+      } catch (error) {
+        console.error('[QuizHost] Error broadcasting placeholder question:', error);
+      }
+    },
+    []
+  );
 
   // Handle buzz-in interface toggle
   const handleBuzzInClick = () => {
@@ -2022,6 +2207,46 @@ export function QuizHost() {
     return unsubscribe;
   }, []); // Empty dependency array - register once on mount
 
+  // Listen for player answers
+  useEffect(() => {
+    const handleNetworkPlayerAnswer = (data: any) => {
+      console.log('🎯 PLAYER_ANSWER received:', data);
+      const playerId = data.playerId || data.deviceId;
+      const { answer, timestamp } = data;
+
+      if (!playerId) {
+        console.warn('PLAYER_ANSWER missing playerId/deviceId');
+        return;
+      }
+
+      // Update team answers for real-time display in teams column
+      setTeamAnswers(prev => {
+        const updated = { ...prev, [playerId]: answer };
+        console.log('[QuizHost] Updated teamAnswers:', updated);
+        return updated;
+      });
+
+      // Compute response time from server timestamp
+      if (timestamp) {
+        const responseTime = Date.now() - timestamp;
+        setTeamResponseTimes(prev => {
+          const updated = { ...prev, [playerId]: responseTime };
+          console.log('[QuizHost] Updated teamResponseTimes:', updated);
+          return updated;
+        });
+      }
+
+      // Ensure team answers are visible
+      setShowTeamAnswers(true);
+    };
+
+    // Register listener and get unsubscribe function
+    const unsubscribe = onNetworkMessage('PLAYER_ANSWER', handleNetworkPlayerAnswer);
+
+    // Clean up listener on unmount
+    return unsubscribe;
+  }, []); // Empty dependency array - register once on mount
+
   const handleRevealAnswer = () => {
     setShowAnswer(true);
 
@@ -2043,6 +2268,26 @@ export function QuizHost() {
         });
       }
     }
+
+    // Broadcast reveal to player devices
+    if (loadedQuizQuestions.length > 0) {
+      const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+      if (currentQuestion && (window as any).api?.network?.broadcastReveal) {
+        try {
+          const revealData = {
+            answer: getAnswerText(currentQuestion),
+            correctIndex: currentQuestion.correctIndex,
+            type: currentQuestion.type,
+            selectedAnswers: []
+          };
+          console.log('[QuizHost] Broadcasting reveal to players:', revealData);
+          (window as any).api.network.broadcastReveal(revealData);
+        } catch (err) {
+          console.error('[QuizHost] Error broadcasting reveal:', err);
+        }
+      }
+    }
+
     setIsQuizActive(false);
     // Save current response times when revealing answer
     setLastResponseTimes(prev => ({ ...prev, ...teamResponseTimes }));
@@ -2280,14 +2525,25 @@ export function QuizHost() {
 
   // Periodic heartbeat to sync player display mode - ensures reliability even if messages are missed
   // Broadcasts every 2 seconds to guarantee devices receive updates (respects the 2s debounce delay for initial broadcast)
+  // IMPORTANT: Paused during active games to prevent display modes from interrupting question screens
   useEffect(() => {
+    // Check if any game mode is currently active
+    const isGameActive = showKeypadInterface || showBuzzInInterface || showNearestWinsInterface || showQuizPackDisplay || showWheelSpinnerInterface;
+
+    // Don't broadcast display mode while a game is actively running
+    // This prevents the BASIC/SCORES/SLIDESHOW modes from interrupting the question screen on player devices
+    if (isGameActive) {
+      console.log('[QuizHost] Game is active - pausing periodic display mode sync to prevent interruption');
+      return;
+    }
+
     const syncInterval = setInterval(() => {
       console.log('[QuizHost] Periodic sync (2s) - re-broadcasting current mode:', playerDevicesDisplayMode);
       broadcastPlayerDisplayMode(playerDevicesDisplayMode);
     }, 2000); // Every 2 seconds for reliable delivery
 
     return () => clearInterval(syncInterval);
-  }, [playerDevicesDisplayMode, broadcastPlayerDisplayMode]);
+  }, [playerDevicesDisplayMode, broadcastPlayerDisplayMode, showKeypadInterface, showBuzzInInterface, showNearestWinsInterface, showQuizPackDisplay, showWheelSpinnerInterface]);
 
   const handleSpeedChange = (speed: number) => {
     setSlideshowSpeed(speed);
@@ -3029,6 +3285,7 @@ export function QuizHost() {
             onBack={handleQuizPackClose}
             totalTeams={quizzes.length}
             onStartQuiz={handleStartQuiz}
+            onStartRoundWithQuestion={handleStartRoundWithQuestion}
             onPointsChange={handleCurrentRoundPointsChange}
             onSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
             currentRoundPoints={currentRoundPoints}

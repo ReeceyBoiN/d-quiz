@@ -8,6 +8,7 @@ import { Separator } from "./ui/separator";
 import { Switch } from "./ui/switch";
 import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
+import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 
 interface LoadedQuestion {
   type: string;
@@ -130,8 +131,7 @@ export function KeypadInterface({
   // Team simulation state
   const [teamAnswers, setTeamAnswers] = useState<{[teamId: string]: string}>({});
   const [teamAnswerTimes, setTeamAnswerTimes] = useState<{[teamId: string]: number}>({});
-  const [isSimulated, setIsSimulated] = useState(false);
-  const [simulationTimeouts, setSimulationTimeouts] = useState<NodeJS.Timeout[]>([]);
+
   const [timerLocked, setTimerLocked] = useState(false); // Lock state to prevent submissions after timer ends
   
   // Fastest team state
@@ -268,7 +268,6 @@ export function KeypadInterface({
     setFastestTeamRevealed(false);
     setTeamAnswers({});
     setTeamAnswerTimes({});
-    setIsSimulated(false);
     setNumbersAnswer('');
     setNumbersAnswerConfirmed(false);
     setSequenceItems([]);
@@ -277,11 +276,7 @@ export function KeypadInterface({
     setSequenceCompleted(false);
     setShowDebugPanel(false);
     setSelectedDesign(0);
-    
-    // Clear any pending simulation timeouts
-    simulationTimeouts.forEach(timeout => clearTimeout(timeout));
-    setSimulationTimeouts([]);
-    
+
     // Clear parent component state as well
     if (onTeamAnswerUpdate) {
       onTeamAnswerUpdate({});
@@ -295,6 +290,11 @@ export function KeypadInterface({
     if (onTimerLockChange) {
       onTimerLockChange(false);
     }
+
+    // Cleanup: stop countdown audio when component unmounts
+    return () => {
+      stopCountdownAudio();
+    };
   }, []); // Empty dependency array means this runs once on mount
 
   // Update currentLoadedQuestion when loaded questions or index changes
@@ -451,6 +451,40 @@ export function KeypadInterface({
       setCurrentScreen('sequence-game');
     }
 
+    // Now that a valid question type is selected, broadcast the question to player devices
+    try {
+      // Generate placeholder options based on question type
+      let placeholderOptions: string[] = [];
+      if (type === 'letters') {
+        // For letters, generate 26 placeholder options (one for each letter)
+        placeholderOptions = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
+      } else if (type === 'numbers') {
+        // For numbers, generate 10 placeholder options (digits 0-9)
+        placeholderOptions = Array.from({ length: 10 }, (_, i) => String(i));
+      } else if (type === 'multiple-choice') {
+        // For multiple choice, generate 6 placeholder options
+        placeholderOptions = Array.from({ length: 6 }, (_, i) => String.fromCharCode(65 + i));
+      } else if (type === 'sequence') {
+        // For sequence, generate 6 placeholder options
+        placeholderOptions = Array.from({ length: 6 }, (_, i) => String.fromCharCode(65 + i));
+      }
+
+      console.log('[Keypad] Broadcasting question type:', type, 'with', placeholderOptions.length, 'options:', placeholderOptions);
+
+      (window as any).api?.ipc?.invoke('network/broadcast-question', {
+        question: {
+          type: type,
+          text: 'Question is ready...',
+          options: placeholderOptions,
+          timestamp: Date.now()
+        }
+      }).catch((error: any) => {
+        console.warn('[Keypad] Failed to broadcast question to players:', error);
+      });
+    } catch (err) {
+      console.warn('[Keypad] Error calling broadcast-question IPC:', err);
+    }
+
     const pointValue = points[0];
     const bonusValue = speedBonus[0];
     console.log("Starting keypad round with:", {
@@ -483,6 +517,8 @@ export function KeypadInterface({
       }
     } else {
       // No loaded questions, show question-types screen for manual selection
+      // Reset question type to ensure fresh selection in on-the-spot mode
+      setQuestionType(null);
       setCurrentScreen('question-types');
     }
 
@@ -503,6 +539,9 @@ export function KeypadInterface({
   };
 
   const handleBackFromGame = () => {
+    // Stop countdown audio if timer is running
+    stopCountdownAudio();
+
     setCurrentScreen('question-types');
     setSelectedLetter(null);
     setSelectedAnswers([]);
@@ -512,6 +551,8 @@ export function KeypadInterface({
     setShuffledSequence([]);
     setSelectedSequence([]);
     setSequenceCompleted(false);
+    setCountdown(null);
+    setIsTimerRunning(false);
     setTimerFinished(false);
     setTimerLocked(false); // Reset timer lock when going back
 
@@ -524,6 +565,17 @@ export function KeypadInterface({
     setFastestTeamRevealed(false);
     setTeamAnswers({});
     setTeamAnswerTimes({});
+
+    // Broadcast NEXT message to tell player portal to clear the question and display selection screen instead
+    try {
+      (window as any).api?.ipc?.invoke('network/broadcast-next', {
+        timestamp: Date.now()
+      }).catch((error: any) => {
+        console.warn('[Keypad] Failed to broadcast next to players:', error);
+      });
+    } catch (err) {
+      console.warn('[Keypad] Error calling broadcast-next IPC:', err);
+    }
   };
 
   const handleLetterSelect = (letter: string) => {
@@ -561,107 +613,7 @@ export function KeypadInterface({
     setSequenceCompleted(false);
   };
 
-  // Function to simulate team answers with staggered timing
-  const simulateTeamAnswers = useCallback(() => {
-    // Clear any existing team answers and timeouts
-    setTeamAnswers({});
-    setTeamAnswerTimes({});
-    setIsSimulated(false);
 
-    // Clear parent component state as well
-    if (onTeamAnswerUpdate) {
-      onTeamAnswerUpdate({});
-    }
-    if (onTeamResponseTimeUpdate) {
-      onTeamResponseTimeUpdate({});
-    }
-
-    // Clear any existing timeouts
-    simulationTimeouts.forEach(timeout => clearTimeout(timeout));
-    setSimulationTimeouts([]);
-
-    // Generate random delays for each team (between 0 and 9 seconds)
-    const newTimeouts: NodeJS.Timeout[] = [];
-    const startTime = Date.now();
-
-    teams.forEach(team => {
-      const randomDelay = Math.floor(Math.random() * 9000); // 0-9000ms delay
-
-      const timeout = setTimeout(() => {
-        // Check if timer is locked before allowing submission
-        if (timerLocked) {
-          console.log(`Team ${team.name} tried to submit after timer ended - submission blocked`);
-          return;
-        }
-
-        let randomAnswer = '';
-
-        if (questionType === 'letters') {
-          // For letters questions, pick from available letter options
-          const letterRows = [
-            ['A', 'B', 'C', 'D'],
-            ['E', 'F', 'G', 'H'],
-            ['I', 'J', 'K', 'L'],
-            ['M', 'N', 'O', 'P'],
-            ['R', 'S', 'T', 'U'],
-            ['QV', 'W', 'Y', 'XZ']
-          ];
-          const allLetters = letterRows.flat();
-          randomAnswer = allLetters[Math.floor(Math.random() * allLetters.length)];
-        } else if (questionType === 'multiple-choice') {
-          // For multiple choice, pick from A-F
-          const choices = ['A', 'B', 'C', 'D', 'E', 'F'];
-          randomAnswer = choices[Math.floor(Math.random() * choices.length)];
-        } else if (questionType === 'numbers') {
-          // For numbers questions, pick random number 0-100000
-          randomAnswer = Math.floor(Math.random() * 100001).toString();
-        }
-
-        const answerTime = Date.now() - startTime;
-
-        // Update team answers state by adding this team's answer
-        setTeamAnswers(prevAnswers => {
-          const updatedAnswers = {
-            ...prevAnswers,
-            [team.id]: randomAnswer
-          };
-
-          // Notify parent component of team answer updates immediately
-          if (onTeamAnswerUpdate) {
-            queueMicrotask(() => {
-              onTeamAnswerUpdate(updatedAnswers);
-            });
-          }
-
-          return updatedAnswers;
-        });
-
-        // Update team answer times (store in milliseconds for precise calculation)
-        setTeamAnswerTimes(prevTimes => {
-          const updatedTimes = {
-            ...prevTimes,
-            [team.id]: answerTime
-          };
-
-          // Notify parent component of response time updates
-          if (onTeamResponseTimeUpdate) {
-            queueMicrotask(() => {
-              onTeamResponseTimeUpdate(updatedTimes);
-            });
-          }
-
-          return updatedTimes;
-        });
-
-        // Mark as simulated when at least one team has answered
-        setIsSimulated(true);
-      }, randomDelay);
-
-      newTimeouts.push(timeout);
-    });
-
-    setSimulationTimeouts(newTimeouts);
-  }, [teams, questionType, onTeamAnswerUpdate, onTeamResponseTimeUpdate, timerLocked]);
 
   const handleStartTimer = useCallback(() => {
     // Can now start timer without requiring an answer first
@@ -683,8 +635,7 @@ export function KeypadInterface({
       onTimerStateChange(true, timerLength, timerLength);
     }
 
-    // Simulate team answers when timer starts
-    simulateTeamAnswers();
+
 
     // Send timer to external display if available
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
@@ -701,14 +652,10 @@ export function KeypadInterface({
       });
     }
 
-    // Announce the starting time immediately if voice countdown is enabled
-    if (voiceCountdown && timerLength % 5 === 0) {
-      const utterance = new SpeechSynthesisUtterance(timerLength.toString());
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-      speechSynthesis.speak(utterance);
-    }
+    // Play countdown audio - use silent version if voiceCountdown is disabled
+    playCountdownAudio(timerLength, !voiceCountdown).catch(error => {
+      console.error('[Keypad] Error playing countdown audio:', error);
+    });
 
     // Start the countdown
     const timer = setInterval(() => {
@@ -737,23 +684,13 @@ export function KeypadInterface({
           });
         }
 
-        // Use text-to-speech for countdown - only at 5-second intervals
-        // Check newValue instead of prev to stay in sync after initial announcement
-        if (voiceCountdown && newValue > 0 && newValue < timerLength) {
-          // Only speak at 5-second intervals (25, 20, 15, 10, 5) - starting value was already announced
-          if (newValue % 5 === 0) {
-            const utterance = new SpeechSynthesisUtterance(newValue.toString());
-            utterance.rate = 1;
-            utterance.pitch = 1;
-            utterance.volume = 1;
-            speechSynthesis.speak(utterance);
-          }
-        }
-
         if (newValue < 0) {
           clearInterval(timer);
           setIsTimerRunning(false);
           setCountdown(null);
+
+          // Stop countdown audio
+          stopCountdownAudio();
 
           // Lock the timer to prevent any further submissions
           setTimerLocked(true);
@@ -761,19 +698,6 @@ export function KeypadInterface({
           // Notify parent component about timer lock
           if (onTimerLockChange) {
             onTimerLockChange(true);
-          }
-
-          // Clear all pending simulation timeouts to prevent late submissions
-          simulationTimeouts.forEach(timeout => clearTimeout(timeout));
-          setSimulationTimeouts([]);
-
-          // Say "Time's up!" at the end - only if voice countdown is enabled
-          if (voiceCountdown) {
-            const finalUtterance = new SpeechSynthesisUtterance("Time's up!");
-            finalUtterance.rate = 1;
-            finalUtterance.pitch = 1;
-            finalUtterance.volume = 1;
-            speechSynthesis.speak(finalUtterance);
           }
 
           // Log the appropriate answer based on current screen
@@ -796,7 +720,7 @@ export function KeypadInterface({
         return newValue;
       });
     }, 1000);
-  }, [gameModeTimers, onTimerLockChange, onTimerStateChange, simulateTeamAnswers, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType, voiceCountdown, currentScreen, selectedLetter, selectedAnswers]);
+  }, [gameModeTimers, voiceCountdown, onTimerLockChange, onTimerStateChange, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType, currentScreen, selectedLetter, selectedAnswers]);
 
   const handleShowResults = useCallback(() => {
     setCurrentScreen('results');
@@ -868,14 +792,14 @@ export function KeypadInterface({
         }
       }
     }
-    
+
     // Send correct answer to external display with stats
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
       const answer = getCorrectAnswer() || 'Unknown';
       const stats = calculateAnswerStats();
       const fastestTeam = getFastestCorrectTeam();
-      
-      onExternalDisplayUpdate('correctAnswer', { 
+
+      onExternalDisplayUpdate('correctAnswer', {
         correctAnswer: answer,
         question: `Question ${currentQuestion}`,
         questionType: questionType,
@@ -884,26 +808,58 @@ export function KeypadInterface({
         fastestTeam: fastestTeam,
         questionInfo: {
           number: currentQuestion,
-          type: questionType === 'letters' ? 'Letters Question' : 
-                questionType === 'multiple-choice' ? 'Multiple Choice' : 
+          type: questionType === 'letters' ? 'Letters Question' :
+                questionType === 'multiple-choice' ? 'Multiple Choice' :
                 questionType === 'numbers' ? 'Numbers Question' : 'Question',
           total: 0
         }
       });
     }
-  }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes, getCorrectAnswer]);
+
+    // Broadcast reveal to player devices
+    if ((window as any).api?.network?.broadcastReveal) {
+      try {
+        const answer = getCorrectAnswer() || '';
+        const revealData = {
+          answer: answer,
+          correctIndex: isQuizPackMode ? currentLoadedQuestion?.correctIndex : undefined,
+          type: questionType,
+          selectedAnswers: []
+        };
+        console.log('[KeypadInterface] Broadcasting reveal to players:', revealData);
+        (window as any).api.network.broadcastReveal(revealData);
+      } catch (err) {
+        console.error('[KeypadInterface] Error broadcasting reveal:', err);
+      }
+    }
+  }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes, getCorrectAnswer, questionType, isQuizPackMode, currentLoadedQuestion?.correctIndex]);
 
   // Add function to handle revealing the fastest team
   const handleRevealFastestTeam = useCallback(() => {
     setFastestTeamRevealed(true);
-    
+
     const fastestTeamData = getFastestCorrectTeam();
-    
+
     // Send fastest team data to parent for main display
     if (onFastestTeamReveal && fastestTeamData) {
       onFastestTeamReveal(fastestTeamData);
     }
-    
+
+    // Broadcast fastest team to player devices
+    if ((window as any).api?.network?.broadcastFastest && fastestTeamData) {
+      try {
+        const fastestData = {
+          teamName: fastestTeamData.team.name,
+          questionNumber: currentQuestion,
+          teamPhoto: fastestTeamData.team.photoUrl || null
+        };
+        console.log('[KeypadInterface] Broadcasting fastest team to players:', fastestData);
+        (window as any).api.network.broadcastFastest(fastestData);
+      } catch (err) {
+        console.error('[KeypadInterface] Error broadcasting fastest team:', err);
+      }
+    }
+
     // Send fastest team reveal to external display
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
       onExternalDisplayUpdate('fastestTeam', {
@@ -911,8 +867,8 @@ export function KeypadInterface({
         responseTime: fastestTeamData ? fastestTeamData.responseTime : null,
         questionInfo: {
           number: currentQuestion,
-          type: questionType === 'letters' ? 'Letters Question' : 
-                questionType === 'multiple-choice' ? 'Multiple Choice' : 
+          type: questionType === 'letters' ? 'Letters Question' :
+                questionType === 'multiple-choice' ? 'Multiple Choice' :
                 questionType === 'numbers' ? 'Numbers Question' : 'Question',
           total: 0
         }
@@ -973,7 +929,6 @@ export function KeypadInterface({
     setFastestTeamRevealed(false); // Reset fastest team revelation state
     setTeamAnswers({}); // Reset team answers
     setTeamAnswerTimes({}); // Reset team answer times
-    setIsSimulated(false); // Reset simulation state
     setCurrentScreen('question-types');
     setQuestionType(null);
 
@@ -1047,7 +1002,6 @@ export function KeypadInterface({
     setFastestTeamRevealed(false);
     setTeamAnswers({});
     setTeamAnswerTimes({});
-    setIsSimulated(false);
     setCurrentScreen('config');
     setQuestionType(null);
     
@@ -1109,19 +1063,7 @@ export function KeypadInterface({
     }
   }, [teamAnswerTimes, onTeamResponseTimeUpdate]);
 
-  // Cleanup simulation timeouts when component unmounts or screen changes
-  useEffect(() => {
-    return () => {
-      simulationTimeouts.forEach(timeout => clearTimeout(timeout));
-    };
-  }, [currentScreen]);
 
-  // Cleanup all timeouts on unmount
-  useEffect(() => {
-    return () => {
-      simulationTimeouts.forEach(timeout => clearTimeout(timeout));
-    };
-  }, []);
 
   // SHIFT key detection for Fast Track feature
   useEffect(() => {

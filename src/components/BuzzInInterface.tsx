@@ -24,7 +24,7 @@ interface BuzzInInterfaceProps {
   onEndRound?: () => void;
 }
 
-export function BuzzInInterface({ quizzes, onClose, onAwardPoints, onEndRound }: BuzzInInterfaceProps) {
+export function BuzzInInterface({ quizzes = [], onClose, onAwardPoints, onEndRound }: BuzzInInterfaceProps) {
   const { defaultPoints, defaultSpeedBonus, gameModePoints, updateDefaultScores, updateGameModePoints } = useSettings();
   
   const [selectedMode, setSelectedMode] = useState<BuzzInMode>("classic");
@@ -67,6 +67,23 @@ export function BuzzInInterface({ quizzes, onClose, onAwardPoints, onEndRound }:
 
   const handleStartRound = () => {
     setGameStarted(true);
+
+    // Broadcast QUESTION message to player portal devices to ensure they show the question screen
+    // instead of display modes (BASIC/SCORES/SLIDESHOW)
+    try {
+      (window as any).api?.ipc?.invoke('network/broadcast-question', {
+        question: {
+          type: 'buzzin',
+          text: 'Buzz in to answer...',
+          timestamp: Date.now()
+        }
+      }).catch((error: any) => {
+        console.warn('[BuzzIn] Failed to broadcast question to players:', error);
+        // This is non-critical - if players aren't connected, it's fine
+      });
+    } catch (err) {
+      console.warn('[BuzzIn] Error calling broadcast-question IPC:', err);
+    }
   };
 
   const handleEndRound = () => {

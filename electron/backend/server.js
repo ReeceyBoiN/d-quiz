@@ -183,6 +183,7 @@ async function startBackend({ port = 4310 } = {}) {
               const answerMessage = JSON.stringify({
                 type: 'PLAYER_ANSWER',
                 playerId: data.playerId,
+                deviceId: deviceId,
                 teamName: data.teamName,
                 answer: data.answer,
                 timestamp: Date.now()
@@ -591,7 +592,95 @@ async function startBackend({ port = 4310 } = {}) {
     }
   }
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion };
+  // Helper function to broadcast reveal (answer and correctness) to all connected players
+  function broadcastReveal(revealData) {
+    try {
+      log.info(`[broadcastReveal] Broadcasting reveal with answer:`, revealData.answer);
+
+      const message = JSON.stringify({
+        type: 'REVEAL',
+        data: revealData,
+        timestamp: Date.now()
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+      const failedDevices = [];
+
+      networkPlayers.forEach((player, deviceId) => {
+        if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+          try {
+            log.info(`[broadcastReveal] Sending reveal to ${deviceId}...`);
+            player.ws.send(message, (err) => {
+              if (err) {
+                log.error(`❌ [broadcastReveal] ws.send callback error for ${deviceId}:`, err.message);
+              } else {
+                log.debug(`[broadcastReveal] Successfully sent reveal to ${deviceId}`);
+              }
+            });
+            successCount++;
+          } catch (error) {
+            log.error(`❌ Failed to send reveal to ${deviceId}:`, error.message);
+            failCount++;
+            failedDevices.push(deviceId);
+          }
+        }
+      });
+
+      log.info(`✅ Broadcast REVEAL to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed (${failedDevices.join(', ')})` : ''));
+    } catch (err) {
+      log.error(`❌ broadcastReveal error:`, err.message);
+      if (err && err.stack) {
+        log.error(`[broadcastReveal] Error stack:`, err.stack);
+      }
+    }
+  }
+
+  // Helper function to broadcast fastest team to all connected players
+  function broadcastFastest(fastestData) {
+    try {
+      log.info(`[broadcastFastest] Broadcasting fastest team:`, fastestData.teamName);
+
+      const message = JSON.stringify({
+        type: 'FASTEST',
+        data: fastestData,
+        timestamp: Date.now()
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+      const failedDevices = [];
+
+      networkPlayers.forEach((player, deviceId) => {
+        if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+          try {
+            log.info(`[broadcastFastest] Sending fastest team to ${deviceId}...`);
+            player.ws.send(message, (err) => {
+              if (err) {
+                log.error(`❌ [broadcastFastest] ws.send callback error for ${deviceId}:`, err.message);
+              } else {
+                log.debug(`[broadcastFastest] Successfully sent fastest team to ${deviceId}`);
+              }
+            });
+            successCount++;
+          } catch (error) {
+            log.error(`❌ Failed to send fastest team to ${deviceId}:`, error.message);
+            failCount++;
+            failedDevices.push(deviceId);
+          }
+        }
+      });
+
+      log.info(`⚡ Broadcast FASTEST to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed (${failedDevices.join(', ')})` : ''));
+    } catch (err) {
+      log.error(`❌ broadcastFastest error:`, err.message);
+      if (err && err.stack) {
+        log.error(`[broadcastFastest] Error stack:`, err.stack);
+      }
+    }
+  }
+
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest };
 }
 
 module.exports = { startBackend };
