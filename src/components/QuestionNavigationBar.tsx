@@ -12,6 +12,9 @@ interface QuestionNavigationBarProps {
   onStartTimer: () => void;
   onSilentTimer: () => void;
   onHideQuestion: () => void;
+  onReveal?: () => void; // Reveal answer button callback
+  onNextAction?: () => void; // Next action button callback (for Next Question)
+  onRevealFastestTeam?: () => void; // Reveal fastest team button callback
   leftSidebarWidth: number;
   isTimerRunning: boolean;
   timerProgress: number; // 0-100
@@ -38,6 +41,9 @@ export function QuestionNavigationBar({
   onStartTimer,
   onSilentTimer,
   onHideQuestion,
+  onReveal,
+  onNextAction,
+  onRevealFastestTeam,
   leftSidebarWidth,
   isTimerRunning,
   timerProgress,
@@ -65,13 +71,15 @@ export function QuestionNavigationBar({
     if (actualTimerIsRunning) {
       setShouldShowProgressBar(true);
     } else if (shouldShowProgressBar) {
-      // When timer stops, wait 1.5 seconds for animation to complete before hiding
+      // When timer stops, hide progress bar quickly so buttons become clickable
+      // Use shorter delay for on-the-spot mode (100ms) vs quiz pack mode (1500ms) for animation
+      const delayMs = isOnTheSpotsMode ? 100 : 1500;
       const timer = setTimeout(() => {
         setShouldShowProgressBar(false);
-      }, 1500);
+      }, delayMs);
       return () => clearTimeout(timer);
     }
-  }, [isTimerRunning, isOnTheSpotTimerRunning, isQuizPackMode, shouldShowProgressBar]);
+  }, [isTimerRunning, isOnTheSpotTimerRunning, isQuizPackMode, isOnTheSpotsMode, shouldShowProgressBar]);
 
   // Determine progress bar color based on time remaining
   const getProgressColor = () => {
@@ -252,6 +260,11 @@ export function QuestionNavigationBar({
               disabled={isTimerRunning}
               className="px-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white border-0 shadow-sm text-sm font-semibold rounded flex items-center gap-1.5 whitespace-nowrap"
               title="Start timer without sound (silent countdown)"
+              style={{
+                opacity: isTimerRunning ? 0.5 : 1,
+                pointerEvents: isTimerRunning ? 'none' : 'auto',
+                cursor: isTimerRunning ? 'not-allowed' : 'pointer'
+              }}
             >
               <Volume2 className="h-4 w-4" />
               Silent Timer
@@ -263,6 +276,11 @@ export function QuestionNavigationBar({
               disabled={isTimerRunning}
               className="px-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white border-0 shadow-sm text-sm font-semibold rounded flex items-center gap-1.5 whitespace-nowrap"
               title="Start timer with sound countdown"
+              style={{
+                opacity: isTimerRunning ? 0.5 : 1,
+                pointerEvents: isTimerRunning ? 'none' : 'auto',
+                cursor: isTimerRunning ? 'not-allowed' : 'pointer'
+              }}
             >
               <Timer className="h-4 w-4" />
               Start Timer
@@ -285,6 +303,11 @@ export function QuestionNavigationBar({
                     ? 'Question is hidden - click to send normally'
                     : 'Hide question from external display and players'
                 }
+                style={{
+                  opacity: isTimerRunning ? 0.5 : 1,
+                  pointerEvents: isTimerRunning ? 'none' : 'auto',
+                  cursor: isTimerRunning ? 'not-allowed' : 'pointer'
+                }}
               >
                 <Eye className="h-4 w-4" />
                 {hideQuestionMode ? 'Hidden' : 'Hide Question'}
@@ -294,11 +317,34 @@ export function QuestionNavigationBar({
             {/* Flow button */}
             {flowButton && (
               <Button
-                onClick={onStartTimer}
-                disabled={isTimerRunning || (isSendQuestionDisabled && (flowState.flow === 'ready' || flowState.flow === 'sent-picture'))}
+                onClick={() => {
+                  // Determine which handler to call based on button content
+                  if (flowButton.label === 'Reveal Answer') {
+                    onReveal?.();
+                  } else if (flowButton.label === 'Fastest Team' || flowButton.label === 'Fastest Answer') {
+                    onRevealFastestTeam?.();
+                  } else if (flowButton.label === 'Next Question' || flowButton.label === 'End Round') {
+                    onNextAction?.();
+                  } else {
+                    // For Send Picture/Send Question buttons, use onStartTimer
+                    onStartTimer();
+                  }
+                }}
+                disabled={
+                  // For Send Question/Picture buttons: disable when timer is running
+                  ((isQuizPackMode && flowState.flow === 'ready') || (isQuizPackMode && flowState.flow === 'sent-picture'))
+                    ? (isTimerRunning || isSendQuestionDisabled)
+                    // For Reveal Answer/Fastest Team/Next Question buttons: only disable if specifically blocked
+                    : false
+                }
                 className={`px-3 text-white border-0 shadow-sm text-sm font-semibold rounded flex items-center gap-1.5 disabled:bg-gray-600 disabled:cursor-not-allowed whitespace-nowrap ${
                   flowButton.color
                 }`}
+                style={{
+                  opacity: (isTimerRunning || (isQuizPackMode && isTimerRunning)) ? 0.5 : 1,
+                  pointerEvents: (isTimerRunning || (isQuizPackMode && isTimerRunning)) ? 'none' : 'auto',
+                  cursor: (isTimerRunning || (isQuizPackMode && isTimerRunning)) ? 'not-allowed' : 'pointer'
+                }}
                 title={`Press Spacebar to ${flowButton.label}`}
               >
                 {flowButton.icon}

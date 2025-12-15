@@ -27,6 +27,7 @@ interface LeftSidebarProps {
   onTeamDoubleClick?: (teamId: string) => void;
   teamAnswers?: {[teamId: string]: string};
   teamResponseTimes?: {[teamId: string]: number};
+  lastResponseTimes?: {[teamId: string]: number};
   showAnswers?: boolean;
   scoresPaused?: boolean;
   scoresHidden?: boolean;
@@ -37,7 +38,7 @@ interface LeftSidebarProps {
   onDeclinePendingTeam?: (deviceId: string, teamName: string) => void;
 }
 
-export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange, onScoreSet, onNameChange, onDeleteTeam, onTeamDoubleClick, teamAnswers = {}, teamResponseTimes = {}, showAnswers = false, scoresPaused = false, scoresHidden = false, teamAnswerStatuses = {}, teamCorrectRankings = {}, pendingTeams = [], onApprovePendingTeam, onDeclinePendingTeam }: LeftSidebarProps) {
+export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange, onScoreSet, onNameChange, onDeleteTeam, onTeamDoubleClick, teamAnswers = {}, teamResponseTimes = {}, lastResponseTimes = {}, showAnswers = false, scoresPaused = false, scoresHidden = false, teamAnswerStatuses = {}, teamCorrectRankings = {}, pendingTeams = [], onApprovePendingTeam, onDeclinePendingTeam }: LeftSidebarProps) {
   const { responseTimesEnabled } = useSettings();
   
   // Debug logging - disabled for performance
@@ -234,13 +235,13 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
               </Button>
               
               {/* Team Answer Box with Response Time */}
-              {showAnswers && (responseTimesEnabled && teamResponseTimes[quiz.id] !== undefined || teamAnswers[quiz.id]) && (
+              {showAnswers && ((responseTimesEnabled && (teamResponseTimes[quiz.id] !== undefined || lastResponseTimes[quiz.id] !== undefined)) || teamAnswers[quiz.id]) && (
                 <div className="flex flex-col items-center mr-2 flex-shrink-0">
-                  {/* Response Time Display - shown when enabled and team has a response time */}
-                  {responseTimesEnabled && teamResponseTimes[quiz.id] !== undefined && (
+                  {/* Response Time Display - shown when enabled and team has a response time (current or last) */}
+                  {responseTimesEnabled && (teamResponseTimes[quiz.id] !== undefined || lastResponseTimes[quiz.id] !== undefined) && (
                     <div className="bg-gray-400 rounded flex items-center justify-center flex-shrink-0 mb-1 px-1 py-0.5">
                       <span className="text-white text-xs font-bold leading-none">
-                        {(teamResponseTimes[quiz.id] / 1000).toFixed(2)}s
+                        {((teamResponseTimes[quiz.id] ?? lastResponseTimes[quiz.id]) / 1000).toFixed(2)}s
                       </span>
                     </div>
                   )}

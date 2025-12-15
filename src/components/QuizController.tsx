@@ -39,14 +39,7 @@ export function QuizController({ onOpenPopout }: QuizControllerProps) {
         setTimerValue(prev => {
           const newValue = prev - 1;
           
-          // Use text-to-speech for countdown - only at 5-second intervals
-          if (newValue > 0 && newValue % 5 === 0) {
-            const utterance = new SpeechSynthesisUtterance(newValue.toString());
-            utterance.rate = 1;
-            utterance.pitch = 1;
-            utterance.volume = 1;
-            speechSynthesis.speak(utterance);
-          }
+
           
           // Send timer update to popout window
           if (popoutWindow && !popoutWindow.closed) {
@@ -59,12 +52,7 @@ export function QuizController({ onOpenPopout }: QuizControllerProps) {
           if (newValue < 0) {
             setIsTimerRunning(false);
             
-            // Say "Time's up!" at the end
-            const finalUtterance = new SpeechSynthesisUtterance("Time's up!");
-            finalUtterance.rate = 1;
-            finalUtterance.pitch = 1;
-            finalUtterance.volume = 1;
-            speechSynthesis.speak(finalUtterance);
+
             
             nextStage(); // Auto-advance when timer reaches 0
             return 30; // Reset timer
@@ -92,14 +80,7 @@ export function QuizController({ onOpenPopout }: QuizControllerProps) {
       setIsTimerRunning(true);
       setTimerValue(30); // Reset timer when entering timer stage
       
-      // Announce the starting time immediately if it's a 5-second interval
-      if (30 % 5 === 0) {
-        const utterance = new SpeechSynthesisUtterance("30");
-        utterance.rate = 1;
-        utterance.pitch = 1;
-        utterance.volume = 1;
-        speechSynthesis.speak(utterance);
-      }
+
     }
   }, [currentStage]);
 

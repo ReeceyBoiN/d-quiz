@@ -89,45 +89,78 @@ export default function App() {
       case 'TEAM_APPROVED':
         try {
           console.log('[Player] Team approved, displayData:', message.data?.displayData);
-          setCurrentScreen('approval');
 
-          // Extract display mode data from the approval message
-          if (message.data?.displayData) {
-            try {
-              const { mode, images, rotationInterval, scores } = message.data.displayData;
+          // Check if there's a current game state (late joiner sync)
+          const displayData = message.data?.displayData;
+          const currentGameState = displayData?.currentGameState;
 
-              if (mode) {
-                console.log('[Player] Setting initial display mode from approval:', mode);
-                setDisplayMode(mode);
-              }
-              if (mode === 'slideshow' && images) {
-                console.log('[Player] Setting initial slideshow images:', images.length);
-                setSlideshowImages(images);
-                if (rotationInterval) {
-                  setRotationInterval(rotationInterval);
-                }
-              }
-              if (mode === 'scores' && scores) {
-                console.log('[Player] Setting initial scores:', scores);
-                setLeaderboardScores(scores);
-              }
-            } catch (dataErr) {
-              console.error('❌ [Player] Error extracting displayData from TEAM_APPROVED:', dataErr);
+          if (currentGameState?.currentQuestion) {
+            // Late joiner - show current question immediately
+            console.log('[Player] Late joiner: Showing current question');
+
+            const questionData = {
+              ...currentGameState.currentQuestion,
+              type: normalizeQuestionType(currentGameState.currentQuestion.type)
+            };
+            setCurrentQuestion(questionData);
+            setGoWideEnabled(false);
+            setAnswerRevealed(false);
+            setCorrectAnswer(undefined);
+            setSelectedAnswers([]);
+
+            // Show the question screen immediately
+            setCurrentScreen('question');
+
+            // If timer is running, show it with remaining time
+            if (currentGameState.timerState?.isRunning) {
+              console.log('[Player] Late joiner: Timer is running, showing timer with remaining time:', currentGameState.timerState.timeRemaining);
+              setTotalTimerLength(currentGameState.timerState.totalTime);
+              setTimeRemaining(currentGameState.timerState.timeRemaining);
+              setShowTimer(true);
             }
           } else {
-            console.log('[Player] No displayData in TEAM_APPROVED, using defaults');
-          }
+            // Normal approval flow - show approval screen
+            console.log('[Player] Normal approval: Showing approval screen');
+            setCurrentScreen('approval');
 
-          const approvalTimer = setTimeout(() => {
-            try {
-              console.log('[Player] Approval screen delay complete, transitioning to display');
-              setCurrentScreen('display');
-            } catch (screenErr) {
-              console.error('❌ [Player] Error during approval screen transition:', screenErr);
+            // Extract display mode data from the approval message
+            if (displayData) {
+              try {
+                const { mode, images, rotationInterval, scores } = displayData;
+
+                if (mode) {
+                  console.log('[Player] Setting initial display mode from approval:', mode);
+                  setDisplayMode(mode);
+                }
+                if (mode === 'slideshow' && images) {
+                  console.log('[Player] Setting initial slideshow images:', images.length);
+                  setSlideshowImages(images);
+                  if (rotationInterval) {
+                    setRotationInterval(rotationInterval);
+                  }
+                }
+                if (mode === 'scores' && scores) {
+                  console.log('[Player] Setting initial scores:', scores);
+                  setLeaderboardScores(scores);
+                }
+              } catch (dataErr) {
+                console.error('❌ [Player] Error extracting displayData from TEAM_APPROVED:', dataErr);
+              }
+            } else {
+              console.log('[Player] No displayData in TEAM_APPROVED, using defaults');
             }
-          }, 2000);
 
-          return () => clearTimeout(approvalTimer);
+            const approvalTimer = setTimeout(() => {
+              try {
+                console.log('[Player] Approval screen delay complete, transitioning to display');
+                setCurrentScreen('display');
+              } catch (screenErr) {
+                console.error('❌ [Player] Error during approval screen transition:', screenErr);
+              }
+            }, 2000);
+
+            return () => clearTimeout(approvalTimer);
+          }
         } catch (approvalErr) {
           console.error('❌ [Player] Error in TEAM_APPROVED handler:', approvalErr);
           if (approvalErr instanceof Error) {
@@ -356,6 +389,14 @@ export default function App() {
         } catch (fastestErr) {
           console.error('❌ [Player] Error in FASTEST handler:', fastestErr);
         }
+        break;
+      case 'AUTO_DISABLE_GO_WIDE':
+        console.log('[Player] AUTO_DISABLE_GO_WIDE message received:', message.data?.disabled);
+        setGoWideEnabled(!message.data?.disabled);
+        break;
+      case 'SCORE_UPDATE':
+        console.log('[Player] SCORE_UPDATE message received:', message.data);
+        // Score updates are handled on display side, just log here
         break;
     }
   }, []);

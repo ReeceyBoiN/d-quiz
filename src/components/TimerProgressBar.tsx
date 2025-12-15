@@ -34,12 +34,12 @@ export function TimerProgressBar({
   };
 
   // Use relative positioning instead of fixed to stay within the parent container
-  const positionClasses = position === 'top' 
-    ? 'relative w-full z-40' 
+  const positionClasses = position === 'top'
+    ? 'relative w-full z-40'
     : 'relative w-full z-50';
 
   return (
-    <div className={`${positionClasses} h-2 bg-gray-200 dark:bg-gray-700 mb-4`}>
+    <div className={`${positionClasses} h-2 bg-gray-200 dark:bg-gray-700 mb-4 pointer-events-none`}>
       <div 
         className={`h-full transition-all duration-1000 ease-linear ${getProgressColor()}`}
         style={{ 

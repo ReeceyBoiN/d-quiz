@@ -359,14 +359,7 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
       windowClosed: externalWindow ? externalWindow.closed : 'no window'
     });
     
-    // Announce the starting time immediately if voice countdown is enabled
-    if (voiceCountdown && nearestWinsTimer % 5 === 0) {
-      const utterance = new SpeechSynthesisUtterance(nearestWinsTimer.toString());
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-      speechSynthesis.speak(utterance);
-    }
+
     
 
     
@@ -394,14 +387,7 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
           // Use text-to-speech for countdown - only at 5-second intervals
           // Check newValue instead of prev to stay in sync after initial announcement
           if (voiceCountdown && newValue > 0 && newValue < nearestWinsTimer) {
-            // Only speak at 5-second intervals (25, 20, 15, 10, 5) - starting value was already announced
-            if (newValue % 5 === 0) {
-              const utterance = new SpeechSynthesisUtterance(newValue.toString());
-              utterance.rate = 1;
-              utterance.pitch = 1;
-              utterance.volume = 1;
-              speechSynthesis.speak(utterance);
-            }
+
           }
           
           if (newValue < 0) {
@@ -417,14 +403,7 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
             
 
             
-            // Say "Time's up!" at the end - only if voice countdown is enabled
-            if (voiceCountdown) {
-              const finalUtterance = new SpeechSynthesisUtterance("Time's up!");
-              finalUtterance.rate = 1;
-              finalUtterance.pitch = 1;
-              finalUtterance.volume = 1;
-              speechSynthesis.speak(finalUtterance);
-            }
+
             
             // Only move to results screen if answer has been confirmed
             if (answerConfirmed) {

@@ -117,7 +117,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         setNearestWinsTimer(parsed.nearestWinsTimer || 10);
         setCountdownStyle(parsed.countdownStyle || "circular");
         setKeypadDesign(parsed.keypadDesign || "neon-glow");
-        setResponseTimesEnabled(parsed.responseTimesEnabled || false);
+        setResponseTimesEnabled(parsed.responseTimesEnabled !== undefined ? parsed.responseTimesEnabled : true);
         setTeamPhotosAutoApprove(parsed.teamPhotosAutoApprove || false);
         setGoWideEnabled(parsed.goWideEnabled || false);
         setEvilModeEnabled(parsed.evilModeEnabled || false);
@@ -173,7 +173,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
             setCountdownStyle(newCountdownStyle);
           }
           setKeypadDesign(parsed.keypadDesign || "neon-glow");
-          setResponseTimesEnabled(parsed.responseTimesEnabled || false);
+          setResponseTimesEnabled(parsed.responseTimesEnabled !== undefined ? parsed.responseTimesEnabled : true);
           setTeamPhotosAutoApprove(parsed.teamPhotosAutoApprove || false);
           setGoWideEnabled(parsed.goWideEnabled || false);
           setEvilModeEnabled(parsed.evilModeEnabled || false);
@@ -268,6 +268,11 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
   const updateResponseTimesEnabled = (enabled: boolean) => {
     setResponseTimesEnabled(enabled);
+    // Save to localStorage and trigger event
+    const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
+    const updatedSettings = { ...currentSettings, responseTimesEnabled: enabled };
+    localStorage.setItem('quizHostSettings', JSON.stringify(updatedSettings));
+    window.dispatchEvent(new Event('settingsUpdated'));
   };
 
   const updateTeamPhotosAutoApprove = (enabled: boolean) => {

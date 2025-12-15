@@ -125,6 +125,15 @@ async function boot() {
     return backend.getAllNetworkPlayers();
   });
 
+  router.mount('network/pending-answers', async () => {
+    if (!backend || !backend.getPendingAnswers) {
+      return [];
+    }
+    const answers = backend.getPendingAnswers();
+    log.info('[IPC] network/pending-answers returning', answers.length, 'answers');
+    return answers;
+  });
+
   router.mount('network/approve-team', async (payload) => {
     try {
       log.info('[IPC] network/approve-team called with:', { deviceId: payload?.deviceId, teamName: payload?.teamName, hasDisplayData: !!payload?.displayData });

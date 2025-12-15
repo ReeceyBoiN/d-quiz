@@ -7,6 +7,7 @@ interface NetworkContextType {
   teamName: string;
   playerSettings?: PlayerSettings;
   goWideEnabled?: boolean;
+  autoDisableGoWide?: boolean;
   answerRevealed?: boolean;
   correctAnswer?: string | number | (string | number)[];
   selectedAnswers?: any[];

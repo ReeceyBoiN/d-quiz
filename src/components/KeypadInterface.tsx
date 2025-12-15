@@ -25,6 +25,7 @@ interface KeypadInterfaceProps {
   externalWindow?: Window | null; // External display window
   onExternalDisplayUpdate?: (mode: string, data?: any) => void; // External display update function
   teams?: Array<{id: string, name: string, score?: number}>; // Teams data for simulation
+  teamAnswers?: {[teamId: string]: string}; // Team answers from parent (for results display)
   onTeamAnswerUpdate?: (answers: {[teamId: string]: string}) => void; // Team answer update callback
   onTeamResponseTimeUpdate?: (responseTimes: {[teamId: string]: number}) => void; // Team response time update callback
   onAwardPoints?: (correctTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner", fastestTeamId?: string) => void; // Award points callback
@@ -42,7 +43,7 @@ interface KeypadInterfaceProps {
   currentQuestionIndex?: number; // Current question index from loaded quiz
   onQuestionComplete?: () => void; // Callback when a question is completed
   isQuizPackMode?: boolean; // Is this in quiz pack mode with pre-loaded answers
-  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: () => void }) => void; // Pass action handlers to parent for nav bar
+  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: () => void; silentTimer: () => void; revealFastestTeam: () => void }) => void; // Pass action handlers to parent for nav bar
   onGameTimerStateChange?: (isTimerRunning: boolean) => void; // Notify parent of timer state changes
   onCurrentScreenChange?: (screen: string) => void; // Notify parent of current screen changes
   onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
@@ -51,6 +52,7 @@ interface KeypadInterfaceProps {
   onGameFastestRevealed?: (revealed: boolean) => void; // Notify parent when fastest team is revealed
   onTeamsAnsweredCorrectly?: (hasCorrectAnswers: boolean) => void; // Notify parent if any teams answered correctly
   onGameAnswerSelected?: (selected: boolean) => void; // Notify parent when user has selected an answer
+  onTimerStart?: (startTime: number) => void; // Notify parent when timer starts for response time calculation
 }
 
 export function KeypadInterface({
@@ -59,6 +61,7 @@ export function KeypadInterface({
   externalWindow,
   onExternalDisplayUpdate,
   teams = [],
+  teamAnswers: parentTeamAnswers = {},
   onTeamAnswerUpdate,
   onTeamResponseTimeUpdate,
   onAwardPoints,
@@ -85,7 +88,8 @@ export function KeypadInterface({
   onGameAnswerRevealed,
   onGameFastestRevealed,
   onTeamsAnsweredCorrectly,
-  onGameAnswerSelected
+  onGameAnswerSelected,
+  onTimerStart
 }: KeypadInterfaceProps) {
   const {
     defaultPoints,
@@ -154,7 +158,10 @@ export function KeypadInterface({
 
   // Current loaded question state for displaying picture and info
   const [currentLoadedQuestion, setCurrentLoadedQuestion] = useState<LoadedQuestion | null>(null);
-  
+
+  // Timer start tracking for accurate response time calculation
+  const [timerStartTime, setTimerStartTime] = useState<number | null>(null);
+
   // Debug mode state for keypad designs
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [selectedDesign, setSelectedDesign] = useState(0);
@@ -240,17 +247,44 @@ export function KeypadInterface({
   
   // Get current design configuration from settings
   const currentDesign = keypadDesigns[keypadDesign] || keypadDesigns["neon-glow"];
-  
+
+  // Helper function to get the correct answer (either from user input or pre-loaded data)
+  // MUST be defined before useEffect hooks that use it
+  // Uses same normalization logic as QuizHost.getAnswerText() to ensure consistent format
+  const getCorrectAnswer = useCallback(() => {
+    if (isQuizPackMode && currentLoadedQuestion) {
+      // For multiple-choice and letters: convert correctIndex to letter (A, B, C, etc.)
+      if ((currentLoadedQuestion.type?.toLowerCase() === 'multi' ||
+           currentLoadedQuestion.type?.toLowerCase() === 'letters') &&
+          currentLoadedQuestion.correctIndex !== undefined) {
+        return String.fromCharCode(65 + currentLoadedQuestion.correctIndex);
+      }
+      // For sequence: return the sequence item at correctIndex
+      if (currentLoadedQuestion.type?.toLowerCase() === 'sequence' &&
+          currentLoadedQuestion.options &&
+          currentLoadedQuestion.correctIndex !== undefined) {
+        return currentLoadedQuestion.options[currentLoadedQuestion.correctIndex] || '';
+      }
+      // For other types: use answerText if available
+      if (currentLoadedQuestion.answerText) {
+        return currentLoadedQuestion.answerText;
+      }
+    }
+    // Fallback to host's selected answers for on-the-spot mode
+    return questionType === 'letters' ? selectedLetter :
+           questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
+           questionType === 'numbers' ? numbersAnswer : null;
+  }, [isQuizPackMode, currentLoadedQuestion, questionType, selectedLetter, selectedAnswers, numbersAnswer]);
+
   // Handle timer completion and update team answer statuses
   useEffect(() => {
     if (timerFinished && onAnswerStatusUpdate && currentScreen !== 'results') {
-      const correctAnswer = currentScreen === 'letters-game' ? selectedLetter :
-                           currentScreen === 'multiple-choice-game' ? selectedAnswers.join(', ') :
-                           currentScreen === 'numbers-game' ? numbersAnswer :
-                           currentScreen === 'sequence-game' ? selectedSequence.join(', ') : null;
+      // Use getCorrectAnswer() which handles both quiz pack (uses loaded question's correct answer)
+      // and on-the-spot mode (uses host's selected answer from UI)
+      const correctAnswer = getCorrectAnswer();
       onAnswerStatusUpdate(correctAnswer, questionType);
     }
-  }, [timerFinished, onAnswerStatusUpdate, currentScreen, selectedLetter, selectedAnswers, numbersAnswer, selectedSequence, questionType]);
+  }, [timerFinished, onAnswerStatusUpdate, currentScreen, questionType, getCorrectAnswer]);
   
   // Reset component to initial state when component mounts
   useEffect(() => {
@@ -313,19 +347,12 @@ export function KeypadInterface({
     }
   }, [isQuizPackMode, currentScreen, loadedQuestions]);
 
-  // Helper function to get the correct answer (either from user input or pre-loaded data)
-  const getCorrectAnswer = useCallback(() => {
-    if (isQuizPackMode && currentLoadedQuestion?.answerText) {
-      return currentLoadedQuestion.answerText;
-    }
-    return questionType === 'letters' ? selectedLetter :
-           questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
-           questionType === 'numbers' ? numbersAnswer : null;
-  }, [isQuizPackMode, currentLoadedQuestion?.answerText, questionType, selectedLetter, selectedAnswers, numbersAnswer]);
-
   // Calculate actual results based on team answers and correct answer
+  // Use parent's teamAnswers (includes network player answers) instead of local state
   const calculateAnswerStats = useCallback(() => {
-    if (!teamAnswers || Object.keys(teamAnswers).length === 0) {
+    const answersToUse = parentTeamAnswers && Object.keys(parentTeamAnswers).length > 0 ? parentTeamAnswers : teamAnswers;
+
+    if (!answersToUse || Object.keys(answersToUse).length === 0) {
       return { correct: 0, wrong: 0, noAnswer: teams.length };
     }
 
@@ -340,7 +367,7 @@ export function KeypadInterface({
     let noAnswer = 0;
 
     teams.forEach(team => {
-      const teamAnswer = teamAnswers[team.id];
+      const teamAnswer = answersToUse[team.id];
 
       if (!teamAnswer || teamAnswer.trim() === '') {
         noAnswer++;
@@ -356,11 +383,13 @@ export function KeypadInterface({
     });
 
     return { correct, wrong, noAnswer };
-  }, [teamAnswers, teams, questionType, getCorrectAnswer]);
+  }, [parentTeamAnswers, teamAnswers, teams, questionType, getCorrectAnswer]);
 
   // Find the fastest team that answered correctly
   const getFastestCorrectTeam = useCallback(() => {
-    if (!teamAnswers || Object.keys(teamAnswers).length === 0) {
+    const answersToUse = parentTeamAnswers && Object.keys(parentTeamAnswers).length > 0 ? parentTeamAnswers : teamAnswers;
+
+    if (!answersToUse || Object.keys(answersToUse).length === 0) {
       return null;
     }
 
@@ -371,7 +400,7 @@ export function KeypadInterface({
     }
 
     const correctTeams = teams.filter(team => {
-      const teamAnswer = teamAnswers[team.id];
+      const teamAnswer = answersToUse[team.id];
       return teamAnswer && (
         (questionType === 'letters' && teamAnswer === correctAnswer) ||
         (questionType === 'multiple-choice' && teamAnswer === correctAnswer) ||
@@ -399,7 +428,7 @@ export function KeypadInterface({
       team: fastestTeam,
       responseTime: fastestTime
     };
-  }, [teamAnswers, teamAnswerTimes, teams, questionType, getCorrectAnswer]);
+  }, [teamAnswers, teamAnswerTimes, teams, questionType, getCorrectAnswer, parentTeamAnswers]);
 
   // Helper function to get the question type label
   const getQuestionTypeLabel = (type: string | null): string => {
@@ -621,6 +650,14 @@ export function KeypadInterface({
     setTotalTimerLength(timerLength); // Set total timer length for progress bar
     setIsTimerRunning(true);
     setTimerFinished(false);
+    const now = Date.now();
+    setTimerStartTime(now); // Capture timer start time for accurate response time calculation
+
+    // Notify parent about timer start time for response time calculation
+    if (onTimerStart) {
+      onTimerStart(now);
+    }
+
     setTimerLocked(false); // Unlock timer when starting
 
     // Notify parent component about timer lock reset
@@ -652,8 +689,8 @@ export function KeypadInterface({
       });
     }
 
-    // Play countdown audio - use silent version if voiceCountdown is disabled
-    playCountdownAudio(timerLength, !voiceCountdown).catch(error => {
+    // Play countdown audio - normal timer with sound (voice countdown if enabled)
+    playCountdownAudio(timerLength, false).catch(error => {
       console.error('[Keypad] Error playing countdown audio:', error);
     });
 
@@ -686,11 +723,16 @@ export function KeypadInterface({
 
         if (newValue < 0) {
           clearInterval(timer);
+
+          // Delay stopping audio to let the final part of the countdown audio play ("Time's up" message)
+          // Audio plays for timerLength + 1 seconds, but countdown finishes at timerLength seconds
+          // So we need to wait ~1 second for the audio to finish
+          setTimeout(() => {
+            stopCountdownAudio();
+          }, 1100);
+
           setIsTimerRunning(false);
           setCountdown(null);
-
-          // Stop countdown audio
-          stopCountdownAudio();
 
           // Lock the timer to prevent any further submissions
           setTimerLocked(true);
@@ -744,6 +786,157 @@ export function KeypadInterface({
       });
     }
   }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, currentQuestion, questionType]);
+
+  // Add function to handle silent timer (no countdown audio)
+  const handleSilentTimer = useCallback(() => {
+    // Can now start timer without requiring an answer first
+    const timerLength = gameModeTimers.keypad;
+    setTotalTimerLength(timerLength); // Set total timer length for progress bar
+    setIsTimerRunning(true);
+    setTimerFinished(false);
+    const now = Date.now();
+    setTimerStartTime(now); // Capture timer start time for accurate response time calculation
+
+    // Notify parent about timer start time for response time calculation
+    if (onTimerStart) {
+      onTimerStart(now);
+    }
+
+    setTimerLocked(false); // Unlock timer when starting
+
+    // Notify parent component about timer lock reset
+    if (onTimerLockChange) {
+      onTimerLockChange(false);
+    }
+
+    setCountdown(timerLength);
+
+    // Notify parent about timer state
+    if (onTimerStateChange) {
+      onTimerStateChange(true, timerLength, timerLength);
+    }
+
+    // Send timer to external display if available
+    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+      onExternalDisplayUpdate('timer', {
+        timerValue: timerLength,
+        questionInfo: {
+          number: currentQuestion,
+          type: questionType === 'letters' ? 'Letters Question' :
+                questionType === 'multiple-choice' ? 'Multiple Choice' :
+                questionType === 'numbers' ? 'Numbers Question' : 'Question',
+          total: 0
+        },
+        gameMode: 'keypad'
+      });
+    }
+
+    // Play countdown audio - SILENT version (no countdown beeps/voice)
+    playCountdownAudio(timerLength, true).catch(error => {
+      console.error('[Keypad] Error playing silent countdown audio:', error);
+    });
+
+    // Start the countdown (identical to handleStartTimer)
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev === null) return null;
+
+        const newValue = prev - 1;
+
+        // Notify parent about timer state change
+        if (onTimerStateChange) {
+          onTimerStateChange(true, newValue, gameModeTimers.keypad);
+        }
+
+        // Update external display with new timer value
+        if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+          onExternalDisplayUpdate('timer', {
+            timerValue: newValue < 0 ? 0 : newValue,
+            questionInfo: {
+              number: currentQuestion,
+              type: questionType === 'letters' ? 'Letters Question' :
+                    questionType === 'multiple-choice' ? 'Multiple Choice' :
+                    questionType === 'numbers' ? 'Numbers Question' : 'Question',
+              total: 0
+            },
+            gameMode: 'keypad'
+          });
+        }
+
+        if (newValue < 0) {
+          clearInterval(timer);
+
+          // Delay stopping audio to let the final part of the countdown audio play
+          setTimeout(() => {
+            stopCountdownAudio();
+          }, 1100);
+
+          setIsTimerRunning(false);
+          setCountdown(null);
+
+          // Lock the timer to prevent any further submissions
+          setTimerLocked(true);
+
+          // Notify parent component about timer lock
+          if (onTimerLockChange) {
+            onTimerLockChange(true);
+          }
+
+          // Log the appropriate answer based on current screen
+          const answer = currentScreen === 'letters-game'
+            ? selectedLetter
+            : currentScreen === 'multiple-choice-game'
+            ? selectedAnswers[0]
+            : currentScreen === 'numbers-game'
+            ? numbersAnswer
+            : null;
+
+          if (answer) {
+            setTeamAnswers(prev => ({
+              ...prev,
+              'host': answer
+            }));
+
+            // Capture answer time
+            setTeamAnswerTimes(prev => ({
+              ...prev,
+              'host': Date.now() - (timerStartTime || Date.now())
+            }));
+          }
+
+          setTimerFinished(true);
+
+          // Notify parent component about timer finished
+          if (onGameTimerFinished) {
+            onGameTimerFinished(true);
+          }
+
+          // Send placeholder to external display (don't reveal answer yet)
+          if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+            const stats = calculateAnswerStats();
+            onExternalDisplayUpdate('correctAnswer', {
+              correctAnswer: 'The correct answer is...',
+              question: `Question ${currentQuestion}`,
+              questionType: questionType,
+              revealed: false,
+              stats: stats,
+              questionInfo: {
+                number: currentQuestion,
+                type: questionType === 'letters' ? 'Letters Question' :
+                      questionType === 'multiple-choice' ? 'Multiple Choice' :
+                      questionType === 'numbers' ? 'Numbers Question' : 'Question',
+                total: 0
+              }
+            });
+          }
+        }
+
+        return newValue;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [gameModeTimers, onTimerStart, onTimerLockChange, onTimerStateChange, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType, currentScreen, selectedLetter, selectedAnswers, numbersAnswer, timerStartTime, onGameTimerFinished, calculateAnswerStats]);
 
   // Add function to handle revealing the correct answer
   const handleRevealAnswer = useCallback(() => {
@@ -919,6 +1112,7 @@ export function KeypadInterface({
     setNumbersAnswerConfirmed(false);
     setTimerFinished(false);
     setTimerLocked(false); // Reset timer lock for next question
+    setTimerStartTime(null); // Reset timer start time for next question
 
     // Notify parent component about timer lock reset
     if (onTimerLockChange) {
@@ -984,9 +1178,11 @@ export function KeypadInterface({
         reveal: handleReveal,
         nextQuestion: handleNextQuestion,
         startTimer: handleStartTimer,
+        silentTimer: handleSilentTimer,
+        revealFastestTeam: handleRevealFastestTeam,
       });
     }
-  }, [onGetActionHandlers, handleReveal, handleNextQuestion, handleStartTimer]);
+  }, [onGetActionHandlers, handleReveal, handleNextQuestion, handleStartTimer, handleSilentTimer, handleRevealFastestTeam]);
 
   // Add home navigation to any nested screen
   const handleHomeNavigation = () => {
@@ -1156,6 +1352,7 @@ export function KeypadInterface({
 
   // Notify parent of timer state changes for navigation bar
   useEffect(() => {
+    console.log('[KeypadInterface] Timer state changed, isTimerRunning:', isTimerRunning);
     if (onGameTimerStateChange) {
       onGameTimerStateChange(isTimerRunning);
     }
@@ -1200,8 +1397,10 @@ export function KeypadInterface({
   useEffect(() => {
     if (onTeamsAnsweredCorrectly) {
       const correctAnswer = getCorrectAnswer();
-      const hasCorrectAnswers = correctAnswer && Object.keys(teamAnswers).some(teamId => {
-        const teamAnswer = teamAnswers[teamId];
+      // Use same logic as getFastestCorrectTeam - prioritize parentTeamAnswers if available
+      const answersToUse = parentTeamAnswers && Object.keys(parentTeamAnswers).length > 0 ? parentTeamAnswers : teamAnswers;
+      const hasCorrectAnswers = correctAnswer && Object.keys(answersToUse).some(teamId => {
+        const teamAnswer = answersToUse[teamId];
         return teamAnswer && (
           (questionType === 'letters' && teamAnswer === correctAnswer) ||
           (questionType === 'multiple-choice' && teamAnswer === correctAnswer) ||
@@ -1210,7 +1409,7 @@ export function KeypadInterface({
       });
       onTeamsAnsweredCorrectly(hasCorrectAnswers || false);
     }
-  }, [teamAnswers, questionType, onTeamsAnsweredCorrectly, getCorrectAnswer]);
+  }, [teamAnswers, questionType, onTeamsAnsweredCorrectly, getCorrectAnswer, parentTeamAnswers]);
 
   // Notify parent when user has selected an answer
   useEffect(() => {
@@ -1799,7 +1998,7 @@ export function KeypadInterface({
                 <Slider
                   value={points}
                   onValueChange={(value) => {
-                    if (value[0] !== points[0] && onCurrentRoundPointsChange) {
+                    if (value[0] !== points[0] && onCurrentRoundPointsChange && !isTimerRunning) {
                       onCurrentRoundPointsChange(value[0]);
                     }
                   }}
@@ -1807,6 +2006,11 @@ export function KeypadInterface({
                   min={0}
                   step={1}
                   className="w-full"
+                  disabled={isTimerRunning}
+                  style={{
+                    opacity: isTimerRunning ? 0.5 : 1,
+                    pointerEvents: isTimerRunning ? 'none' : 'auto'
+                  }}
                 />
               </div>
             </CardContent>
@@ -1829,7 +2033,7 @@ export function KeypadInterface({
                 <Slider
                   value={speedBonus}
                   onValueChange={(value) => {
-                    if (value[0] !== speedBonus[0] && onCurrentRoundSpeedBonusChange) {
+                    if (value[0] !== speedBonus[0] && onCurrentRoundSpeedBonusChange && !isTimerRunning) {
                       onCurrentRoundSpeedBonusChange(value[0]);
                     }
                   }}
@@ -1837,11 +2041,17 @@ export function KeypadInterface({
                   min={0}
                   step={1}
                   className="w-full"
+                  disabled={isTimerRunning}
+                  style={{
+                    opacity: isTimerRunning ? 0.5 : 1,
+                    pointerEvents: isTimerRunning ? 'none' : 'auto'
+                  }}
                 />
                 
-                <div 
-                  className="w-full border-t border-[#4a5568] pt-[20px] mt-[8px] cursor-pointer pr-[0px] pb-[0px] pl-[0px]"
+                <div
+                  className={`w-full border-t border-[#4a5568] pt-[20px] mt-[8px] cursor-pointer pr-[0px] pb-[0px] pl-[0px] ${isTimerRunning ? 'opacity-50 pointer-events-none' : ''}`}
                   onClick={(e) => {
+                    if (isTimerRunning) return;
                     e.stopPropagation();
                     updateStaggeredEnabled(!staggeredEnabled);
                   }}
@@ -1852,6 +2062,7 @@ export function KeypadInterface({
                       onCheckedChange={updateStaggeredEnabled}
                       className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
                       onClick={(e) => e.stopPropagation()}
+                      disabled={isTimerRunning}
                     />
                     <h5 className="font-semibold text-xs">Staggered</h5>
                   </div>
@@ -1866,11 +2077,14 @@ export function KeypadInterface({
 
         {/* Go Wide */}
         <div>
-          <Card 
+          <Card
             className={`border-[#4a5568] mb-2 transition-all cursor-pointer ${
               goWideEnabled ? 'bg-[#27ae60] border-[#27ae60]' : 'bg-[#7f8c8d]'
-            }`}
-            onClick={() => updateGoWideEnabled(!goWideEnabled)}
+            } ${isTimerRunning ? 'opacity-50 pointer-events-none' : ''}`}
+            onClick={() => {
+              if (isTimerRunning) return;
+              updateGoWideEnabled(!goWideEnabled);
+            }}
           >
             <CardContent className="p-4">
               <div className="flex flex-col items-center text-center">
@@ -1883,6 +2097,7 @@ export function KeypadInterface({
                     onCheckedChange={updateGoWideEnabled}
                     className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
                     onClick={(e) => e.stopPropagation()}
+                    disabled={isTimerRunning}
                   />
                   <h4 className="font-semibold text-sm">Go Wide</h4>
                 </div>
@@ -1918,11 +2133,14 @@ export function KeypadInterface({
 
         {/* Evil Mode */}
         <div>
-          <Card 
+          <Card
             className={`border-[#4a5568] mb-2 transition-all cursor-pointer ${
               evilModeEnabled ? 'bg-[#8b0000] border-[#8b0000]' : 'bg-[#7f8c8d]'
-            }`}
-            onClick={() => updateEvilModeEnabled(!evilModeEnabled)}
+            } ${isTimerRunning ? 'opacity-50 pointer-events-none' : ''}`}
+            onClick={() => {
+              if (isTimerRunning) return;
+              updateEvilModeEnabled(!evilModeEnabled);
+            }}
           >
             <CardContent className="p-4">
               <div className="flex flex-col items-center text-center">
@@ -1935,6 +2153,7 @@ export function KeypadInterface({
                     onCheckedChange={updateEvilModeEnabled}
                     className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
                     onClick={(e) => e.stopPropagation()}
+                    disabled={isTimerRunning}
                   />
                   <h4 className="font-semibold text-sm">Evil Mode</h4>
                 </div>
@@ -1942,9 +2161,10 @@ export function KeypadInterface({
                   Evil mode takes the available points to win, away from the teams score if they answer incorectly.
                 </p>
                 
-                <div 
-                  className="w-full border-t border-[#4a5568] pt-[20px] mt-[8px] cursor-pointer pr-[0px] pb-[0px] pl-[0px]"
+                <div
+                  className={`w-full border-t border-[#4a5568] pt-[20px] mt-[8px] cursor-pointer pr-[0px] pb-[0px] pl-[0px] ${isTimerRunning ? 'opacity-50 pointer-events-none' : ''}`}
                   onClick={(e) => {
+                    if (isTimerRunning) return;
                     e.stopPropagation();
                     updatePunishmentEnabled(!punishmentEnabled);
                   }}
@@ -1955,6 +2175,7 @@ export function KeypadInterface({
                       onCheckedChange={updatePunishmentEnabled}
                       className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
                       onClick={(e) => e.stopPropagation()}
+                      disabled={isTimerRunning}
                     />
                     <h5 className="font-semibold text-xs">Punishment</h5>
                   </div>
@@ -2111,7 +2332,9 @@ export function KeypadInterface({
             </div>
 
             {/* Fastest Team display - shown after answer is revealed and there are correct answers */}
-            {answerRevealed && !fastestTeamRevealed && (
+            {/* For quiz pack mode, use the rich FastestTeamDisplay component (handled by parent) */}
+            {/* For on-the-spot mode, show inline display */}
+            {!isQuizPackMode && answerRevealed && !fastestTeamRevealed && (
               (() => {
                 const fastestTeam = getFastestCorrectTeam();
                 if (fastestTeam) {

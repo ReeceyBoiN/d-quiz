@@ -25,6 +25,13 @@ const KEYPAD_COLOR_CLASSES: Record<KeypadColor, string> = {
   pink: 'bg-pink-500 hover:bg-pink-600 active:bg-pink-700',
 };
 
+// Helper function to convert index to letter (0 -> A, 1 -> B, etc.)
+const indexToLetter = (index: number | string): string => {
+  const idx = typeof index === 'string' ? parseInt(index, 10) : index;
+  if (isNaN(idx) || idx < 0) return String(index);
+  return String.fromCharCode(65 + idx); // 65 is ASCII for 'A'
+};
+
 // Letter grid with combined buttons for less common letters
 const LETTERS_GRID = [
   ['A', 'B', 'C', 'D'],
@@ -47,6 +54,7 @@ export function QuestionDisplay({
   const goWideEnabled = networkContext?.goWideEnabled ?? false;
   const answerRevealed = networkContext?.answerRevealed ?? false;
   const correctAnswer = networkContext?.correctAnswer;
+  const networkSelectedAnswers = networkContext?.selectedAnswers ?? [];
 
   const [selectedAnswers, setSelectedAnswers] = useState<(string | number)[]>([]);
   const [submitted, setSubmitted] = useState(false);
@@ -72,38 +80,57 @@ export function QuestionDisplay({
     // Can't select if timer ended
     if (timerEnded) return;
 
+    // Determine question type for answer conversion
+    const questionType = question?.type?.toLowerCase().trim() || 'buzzin';
+    const isMultipleChoiceQuestion = questionType === 'multiple-choice';
+
+    // Convert numeric index to letter for multiple-choice questions
+    const isMultipleChoiceAnswer = typeof answerValue === 'number' && isMultipleChoiceQuestion;
+    const answerToSubmit = isMultipleChoiceAnswer ? indexToLetter(answerValue) : answerValue;
+
+    // Auto-disable: if 2 or fewer options available, max 1 answer regardless of go-wide
+    const optionCount = options.length;
+    const autoDisableGoWide = goWideEnabled && optionCount <= 2;
+    const maxAnswers = autoDisableGoWide ? 1 : (goWideEnabled ? 2 : 1);
+
     // Handle single answer mode (not go wide)
-    if (!goWideEnabled) {
+    if (!goWideEnabled || autoDisableGoWide) {
       setSelectedAnswers([answerValue]);
-      setSubmittedAnswer(String(answerValue));
+      setSubmittedAnswer(String(answerToSubmit));
       onAnswerSubmit({
         questionType: question?.type,
-        answer: answerValue,
+        answer: answerToSubmit,
         answerIndex: 0,
+        answerCount: 1
       });
       setSubmitted(true);
       return;
     }
 
-    // Handle go wide mode (multiple answers)
+    // Handle go wide mode (multiple answers, max 2)
     if (selectedAnswers.includes(answerValue)) {
       // Deselect if already selected
       setSelectedAnswers(selectedAnswers.filter((a) => a !== answerValue));
       if (selectedAnswers.length === 1) {
         setSubmittedAnswer(null);
       }
-    } else if (selectedAnswers.length < 2) {
+    } else if (selectedAnswers.length < maxAnswers) {
       // Add to selection if under limit
       const newAnswers = [...selectedAnswers, answerValue];
       setSelectedAnswers(newAnswers);
-      setSubmittedAnswer(newAnswers.map(String).join(', '));
+      const submitAnswers = newAnswers.map(a => {
+        const isMultiChoice = typeof a === 'number' && isMultipleChoiceQuestion;
+        return isMultiChoice ? indexToLetter(a) : String(a);
+      });
+      setSubmittedAnswer(submitAnswers.join(', '));
       // Send answer immediately
       onAnswerSubmit({
         questionType: question?.type,
-        answer: answerValue,
+        answer: submitAnswers[submitAnswers.length - 1],
         answerIndex: newAnswers.length - 1,
         goWideMode: true,
-        allAnswers: newAnswers,
+        allAnswers: submitAnswers,
+        answerCount: newAnswers.length
       });
     }
   };
@@ -164,19 +191,40 @@ export function QuestionDisplay({
   const getButtonStateClasses = (answerValue: string | number, index?: number) => {
     const isSelected = selectedAnswers.includes(answerValue);
     const baseColor = KEYPAD_COLOR_CLASSES[settings.keypadColor];
-    const isCorrect = Array.isArray(correctAnswer)
-      ? correctAnswer.includes(answerValue)
-      : correctAnswer === answerValue || correctAnswer === index;
 
-    // After reveal: show correct answers in green, selected wrong answers in red, rest greyed
+    // Normalize comparison: convert index to letter for multiple choice questions
+    const normalizeForComparison = (value: string | number): string => {
+      if (typeof value === 'number' && isMultipleChoice) {
+        return String.fromCharCode(65 + value); // Convert 0->A, 1->B, etc.
+      }
+      return String(value);
+    };
+
+    const normalizedAnswerValue = normalizeForComparison(answerValue);
+    const normalizedCorrectAnswer = typeof correctAnswer === 'string'
+      ? correctAnswer.toUpperCase()
+      : correctAnswer !== undefined ? normalizeForComparison(correctAnswer) : undefined;
+    // Use networkSelectedAnswers for reveal comparisons (from host broadcast), fallback to local selectedAnswers
+    const answersToCompare = answerRevealed && networkSelectedAnswers.length > 0 ? networkSelectedAnswers : selectedAnswers;
+    const normalizedSelectedAnswers = answersToCompare.map(a => normalizeForComparison(a));
+
+    const isCorrect = Array.isArray(normalizedCorrectAnswer)
+      ? normalizedCorrectAnswer.some(ans => ans === normalizedAnswerValue)
+      : normalizedCorrectAnswer === normalizedAnswerValue;
+
+    const isUserSelected = normalizedSelectedAnswers.includes(normalizedAnswerValue);
+
+    // After reveal: show correct answers in green (flashing), selected wrong answers in red (flashing), rest greyed
     if (answerRevealed) {
       if (isCorrect) {
-        return 'bg-green-500 text-white shadow-lg shadow-green-500/50';
+        // Start with green, animation will take over
+        return 'bg-green-500 text-white animate-flash-green cursor-default';
       }
-      if (isSelected) {
-        return 'bg-red-500 text-white shadow-lg shadow-red-500/50';
+      if (isUserSelected) {
+        // Start with red, animation will take over
+        return 'bg-red-500 text-white animate-flash-red cursor-default';
       }
-      return 'bg-slate-600 text-slate-300 opacity-50';
+      return 'bg-slate-600 text-slate-300 opacity-50 cursor-default';
     }
 
     // Timer ended: grey out except selected
@@ -201,32 +249,38 @@ export function QuestionDisplay({
   const getRevealIcon = (answerValue: string | number, index?: number) => {
     if (!answerRevealed) return null;
 
-    const isCorrect = Array.isArray(correctAnswer)
-      ? correctAnswer.includes(answerValue)
-      : correctAnswer === answerValue || correctAnswer === index;
-    const isSelected = selectedAnswers.includes(answerValue);
+    // Normalize comparison: convert index to letter for multiple choice questions
+    const normalizeForComparison = (value: string | number): string => {
+      if (typeof value === 'number' && isMultipleChoice) {
+        return String.fromCharCode(65 + value); // Convert 0->A, 1->B, etc.
+      }
+      return String(value);
+    };
+
+    const normalizedAnswerValue = normalizeForComparison(answerValue);
+    const normalizedCorrectAnswer = typeof correctAnswer === 'string'
+      ? correctAnswer.toUpperCase()
+      : correctAnswer !== undefined ? normalizeForComparison(correctAnswer) : undefined;
+    // Use networkSelectedAnswers for reveal comparisons (from host broadcast), fallback to local selectedAnswers
+    const answersToCompare = answerRevealed && networkSelectedAnswers.length > 0 ? networkSelectedAnswers : selectedAnswers;
+    const normalizedSelectedAnswers = answersToCompare.map(a => normalizeForComparison(a));
+
+    const isCorrect = Array.isArray(normalizedCorrectAnswer)
+      ? normalizedCorrectAnswer.some(ans => ans === normalizedAnswerValue)
+      : normalizedCorrectAnswer === normalizedAnswerValue;
+
+    const isUserSelected = normalizedSelectedAnswers.includes(normalizedAnswerValue);
 
     // Show checkmark for all correct answers, X only for selected wrong answers
     if (isCorrect) return ' ✓';
-    if (isSelected && !isCorrect) return ' ✗';
+    if (isUserSelected && !isCorrect) return ' ✗';
     return null;
   };
 
-  // Get animation class for answer reveal
+  // Get animation class for answer reveal (returns empty string - animations are in getButtonStateClasses)
   const getAnimationClass = (answerValue: string | number, index?: number): string => {
-    if (!answerRevealed) return '';
-
-    const isCorrect = Array.isArray(correctAnswer)
-      ? correctAnswer.includes(answerValue)
-      : correctAnswer === answerValue || correctAnswer === index;
-    const isSelected = selectedAnswers.includes(answerValue);
-
-    // Apply correct answer animation to all correct answers
-    if (isCorrect) return 'animate-correct-answer';
-
-    // Apply incorrect answer animation only to selected wrong answers
-    if (isSelected && !isCorrect) return 'animate-incorrect-answer';
-
+    // Animation classes are handled in getButtonStateClasses when answerRevealed is true
+    // This function is kept for backward compatibility but returns empty string
     return '';
   };
 
@@ -234,8 +288,11 @@ export function QuestionDisplay({
     <div className="flex flex-col h-screen">
       {/* Go Wide Indicator */}
       {goWideEnabled && (
-        <div className="bg-blue-600 text-white text-center py-2 text-sm font-semibold">
-          Go Wide - Select up to 2 answers
+        <div className={`text-white text-center py-2 text-sm font-semibold ${options.length <= 2 ? 'bg-orange-600' : 'bg-blue-600'}`}>
+          {options.length <= 2
+            ? `Auto-Disable: Limited options (${options.length} available) - Select 1 answer`
+            : `Go Wide - Select up to 2 answers ${selectedAnswers.length > 0 ? `(${selectedAnswers.length}/2 selected)` : ''}`
+          }
         </div>
       )}
 
@@ -342,7 +399,7 @@ export function QuestionDisplay({
                       timerEnded ||
                       (!goWideEnabled && submitted && !selectedAnswers.includes(letter))
                     }
-                    className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-2xl font-bold text-xs sm:text-sm md:text-base lg:text-lg transition-all transform active:scale-95 ${getButtonStateClasses(
+                    className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-2xl font-bold text-base sm:text-lg md:text-2xl lg:text-4xl transition-all transform active:scale-95 ${getButtonStateClasses(
                       letter
                     )} ${getAnimationClass(letter)}`}
                   >
@@ -372,7 +429,7 @@ export function QuestionDisplay({
                     timerEnded ||
                     (!goWideEnabled && submitted && !selectedAnswers.includes(number))
                   }
-                  className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-xs sm:text-sm md:text-base lg:text-xl transition-all transform active:scale-95 ${getButtonStateClasses(
+                  className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform active:scale-95 ${getButtonStateClasses(
                     number
                   )} ${getAnimationClass(number)}`}
                 >
@@ -383,13 +440,13 @@ export function QuestionDisplay({
             </div>
             {/* Control buttons row */}
             <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
-              <button className="aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-xs sm:text-sm md:text-base lg:text-lg bg-red-500 hover:bg-red-600 text-white transition-all active:scale-95">
+              <button className="aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl bg-red-500 hover:bg-red-600 text-white transition-all active:scale-95">
                 CLR
               </button>
-              <button className="aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-xs sm:text-sm md:text-base lg:text-lg bg-cyan-500 hover:bg-cyan-600 text-white transition-all active:scale-95">
+              <button className="aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl bg-cyan-500 hover:bg-cyan-600 text-white transition-all active:scale-95">
                 0
               </button>
-              <button className="aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-xs sm:text-sm md:text-base lg:text-lg bg-green-500 hover:bg-green-600 text-white transition-all active:scale-95">
+              <button className="aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl bg-green-500 hover:bg-green-600 text-white transition-all active:scale-95">
                 ✓
               </button>
             </div>
@@ -410,7 +467,7 @@ export function QuestionDisplay({
                     timerEnded ||
                     (!goWideEnabled && submitted && !selectedAnswers.includes(index))
                   }
-                  className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-xs sm:text-sm md:text-base lg:text-lg transition-all transform active:scale-95 ${getButtonStateClasses(
+                  className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform active:scale-95 ${getButtonStateClasses(
                     index,
                     index
                   )} ${getAnimationClass(index, index)}`}
@@ -454,29 +511,16 @@ export function QuestionDisplay({
           </div>
         )}
 
-        {/* Revealed answer display */}
-        {answerRevealed && (
-          <div className="mt-4 sm:mt-6 md:mt-8 lg:mt-10 text-center p-3 sm:p-4 md:p-6 lg:p-8 bg-slate-700 rounded-lg sm:rounded-xl md:rounded-xl">
-            <p className="text-slate-300 text-xs sm:text-sm md:text-base lg:text-lg mb-1 sm:mb-2">Correct Answer:</p>
-            <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-green-400">
-              {Array.isArray(correctAnswer) ? correctAnswer.join(', ') : correctAnswer}
-            </p>
-            {selectedAnswers.length > 0 && (
-              <p className="text-slate-400 text-xs sm:text-sm md:text-base lg:text-lg mt-2 sm:mt-3">
-                Your answer: {selectedAnswers.join(', ')}
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Footer with status */}
       <div className="p-2 sm:p-3 md:p-4 lg:p-5 text-center text-slate-400 text-xs sm:text-sm md:text-base lg:text-lg">
-        {goWideEnabled && selectedAnswers.length > 0 && !timerEnded && (
+        {goWideEnabled && options.length > 2 && selectedAnswers.length > 0 && !timerEnded && (
           <span>
             Selected: {selectedAnswers.length}/2 answers {selectedAnswers.length < 2 && '(Select another or wait for timer)'}
           </span>
         )}
+        {goWideEnabled && options.length <= 2 && selectedAnswers.length > 0 && !timerEnded && 'Answer submitted! Waiting for timer to end...'}
         {!goWideEnabled && selectedAnswers.length > 0 && !timerEnded && 'Answer submitted! Waiting for timer to end...'}
         {timerEnded && !answerRevealed && 'Waiting for reveal...'}
       </div>

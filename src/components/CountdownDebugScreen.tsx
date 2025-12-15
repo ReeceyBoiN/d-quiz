@@ -29,24 +29,10 @@ export function CountdownDebugScreen() {
         setCurrentTime(prev => {
           const newValue = prev - 1;
           
-          // Use text-to-speech for countdown - only at 5-second intervals
-          if (newValue > 0 && newValue % 5 === 0) {
-            const utterance = new SpeechSynthesisUtterance(newValue.toString());
-            utterance.rate = 1;
-            utterance.pitch = 1;
-            utterance.volume = 1;
-            speechSynthesis.speak(utterance);
-          }
           
           if (newValue < 0) {
             setIsRunning(false);
             
-            // Say "Time's up!" at the end
-            const finalUtterance = new SpeechSynthesisUtterance("Time's up!");
-            finalUtterance.rate = 1;
-            finalUtterance.pitch = 1;
-            finalUtterance.volume = 1;
-            speechSynthesis.speak(finalUtterance);
             
             return 0;
           }
@@ -66,15 +52,6 @@ export function CountdownDebugScreen() {
     if (currentTime === 0) setCurrentTime(10);
     setIsRunning(true);
     
-    // Announce the starting time immediately if it's a 5-second interval
-    const startTime = currentTime === 0 ? 10 : currentTime;
-    if (startTime % 5 === 0) {
-      const utterance = new SpeechSynthesisUtterance(startTime.toString());
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-      speechSynthesis.speak(utterance);
-    }
   };
 
   const stopTimer = () => {

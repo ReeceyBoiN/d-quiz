@@ -2,52 +2,10 @@ import { useEffect, useState, useCallback } from "react";
 import { Button } from "./ui/button";
 import { motion, AnimatePresence } from "motion/react";
 import { Clock, SkipForward } from "lucide-react";
-import { useSettings } from "../utils/SettingsContext";
 
 // Voice-enabled Timer Component
 function TimerWithVoice({ timerValue, onSkipTimer }: { timerValue: number; onSkipTimer: () => void }) {
-  const { voiceCountdown } = useSettings();
-  const [lastSpokenValue, setLastSpokenValue] = useState<number | null>(null);
 
-  // Voice countdown effect
-  useEffect(() => {
-    // Only speak if voice countdown is enabled
-    if (!voiceCountdown) return;
-    
-    // Only speak at 5-second intervals (30, 25, 20, 15, 10, 5, 0) or "time's up" at 0
-    const shouldSpeak = timerValue === 0 || (timerValue > 0 && timerValue % 5 === 0);
-    
-    if (shouldSpeak && timerValue !== lastSpokenValue) {
-      setLastSpokenValue(timerValue);
-      
-      // Use Web Speech API if available
-      if ('speechSynthesis' in window) {
-        // Cancel any ongoing speech
-        window.speechSynthesis.cancel();
-        
-        const text = timerValue === 0 ? "Time's up!" : timerValue.toString();
-        const utterance = new SpeechSynthesisUtterance(text);
-        
-        // Configure voice settings for clear, immediate playback
-        utterance.rate = 1.0;
-        utterance.volume = 1.0;
-        utterance.pitch = 1.0;
-        
-        // Use a clear, neutral voice if available
-        const voices = window.speechSynthesis.getVoices();
-        const preferredVoice = voices.find(voice => 
-          voice.lang.startsWith('en') && 
-          (voice.name.includes('Google') || voice.name.includes('Microsoft') || voice.name.includes('Alex'))
-        );
-        if (preferredVoice) {
-          utterance.voice = preferredVoice;
-        }
-        
-        // Speak immediately - no delay
-        window.speechSynthesis.speak(utterance);
-      }
-    }
-  }, [timerValue, lastSpokenValue, voiceCountdown]);
 
   return (
     <motion.div

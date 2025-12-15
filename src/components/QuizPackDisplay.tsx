@@ -32,6 +32,7 @@ interface QuizPackDisplayProps {
   onSpeedBonusChange?: (speedBonus: number) => void; // Callback when speed bonus slider changes
   currentRoundPoints?: number | null; // Current round points from parent
   currentRoundSpeedBonus?: number | null; // Current round speed bonus from parent
+  onGameTimerStateChange?: (isRunning: boolean) => void; // Notify parent when timer state changes
 }
 
 export function QuizPackDisplay({
@@ -47,7 +48,8 @@ export function QuizPackDisplay({
   onPointsChange,
   onSpeedBonusChange,
   currentRoundPoints,
-  currentRoundSpeedBonus
+  currentRoundSpeedBonus,
+  onGameTimerStateChange
 }: QuizPackDisplayProps) {
   const [currentScreen, setCurrentScreen] = useState<'config' | 'question'>('config');
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
@@ -195,6 +197,13 @@ export function QuizPackDisplay({
       console.log('[QuizPackDisplay] Refs cleared');
     };
   }, []);
+
+  // Notify parent when timer state changes
+  useEffect(() => {
+    if (onGameTimerStateChange) {
+      onGameTimerStateChange(isTimerRunning);
+    }
+  }, [isTimerRunning, onGameTimerStateChange]);
 
   const handleStartTimer = useCallback(() => {
     console.log('[QuizPackDisplay] handleStartTimer called', { isTimerRunning, isMounted: isMountedRef.current });

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Slider } from "./ui/slider";
@@ -58,6 +58,9 @@ interface StatusBarProps {
   showQuizPackDisplay?: boolean;
   onEndRound?: () => void;
   onOpenBuzzersManagement?: () => void;
+  // Timer state
+  isOnTheSpotTimerRunning?: boolean; // Disable scoring controls when on-the-spot timer is running
+  isQuizPackTimerRunning?: boolean; // Disable scoring controls when quiz pack timer is running
 }
 
 interface ExtendedStatusBarProps extends StatusBarProps {
@@ -83,13 +86,15 @@ interface GameModeConfigPanelProps {
   showWheelSpinnerInterface?: boolean;
   showBuzzInMode?: boolean;
   onEndRound?: () => void;
+  timerIsRunning?: boolean; // Disable controls when on-the-spot timer is running
+  isQuizPackTimerRunning?: boolean; // Disable controls when quiz pack timer is running
 }
 
-function GameModeConfigPanel({ 
-  gameMode, 
-  goWideEnabled, 
-  evilModeEnabled, 
-  onGoWideToggle, 
+function GameModeConfigPanel({
+  gameMode,
+  goWideEnabled,
+  evilModeEnabled,
+  onGoWideToggle,
   onEvilModeToggle,
   currentRoundPoints,
   currentRoundSpeedBonus,
@@ -102,8 +107,15 @@ function GameModeConfigPanel({
   showNearestWinsInterface = false,
   showWheelSpinnerInterface = false,
   showBuzzInMode = false,
-  onEndRound
+  onEndRound,
+  isOnTheSpotTimerRunning = false,
+  isQuizPackTimerRunning = false
 }: GameModeConfigPanelProps) {
+  // Combine both timer states
+  const timerIsRunning = isOnTheSpotTimerRunning || isQuizPackTimerRunning;
+  useEffect(() => {
+    console.log('[GameModeConfigPanel] Timer running:', { isOnTheSpotTimerRunning, isQuizPackTimerRunning, timerIsRunning });
+  }, [isOnTheSpotTimerRunning, isQuizPackTimerRunning, timerIsRunning]);
   const { 
     defaultPoints, 
     defaultSpeedBonus, 
@@ -160,7 +172,7 @@ function GameModeConfigPanel({
     <div className="flex-1 h-full flex items-center justify-center">
       {/* Points section - show for keypad and buzzin modes */}
       {(gameMode === "keypad" || gameMode === "buzzin") && (
-        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center" style={{ margin: '0 5px' }}>
+        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center" style={{ margin: '0 5px', opacity: timerIsRunning ? 0.5 : 1, pointerEvents: timerIsRunning ? 'none' : 'auto' }}>
           <div className="flex flex-col gap-0.5 w-28">
             <div className="w-full h-5 flex items-center justify-center">
               <span className="text-white text-xs font-medium font-bold font-normal text-[15px]">POINTS</span>
@@ -170,7 +182,17 @@ function GameModeConfigPanel({
                 variant="outline"
                 size="sm"
                 className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
+                style={{
+                  opacity: timerIsRunning ? 0.4 : 1,
+                  backgroundColor: timerIsRunning ? '#374151' : undefined,
+                  borderColor: timerIsRunning ? '#6b7280' : undefined,
+                  color: timerIsRunning ? '#9ca3af' : undefined,
+                  cursor: timerIsRunning ? 'not-allowed' : 'pointer',
+                  pointerEvents: timerIsRunning ? 'none' : 'auto',
+                }}
+                disabled={timerIsRunning}
                 onClick={() => {
+                  if (timerIsRunning) return;
                   const currentValue = parseInt(localPoints.toString()) || 0;
                   const newValue = Math.max(0, currentValue - 1);
                   handlePointsChange(newValue.toString());
@@ -185,7 +207,19 @@ function GameModeConfigPanel({
                 variant="outline"
                 size="sm"
                 className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
-                onClick={() => handlePointsChange((localPoints + 1).toString())}
+                style={{
+                  opacity: timerIsRunning ? 0.4 : 1,
+                  backgroundColor: timerIsRunning ? '#374151' : undefined,
+                  borderColor: timerIsRunning ? '#6b7280' : undefined,
+                  color: timerIsRunning ? '#9ca3af' : undefined,
+                  cursor: timerIsRunning ? 'not-allowed' : 'pointer',
+                  pointerEvents: timerIsRunning ? 'none' : 'auto',
+                }}
+                disabled={timerIsRunning}
+                onClick={() => {
+                  if (timerIsRunning) return;
+                  handlePointsChange((localPoints + 1).toString());
+                }}
               >
                 <span className="text-xs">▲</span>
               </Button>
@@ -196,7 +230,7 @@ function GameModeConfigPanel({
 
       {/* Speed Bonus section - only show for keypad mode, not buzzin */}
       {gameMode === "keypad" && (
-        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center">
+        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center" style={{ opacity: timerIsRunning ? 0.5 : 1, pointerEvents: timerIsRunning ? 'none' : 'auto' }}>
           <div className="flex flex-col gap-0.5 w-28">
             <div className="w-full flex items-center justify-center" style={{ marginRight: '23px' }}>
               <span className="text-white text-xs font-medium font-bold no-underline font-normal text-[15px]">BONUS</span>
@@ -206,7 +240,17 @@ function GameModeConfigPanel({
                 variant="outline"
                 size="sm"
                 className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
+                style={{
+                  opacity: timerIsRunning ? 0.4 : 1,
+                  backgroundColor: timerIsRunning ? '#374151' : undefined,
+                  borderColor: timerIsRunning ? '#6b7280' : undefined,
+                  color: timerIsRunning ? '#9ca3af' : undefined,
+                  cursor: timerIsRunning ? 'not-allowed' : 'pointer',
+                  pointerEvents: timerIsRunning ? 'none' : 'auto',
+                }}
+                disabled={timerIsRunning}
                 onClick={() => {
+                  if (timerIsRunning) return;
                   const currentValue = parseInt(localSpeedBonus.toString()) || 0;
                   const newValue = Math.max(0, currentValue - 1);
                   handleSpeedBonusChange(newValue.toString());
@@ -221,7 +265,19 @@ function GameModeConfigPanel({
                 variant="outline"
                 size="sm"
                 className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
-                onClick={() => handleSpeedBonusChange((localSpeedBonus + 1).toString())}
+                style={{
+                  opacity: timerIsRunning ? 0.4 : 1,
+                  backgroundColor: timerIsRunning ? '#374151' : undefined,
+                  borderColor: timerIsRunning ? '#6b7280' : undefined,
+                  color: timerIsRunning ? '#9ca3af' : undefined,
+                  cursor: timerIsRunning ? 'not-allowed' : 'pointer',
+                  pointerEvents: timerIsRunning ? 'none' : 'auto',
+                }}
+                disabled={timerIsRunning}
+                onClick={() => {
+                  if (timerIsRunning) return;
+                  handleSpeedBonusChange((localSpeedBonus + 1).toString());
+                }}
               >
                 <span className="text-xs">▲</span>
               </Button>
@@ -232,7 +288,7 @@ function GameModeConfigPanel({
 
       {/* Modes section - only show for keypad mode */}
       {gameMode === "keypad" && (
-        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center" style={{ marginLeft: '5px' }}>
+        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center" style={{ marginLeft: '5px', opacity: timerIsRunning ? 0.5 : 1, pointerEvents: timerIsRunning ? 'none' : 'auto' }}>
           <div className="flex flex-col gap-0.5 w-32">
             <div className="w-full flex items-center justify-center">
               <span className="text-white text-xs font-medium font-bold font-normal text-[15px]">MODES</span>
@@ -243,7 +299,19 @@ function GameModeConfigPanel({
                 variant={staggeredEnabled ? "default" : "outline"}
                 size="sm"
                 className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
-                onClick={() => updateStaggeredEnabled(!staggeredEnabled)}
+                style={{
+                  opacity: timerIsRunning ? 0.4 : 1,
+                  backgroundColor: timerIsRunning ? '#374151' : undefined,
+                  borderColor: timerIsRunning ? '#6b7280' : undefined,
+                  color: timerIsRunning ? '#9ca3af' : undefined,
+                  cursor: timerIsRunning ? 'not-allowed' : 'pointer',
+                  pointerEvents: timerIsRunning ? 'none' : 'auto',
+                }}
+                disabled={timerIsRunning}
+                onClick={() => {
+                  if (timerIsRunning) return;
+                  updateStaggeredEnabled(!staggeredEnabled);
+                }}
                 title="Staggered Mode"
               >
                 <Layers className="h-3 w-3" />
@@ -254,7 +322,19 @@ function GameModeConfigPanel({
                 variant={goWideEnabled ? "default" : "outline"}
                 size="sm"
                 className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
-                onClick={() => updateGoWideEnabled(!goWideEnabled)}
+                style={{
+                  opacity: timerIsRunning ? 0.4 : 1,
+                  backgroundColor: timerIsRunning ? '#374151' : undefined,
+                  borderColor: timerIsRunning ? '#6b7280' : undefined,
+                  color: timerIsRunning ? '#9ca3af' : undefined,
+                  cursor: timerIsRunning ? 'not-allowed' : 'pointer',
+                  pointerEvents: timerIsRunning ? 'none' : 'auto',
+                }}
+                disabled={timerIsRunning}
+                onClick={() => {
+                  if (timerIsRunning) return;
+                  updateGoWideEnabled(!goWideEnabled);
+                }}
                 title="Go Wide Mode"
               >
                 <ArrowLeftRight className="h-3 w-3" />
@@ -265,7 +345,19 @@ function GameModeConfigPanel({
                 variant={evilModeEnabled ? "default" : "outline"}
                 size="sm"
                 className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
-                onClick={() => updateEvilModeEnabled(!evilModeEnabled)}
+                style={{
+                  opacity: timerIsRunning ? 0.4 : 1,
+                  backgroundColor: timerIsRunning ? '#374151' : undefined,
+                  borderColor: timerIsRunning ? '#6b7280' : undefined,
+                  color: timerIsRunning ? '#9ca3af' : undefined,
+                  cursor: timerIsRunning ? 'not-allowed' : 'pointer',
+                  pointerEvents: timerIsRunning ? 'none' : 'auto',
+                }}
+                disabled={timerIsRunning}
+                onClick={() => {
+                  if (timerIsRunning) return;
+                  updateEvilModeEnabled(!evilModeEnabled);
+                }}
                 title="Evil Mode"
               >
                 <Skull className="h-3 w-3" />
@@ -277,7 +369,7 @@ function GameModeConfigPanel({
 
       {/* Winner Points section - only show for nearest wins mode */}
       {gameMode === "nearestwins" && (
-        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center">
+        <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center" style={{ opacity: timerIsRunning ? 0.5 : 1, pointerEvents: timerIsRunning ? 'none' : 'auto' }}>
           <div className="flex flex-col gap-0.5 w-32">
             <div className="w-full flex items-center justify-center">
               <span className="text-white text-xs font-medium font-bold font-normal text-[15px]">WINNER POINTS</span>
@@ -287,7 +379,17 @@ function GameModeConfigPanel({
                 variant="outline"
                 size="sm"
                 className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
+                style={{
+                  opacity: timerIsRunning ? 0.4 : 1,
+                  backgroundColor: timerIsRunning ? '#374151' : undefined,
+                  borderColor: timerIsRunning ? '#6b7280' : undefined,
+                  color: timerIsRunning ? '#9ca3af' : undefined,
+                  cursor: timerIsRunning ? 'not-allowed' : 'pointer',
+                  pointerEvents: timerIsRunning ? 'none' : 'auto',
+                }}
+                disabled={timerIsRunning}
                 onClick={() => {
+                  if (timerIsRunning) return;
                   const currentValue = parseInt(localWinnerPoints.toString()) || 0;
                   const newValue = Math.max(0, currentValue - 1);
                   handleWinnerPointsChange(newValue.toString());
@@ -302,7 +404,19 @@ function GameModeConfigPanel({
                 variant="outline"
                 size="sm"
                 className="h-5 flex-1 p-0 border border-border rounded shadow-sm mx-0.25"
-                onClick={() => handleWinnerPointsChange((localWinnerPoints + 1).toString())}
+                style={{
+                  opacity: timerIsRunning ? 0.4 : 1,
+                  backgroundColor: timerIsRunning ? '#374151' : undefined,
+                  borderColor: timerIsRunning ? '#6b7280' : undefined,
+                  color: timerIsRunning ? '#9ca3af' : undefined,
+                  cursor: timerIsRunning ? 'not-allowed' : 'pointer',
+                  pointerEvents: timerIsRunning ? 'none' : 'auto',
+                }}
+                disabled={timerIsRunning}
+                onClick={() => {
+                  if (timerIsRunning) return;
+                  handleWinnerPointsChange((localWinnerPoints + 1).toString());
+                }}
               >
                 <span className="text-xs">▲</span>
               </Button>
@@ -372,6 +486,8 @@ export function StatusBar({
   showQuizPackDisplay = false,
   onEndRound,
   onOpenBuzzersManagement,
+  isOnTheSpotTimerRunning = false,
+  isQuizPackTimerRunning = false,
 }: ExtendedStatusBarProps) {
   const { 
     goWideEnabled: settingsGoWide, 
@@ -416,7 +532,7 @@ export function StatusBar({
 
       {/* Dynamic game mode configuration panel */}
       {currentGameMode ? (
-        <GameModeConfigPanel 
+        <GameModeConfigPanel
           gameMode={currentGameMode}
           goWideEnabled={settingsGoWide}
           evilModeEnabled={settingsEvilMode}
@@ -434,6 +550,8 @@ export function StatusBar({
           showWheelSpinnerInterface={showWheelSpinnerInterface}
           showBuzzInMode={showBuzzInMode}
           onEndRound={onEndRound}
+          isOnTheSpotTimerRunning={isOnTheSpotTimerRunning}
+          isQuizPackTimerRunning={isQuizPackTimerRunning}
         />
       ) : (
         <div className="flex-1 h-full flex items-stretch">
@@ -493,7 +611,11 @@ export function StatusBar({
                 ? 'bg-purple-500 text-white hover:bg-purple-600'
                 : 'hover:bg-accent';
             })()}`}
-            onClick={() => onGlobalScrambleKeypad?.()}
+            onClick={() => {
+              if (onGlobalScrambleKeypad) {
+                onGlobalScrambleKeypad();
+              }
+            }}
             title={(() => {
               if (!teams || teams.length === 0) return "Scramble Keypad";
               const scrambledCount = teams.filter(team => team.scrambled).length;

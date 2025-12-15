@@ -38,6 +38,8 @@ import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage } from "../state/flowState";
 import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
+import { calculateTeamPoints, rankCorrectTeams, shouldAutoDisableGoWide, type ScoringConfig } from "../utils/scoringEngine";
+import { saveGameState, createGameStateSnapshot, type RoundSettings } from "../utils/gameStatePersistence";
 import { Resizable } from "re-resizable";
 import { Button } from "./ui/button";
 import { ChevronRight } from "lucide-react";
@@ -308,8 +310,6 @@ export function QuizHost() {
     answerSubmitted: undefined,
   });
 
-  // Voice announcement tracking for timer
-  const timerVoiceAnnouncedRef = useRef<Set<number | string>>(new Set());
   const timerIsMountedRef = useRef(true);
 
   // Timer hook for countdown
@@ -322,16 +322,7 @@ export function QuizHost() {
         timeRemaining: 0,
       }));
 
-      // Announce "Times up!" when timer ends (only for non-quiz-pack modes)
-      if (voiceCountdown && !isQuizPackMode && timerIsMountedRef.current && !timerVoiceAnnouncedRef.current.has('timesUp')) {
-        console.log('[QuizHost Timer] Announcing Times up!');
-        const utterance = new SpeechSynthesisUtterance("Time's up!");
-        utterance.rate = 1;
-        utterance.pitch = 1;
-        utterance.volume = 1;
-        speechSynthesis.speak(utterance);
-        timerVoiceAnnouncedRef.current.add('timesUp');
-      }
+
     },
     onTick: (remaining) => {
       setFlowState(prev => ({
@@ -339,21 +330,7 @@ export function QuizHost() {
         timeRemaining: remaining,
       }));
 
-      // Announce countdown at 5-second intervals (5, 10, 15, etc) - only for non-quiz-pack modes
-      if (voiceCountdown && !isQuizPackMode && timerIsMountedRef.current) {
-        // Round down to nearest second for comparison
-        const roundedRemaining = Math.ceil(remaining);
 
-        if (roundedRemaining > 0 && roundedRemaining % 5 === 0 && !timerVoiceAnnouncedRef.current.has(roundedRemaining)) {
-          console.log('[QuizHost Timer] Announcing countdown:', roundedRemaining);
-          const utterance = new SpeechSynthesisUtterance(roundedRemaining.toString());
-          utterance.rate = 1;
-          utterance.pitch = 1;
-          utterance.volume = 1;
-          speechSynthesis.speak(utterance);
-          timerVoiceAnnouncedRef.current.add(roundedRemaining);
-        }
-      }
     },
   });
 
@@ -388,8 +365,9 @@ export function QuizHost() {
   const [teamAnswers, setTeamAnswers] = useState<{[teamId: string]: string}>({});
   const [teamResponseTimes, setTeamResponseTimes] = useState<{[teamId: string]: number}>({});
   const [lastResponseTimes, setLastResponseTimes] = useState<{[teamId: string]: number}>({});
+  const [teamAnswerCounts, setTeamAnswerCounts] = useState<{[teamId: string]: number}>({});
   const [showTeamAnswers, setShowTeamAnswers] = useState(false);
-  
+
   // Team answer status state for temporary background colors
   const [teamAnswerStatuses, setTeamAnswerStatuses] = useState<{[teamId: string]: 'correct' | 'incorrect' | 'no-answer'}>({});
   const [teamCorrectRankings, setTeamCorrectRankings] = useState<{[teamId: string]: number}>({});
@@ -444,6 +422,12 @@ export function QuizHost() {
   const [gameTimerRunning, setGameTimerRunning] = useState(false);
   const [gameTimerTimeRemaining, setGameTimerTimeRemaining] = useState(0);
   const [gameTimerTotalTime, setGameTimerTotalTime] = useState(0);
+  const [gameTimerStartTime, setGameTimerStartTime] = useState<number | null>(null);
+
+  // Debug effect to log gameTimerRunning state changes
+  useEffect(() => {
+    console.log('[QuizHost] gameTimerRunning changed:', gameTimerRunning);
+  }, [gameTimerRunning]);
 
   // On-the-spot game state tracking for navigation bar flow button logic
   const [gameTimerFinished, setGameTimerFinished] = useState(false);
@@ -513,6 +497,14 @@ export function QuizHost() {
         }));
         timer.reset(totalTime);
 
+        // Clear old answers from previous question
+        setTeamAnswers({});
+        setTeamResponseTimes({});
+        setTeamAnswerCounts({});
+        setShowTeamAnswers(false);
+        setTeamAnswerStatuses({});
+        setTeamCorrectRankings({});
+
         // Broadcast placeholder question to players immediately so they see answer pads right away
         try {
           let placeholderCount =
@@ -533,6 +525,7 @@ export function QuizHost() {
             type: normalizedType,
             imageUrl: currentQuestion.imageDataUrl || null,
             isPlaceholder: true,
+            goWideEnabled: goWideEnabled,
           });
 
           console.log('[QuizHost] Broadcasting placeholder question with type:', currentQuestion.type, '-> normalized:', normalizedType, 'options count:', placeholderCount);
@@ -546,23 +539,16 @@ export function QuizHost() {
   // Handle timer when flow state changes to 'running'
   useEffect(() => {
     if ((flowState.flow as any) === 'running') {
-      // Reset voice announcements for new timer session
-      timerVoiceAnnouncedRef.current.clear();
-      console.log('[QuizHost] Timer starting, reset voice announcements');
+      console.log('[QuizHost] Timer starting');
 
       const isSilent = flowState.answerSubmitted === 'silent'; // Check if silent timer was used
       timer.start(flowState.totalTime, isSilent);
 
-      // Announce starting value immediately if it's a 5-second interval (only for non-quiz-pack modes)
-      if (voiceCountdown && !isQuizPackMode && flowState.totalTime % 5 === 0 && timerIsMountedRef.current) {
-        console.log('[QuizHost] Announcing starting value:', flowState.totalTime);
-        const utterance = new SpeechSynthesisUtterance(flowState.totalTime.toString());
-        utterance.rate = 1;
-        utterance.pitch = 1;
-        utterance.volume = 1;
-        speechSynthesis.speak(utterance);
-        timerVoiceAnnouncedRef.current.add(flowState.totalTime);
-      }
+      // Set game timer start time for response time calculation (for both quiz pack and on-the-spot modes)
+      const now = Date.now();
+      setGameTimerStartTime(now);
+      console.log('[QuizHost] Game timer start time set for response time calculation:', now);
+
     } else if (flowState.flow !== 'running' && flowState.flow !== 'timeup') {
       timer.stop();
     }
@@ -615,16 +601,20 @@ export function QuizHost() {
     }
   }, [isSendQuestionDisabled]);
 
-  // Fastest team will stay on screen indefinitely until Next Question is clicked
-  // The reversion happens in the Next Question handler in the 'fastest' case
+  // Close fastest team display when advancing to next question in on-the-spot mode
+  useEffect(() => {
+    // When keypad screen changes to 'question-types', close the fastest team display
+    // This ensures the UI properly transitions when Next Question is clicked
+    if (keypadCurrentScreen === 'question-types' && showFastestTeamDisplay) {
+      setShowFastestTeamDisplay(false);
+    }
+  }, [keypadCurrentScreen, showFastestTeamDisplay]);
 
   // Cleanup effect for timer voice announcements on unmount
   useEffect(() => {
     return () => {
-      console.log('[QuizHost] Unmounting, cleaning up timer voice announcements');
+      console.log('[QuizHost] Unmounting');
       timerIsMountedRef.current = false;
-      timerVoiceAnnouncedRef.current.clear();
-      speechSynthesis.cancel();
     };
   }, []);
 
@@ -732,6 +722,7 @@ export function QuizHost() {
                   type: 'test' as const,
                   icon: '👤',
                   score: 0,
+                  photoUrl: data.teamPhoto || undefined,
                 };
 
                 setQuizzes(prev => [...prev, newTeam]);
@@ -760,6 +751,44 @@ export function QuizHost() {
                         position: idx + 1
                       }));
                     }
+
+                    // Send current game state to late joiner
+                    const currentGameState: any = {};
+
+                    // For quiz pack mode - send current question and timer state
+                    if (showQuizPackDisplay && loadedQuizQuestions.length > 0 && currentLoadedQuestionIndex < loadedQuizQuestions.length) {
+                      const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+                      const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+
+                      currentGameState.currentQuestion = {
+                        text: currentQuestion.q,
+                        options: currentQuestion.options || [],
+                        type: normalizedType,
+                        imageDataUrl: currentQuestion.imageDataUrl || null,
+                        questionNumber: currentLoadedQuestionIndex + 1,
+                        totalQuestions: loadedQuizQuestions.length
+                      };
+
+                      // Send timer state if question is active
+                      if (flowState.flow === 'running' || flowState.flow === 'timeup') {
+                        currentGameState.timerState = {
+                          isRunning: flowState.flow === 'running',
+                          timeRemaining: Math.max(0, flowState.timeRemaining),
+                          totalTime: flowState.totalTime
+                        };
+                      }
+                    }
+
+                    // For on-the-spot modes - send current question and timer state
+                    if (gameTimerRunning) {
+                      currentGameState.timerState = {
+                        isRunning: gameTimerRunning,
+                        timeRemaining: gameTimerTimeRemaining,
+                        totalTime: gameTimerTotalTime
+                      };
+                    }
+
+                    displayData.currentGameState = currentGameState;
 
                     console.log('Calling approveTeam IPC with displayData:', { deviceId, teamName, displayData });
                     await (window as any).api.network.approveTeam({ deviceId, teamName, displayData });
@@ -844,6 +873,21 @@ export function QuizHost() {
     try {
       console.log('📋 handleApproveTeam called for:', { deviceId, teamName });
 
+      // Fetch player data to get team photo
+      let teamPhoto: string | undefined = undefined;
+      try {
+        const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
+        if (result?.ok && Array.isArray(result.data)) {
+          const player = result.data.find((p: any) => p.deviceId === deviceId);
+          if (player?.teamPhoto) {
+            teamPhoto = player.teamPhoto;
+            console.log('✅ Retrieved team photo for:', teamName);
+          }
+        }
+      } catch (err) {
+        console.warn('[QuizHost] Could not fetch team photo:', err);
+      }
+
       // Add team to quizzes list
       const newTeam: Quiz = {
         id: deviceId,
@@ -851,6 +895,7 @@ export function QuizHost() {
         type: 'test' as const,
         icon: '👤',
         score: 0,
+        photoUrl: teamPhoto || undefined,
       };
 
       if (!quizzes.find(q => q.id === deviceId)) {
@@ -883,6 +928,44 @@ export function QuizHost() {
             position: idx + 1
           }));
         }
+
+        // Send current game state to late joiner
+        const currentGameState: any = {};
+
+        // For quiz pack mode - send current question and timer state
+        if (showQuizPackDisplay && loadedQuizQuestions.length > 0 && currentLoadedQuestionIndex < loadedQuizQuestions.length) {
+          const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+
+          currentGameState.currentQuestion = {
+            text: currentQuestion.q,
+            options: currentQuestion.options || [],
+            type: normalizedType,
+            imageDataUrl: currentQuestion.imageDataUrl || null,
+            questionNumber: currentLoadedQuestionIndex + 1,
+            totalQuestions: loadedQuizQuestions.length
+          };
+
+          // Send timer state if question is active
+          if (flowState.flow === 'running' || flowState.flow === 'timeup') {
+            currentGameState.timerState = {
+              isRunning: flowState.flow === 'running',
+              timeRemaining: Math.max(0, flowState.timeRemaining),
+              totalTime: flowState.totalTime
+            };
+          }
+        }
+
+        // For on-the-spot modes - send current question and timer state
+        if (gameTimerRunning) {
+          currentGameState.timerState = {
+            isRunning: gameTimerRunning,
+            timeRemaining: gameTimerTimeRemaining,
+            totalTime: gameTimerTotalTime
+          };
+        }
+
+        displayData.currentGameState = currentGameState;
 
         const result = await (window as any).api.network.approveTeam({ deviceId, teamName, displayData });
         console.log('✅ approveTeam result:', result);
@@ -945,10 +1028,13 @@ export function QuizHost() {
     // Reset team answers when closing games
     setTeamAnswers({});
     setTeamResponseTimes({});
+    setTeamAnswerCounts({});
     setShowTeamAnswers(false);
     // Clear team answer statuses and rankings
     setTeamAnswerStatuses({});
     setTeamCorrectRankings({});
+    // Reset game timer start time
+    setGameTimerStartTime(null);
   };
 
   // Play explosion sound effect using Web Audio API
@@ -1111,6 +1197,7 @@ export function QuizHost() {
     // Reset all game-related state
     setTeamAnswers({});
     setTeamResponseTimes({});
+    setTeamAnswerCounts({});
     setShowTeamAnswers(false);
     setTeamAnswerStatuses({});
     setTeamCorrectRankings({});
@@ -1127,53 +1214,26 @@ export function QuizHost() {
 
   // Handle team answer updates from game interfaces
   const handleTeamAnswerUpdate = useCallback((answers: {[teamId: string]: string}) => {
-    setTeamAnswers(answers);
+    // If empty object is passed, clear answers; otherwise merge to preserve network player answers
+    if (Object.keys(answers).length === 0) {
+      setTeamAnswers({});
+    } else {
+      setTeamAnswers(prev => ({ ...prev, ...answers }));
+    }
     setShowTeamAnswers(Object.keys(answers).length > 0);
   }, []);
 
   // Handle team response time updates from game interfaces
   const handleTeamResponseTimeUpdate = useCallback((responseTimes: {[teamId: string]: number}) => {
-    setTeamResponseTimes(responseTimes);
-    // Also update last response times for persistence
-    setLastResponseTimes(prev => ({ ...prev, ...responseTimes }));
-  }, []);
-
-  // Handle team answer status updates for keypad mode
-  const updateTeamAnswerStatuses = useCallback((correctAnswer: string | null, questionType: string | null) => {
-    if (!correctAnswer || !questionType) {
-      setTeamAnswerStatuses({});
-      setTeamCorrectRankings({});
-      return;
+    // If empty object is passed, clear response times; otherwise merge to preserve network player timings
+    if (Object.keys(responseTimes).length === 0) {
+      setTeamResponseTimes({});
+    } else {
+      setTeamResponseTimes(prev => ({ ...prev, ...responseTimes }));
+      // Also update last response times for persistence
+      setLastResponseTimes(prev => ({ ...prev, ...responseTimes }));
     }
-
-    const newStatuses: {[teamId: string]: 'correct' | 'incorrect' | 'no-answer'} = {};
-    const correctTeams: {teamId: string, responseTime: number}[] = [];
-    
-    quizzes.forEach(team => {
-      const teamAnswer = teamAnswers[team.id];
-      
-      if (!teamAnswer || teamAnswer.trim() === '') {
-        newStatuses[team.id] = 'no-answer';
-      } else if (teamAnswer === correctAnswer) {
-        newStatuses[team.id] = 'correct';
-        const responseTime = teamResponseTimes[team.id] || 0;
-        correctTeams.push({ teamId: team.id, responseTime });
-      } else {
-        newStatuses[team.id] = 'incorrect';
-      }
-    });
-    
-    // Sort correct teams by response time (fastest first) and assign rankings
-    const newRankings: {[teamId: string]: number} = {};
-    correctTeams
-      .sort((a, b) => a.responseTime - b.responseTime)
-      .forEach((team, index) => {
-        newRankings[team.teamId] = index + 1; // 1st, 2nd, 3rd, etc.
-      });
-    
-    setTeamAnswerStatuses(newStatuses);
-    setTeamCorrectRankings(newRankings);
-  }, [quizzes, teamAnswers, teamResponseTimes]);
+  }, []);
 
   // Handle timer state updates from keypad interface
   const handleTimerStateChange = useCallback((isRunning: boolean, timeRemaining: number, totalTime: number) => {
@@ -1203,6 +1263,7 @@ export function QuizHost() {
     setGameTimerRunning(false);
     setGameTimerTimeRemaining(0);
     setGameTimerTotalTime(0);
+    setGameTimerStartTime(null); // Reset timer start time when closing keypad
     setGameTimerFinished(false);
     setGameAnswerRevealed(false);
     setGameFastestRevealed(false);
@@ -1297,6 +1358,7 @@ export function QuizHost() {
             options: currentQuestion.options || [],
             type: normalizedType,
             imageUrl: currentQuestion.imageDataUrl || null,
+            goWideEnabled: goWideEnabled,
           });
 
           if (externalWindow) {
@@ -1346,6 +1408,7 @@ export function QuizHost() {
             options: currentQuestion.options || [],
             type: normalizedType,
             imageUrl: currentQuestion.imageDataUrl || null,
+            goWideEnabled: goWideEnabled,
           });
 
           if (externalWindow) {
@@ -1427,14 +1490,34 @@ export function QuizHost() {
         // User clicked "Reveal Answer" - send answer to external display and show fastest team in app
         timer.stop();
 
+        // Calculate team answer statuses and statistics immediately (don't rely on async state updates)
+        const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+        const correctAnswer = currentQuestion ? getAnswerText(currentQuestion) : null;
+
+        // Calculate answer statistics inline to avoid async state update delays
+        const newStatuses: {[teamId: string]: 'correct' | 'incorrect' | 'no-answer'} = {};
+        quizzes.forEach(team => {
+          const teamAnswer = teamAnswers[team.id];
+          if (!teamAnswer) {
+            newStatuses[team.id] = 'no-answer';
+          } else if (teamAnswer.toLowerCase().trim() === correctAnswer?.toLowerCase().trim()) {
+            newStatuses[team.id] = 'correct';
+          } else {
+            newStatuses[team.id] = 'incorrect';
+          }
+        });
+
+        // Update state with the calculated statuses
+        setTeamAnswerStatuses(newStatuses);
+
         // Send the answer to all players and external display
         if (externalWindow) {
           // For quiz pack mode, send results summary; for on-the-spot, send the answer
           if (isQuizPackMode && loadedQuizQuestions.length > 0) {
-            // Calculate answer statistics for quiz pack
-            const correctCount = quizzes.filter(team => teamAnswerStatuses[team.id] === 'correct').length;
-            const incorrectCount = quizzes.filter(team => teamAnswerStatuses[team.id] === 'incorrect').length;
-            const noAnswerCount = quizzes.filter(team => teamAnswerStatuses[team.id] === 'no-answer' || !teamAnswerStatuses[team.id]).length;
+            // Calculate answer statistics for quiz pack using just-calculated statuses
+            const correctCount = Object.values(newStatuses).filter(status => status === 'correct').length;
+            const incorrectCount = Object.values(newStatuses).filter(status => status === 'incorrect').length;
+            const noAnswerCount = Object.values(newStatuses).filter(status => status === 'no-answer').length;
 
             sendToExternalDisplay(
               {
@@ -1467,7 +1550,7 @@ export function QuizHost() {
         if (isOnTheSpotMode) {
           // For on-the-spot: Show fastest team info and transition to fastest state
           // Find the fastest team among those who answered correctly
-          const correctTeams = quizzes.filter(team => teamAnswerStatuses[team.id] === 'correct');
+          const correctTeams = quizzes.filter(team => newStatuses[team.id] === 'correct');
           const fastestTeam = correctTeams.length > 0
             ? correctTeams.reduce((fastest, current) => {
                 const currentTime = teamResponseTimes[current.id] || Infinity;
@@ -1582,6 +1665,7 @@ export function QuizHost() {
           // Reset team answers and statuses for next question
           setTeamAnswers({});
           setTeamResponseTimes({});
+          setTeamAnswerCounts({});
           setTeamAnswerStatuses({});
           setTeamCorrectRankings({});
           setFastestTeamRevealTime(null); // Reset reveal time
@@ -1596,6 +1680,7 @@ export function QuizHost() {
             // Clear team answers and statuses for next question
             setTeamAnswers({});
             setTeamResponseTimes({});
+            setTeamAnswerCounts({});
             setTeamAnswerStatuses({});
             setTeamCorrectRankings({});
 
@@ -1701,32 +1786,34 @@ export function QuizHost() {
 
   /**
    * Helper function to get the correct answer from a question in all formats
+   * For multi-choice and letters: prioritizes correctIndex to ensure letter format (A, B, C, etc.)
+   * This ensures consistency with player portal submissions which use letters
    */
   const getAnswerText = (question: any): string => {
     if (!question) return '';
 
-    if (question.answerText) {
-      return question.answerText;
-    }
-
-    if (question.meta?.short_answer) {
-      return question.meta.short_answer;
-    }
-
-    if (question.type?.toLowerCase() === 'multi' && question.options && question.correctIndex !== undefined) {
-      return question.options[question.correctIndex] || '';
+    // For multiple-choice and letters: convert correctIndex to letter (A, B, C, etc.)
+    // This must be checked FIRST to ensure we return letters, not option text
+    if (question.type?.toLowerCase() === 'multi' && question.correctIndex !== undefined) {
+      return String.fromCharCode(65 + question.correctIndex);
     }
 
     if (question.type?.toLowerCase() === 'letters' && question.correctIndex !== undefined) {
       return String.fromCharCode(65 + question.correctIndex);
     }
 
+    // For sequence: return the sequence item at correctIndex
     if (question.type?.toLowerCase() === 'sequence' && question.options && question.correctIndex !== undefined) {
       return question.options[question.correctIndex] || '';
     }
 
-    if (question.type?.toLowerCase() === 'numbers' && question.answerText) {
+    // For other types: use answerText or meta.short_answer
+    if (question.answerText) {
       return question.answerText;
+    }
+
+    if (question.meta?.short_answer) {
+      return question.meta.short_answer;
     }
 
     return '';
@@ -1764,9 +1851,9 @@ export function QuizHost() {
     if (isQuizPackMode || flowState.isQuestionMode) {
       // For quiz pack mode, use the silent timer handler
       handleSilentTimer();
-    } else if (gameActionHandlers?.startTimer) {
-      // For on-the-spot modes, start timer (silent behavior depends on game mode logic)
-      gameActionHandlers.startTimer();
+    } else if (gameActionHandlers?.silentTimer) {
+      // For on-the-spot modes, use the game-specific silent timer handler
+      gameActionHandlers.silentTimer();
     }
   }, [isQuizPackMode, flowState.isQuestionMode, gameActionHandlers, handleSilentTimer]);
 
@@ -1837,6 +1924,7 @@ export function QuizHost() {
           questionIndex: questionData.questionIndex,
           isPlaceholder: true, // Mark this as a placeholder message
           timestamp: Date.now(),
+          goWideEnabled: goWideEnabled,
         });
         console.log('[QuizHost] Broadcasted placeholder question to players with type:', questionData.type, '-> normalized:', normalizedType, 'options count:', optionsToSend.length);
       } catch (error) {
@@ -2027,6 +2115,12 @@ export function QuizHost() {
     setActiveTab("home"); // Return to home when closed
   }, []);
 
+  // Handle game timer start - capture the start time for accurate response time calculation
+  const handleGameTimerStart = useCallback((startTime: number) => {
+    setGameTimerStartTime(startTime);
+    console.log('[QuizHost] Game timer started at:', startTime, 'Current time:', Date.now(), 'Difference:', Date.now() - startTime);
+  }, []);
+
   // Update team answer statuses and calculate rankings for background colors
   const handleTeamAnswerStatusUpdate = useCallback((correctAnswer: string | null, questionType: string | null) => {
     if (!correctAnswer || !questionType) {
@@ -2111,29 +2205,8 @@ export function QuizHost() {
         setTimeRemaining(prev => {
           const newValue = prev - 1;
           
-          // Use text-to-speech for countdown - only at 5-second intervals (not for quiz pack mode - audio files handle voiceover)
-          if (voiceCountdown && !isQuizPackMode && newValue > 0) {
-            if (newValue % 5 === 0) {
-              const utterance = new SpeechSynthesisUtterance(newValue.toString());
-              utterance.rate = 1;
-              utterance.pitch = 1;
-              utterance.volume = 1;
-              speechSynthesis.speak(utterance);
-            }
-          }
-
           if (newValue < 0) {
             setShowAnswer(true);
-
-            // Say "Time's up!" at the end (not for quiz pack mode - audio files handle voiceover)
-            if (voiceCountdown && !isQuizPackMode) {
-              const finalUtterance = new SpeechSynthesisUtterance("Time's up!");
-              finalUtterance.rate = 1;
-              finalUtterance.pitch = 1;
-              finalUtterance.volume = 1;
-              speechSynthesis.speak(finalUtterance);
-            }
-            
             return 0;
           }
           return newValue;
@@ -2207,31 +2280,66 @@ export function QuizHost() {
     return unsubscribe;
   }, []); // Empty dependency array - register once on mount
 
-  // Listen for player answers
+  // Listen for player answers via IPC polling
   useEffect(() => {
     const handleNetworkPlayerAnswer = (data: any) => {
       console.log('🎯 PLAYER_ANSWER received:', data);
       const playerId = data.playerId || data.deviceId;
-      const { answer, timestamp } = data;
+      const { answer, timestamp, teamName } = data;
 
       if (!playerId) {
         console.warn('PLAYER_ANSWER missing playerId/deviceId');
         return;
       }
 
+      // Find the quiz that matches this team by team name
+      const matchingQuiz = quizzes.find(q => q.name === teamName);
+      const teamId = matchingQuiz?.id || playerId; // Fallback to playerId if no quiz found
+
+      console.log('[QuizHost] Mapping player answer - playerId:', playerId, 'teamName:', teamName, 'teamId:', teamId);
+
       // Update team answers for real-time display in teams column
       setTeamAnswers(prev => {
-        const updated = { ...prev, [playerId]: answer };
+        // Extract the answer value(s)
+        // For go-wide mode with multiple answers, use allAnswers array
+        // For single answer, use the single answer value
+        let answerValue: string;
+        if (answer?.allAnswers && Array.isArray(answer.allAnswers) && answer.allAnswers.length > 1) {
+          // Go-wide mode with multiple answers - store as comma-separated string
+          answerValue = answer.allAnswers.map((a: string) => String(a)).join(', ');
+        } else {
+          // Single answer mode
+          answerValue = String(answer?.answer ?? answer ?? '');
+        }
+        const updated = { ...prev, [teamId]: answerValue };
         console.log('[QuizHost] Updated teamAnswers:', updated);
         return updated;
       });
 
-      // Compute response time from server timestamp
-      if (timestamp) {
-        const responseTime = Date.now() - timestamp;
+      // Track answer count for scoring (1 or 2 for go-wide mode)
+      if (answer?.answerCount) {
+        setTeamAnswerCounts(prev => {
+          const updated = { ...prev, [teamId]: answer.answerCount };
+          console.log('[QuizHost] Updated teamAnswerCounts:', updated);
+          return updated;
+        });
+      }
+
+      // Compute response time from when timer started to when the player submitted their answer
+      // timestamp is when the player submitted on their device
+      let responseTime = 0;
+      if (gameTimerStartTime && timestamp) {
+        // Correct calculation: answer submission time - timer start time
+        responseTime = timestamp - gameTimerStartTime;
+      } else if (gameTimerStartTime) {
+        // Fallback: current time - timer start time (if timestamp is missing)
+        responseTime = Date.now() - gameTimerStartTime;
+      }
+
+      if (responseTime > 0) {
         setTeamResponseTimes(prev => {
-          const updated = { ...prev, [playerId]: responseTime };
-          console.log('[QuizHost] Updated teamResponseTimes:', updated);
+          const updated = { ...prev, [teamId]: responseTime };
+          console.log('[QuizHost] Updated teamResponseTimes:', updated, 'calculation: timestamp(' + timestamp + ') - gameTimerStartTime(' + gameTimerStartTime + ') = ' + responseTime);
           return updated;
         });
       }
@@ -2240,15 +2348,94 @@ export function QuizHost() {
       setShowTeamAnswers(true);
     };
 
-    // Register listener and get unsubscribe function
+    // Poll IPC for pending answers every 500ms
+    const pollInterval = setInterval(async () => {
+      try {
+        const result = await (window as any).api?.ipc?.invoke?.('network/pending-answers');
+        if (result?.ok && Array.isArray(result.data)) {
+          // Process each pending answer
+          result.data.forEach((answer: any) => {
+            handleNetworkPlayerAnswer(answer);
+          });
+        }
+      } catch (err) {
+        console.error('[QuizHost] Error polling for pending answers:', err);
+      }
+    }, 500);
+
+    // Also keep the wsHost listener for backward compatibility
     const unsubscribe = onNetworkMessage('PLAYER_ANSWER', handleNetworkPlayerAnswer);
 
-    // Clean up listener on unmount
-    return unsubscribe;
-  }, []); // Empty dependency array - register once on mount
+    // Clean up both listeners and interval
+    return () => {
+      clearInterval(pollInterval);
+      if (unsubscribe) unsubscribe();
+    };
+  }, [quizzes]); // Re-register listener when quizzes change to ensure latest team list is used
 
   const handleRevealAnswer = () => {
     setShowAnswer(true);
+    // Show team answers and response times in sidebar
+    setShowTeamAnswers(true);
+
+    // For quiz pack mode, calculate and award points when answer is revealed
+    if (isQuizPackMode && loadedQuizQuestions.length > 0) {
+      const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+      if (currentQuestion) {
+        // Determine correct teams based on the question's correct answer
+        const correctAnswer = getAnswerText(currentQuestion);
+        const correctTeamIds = quizzes
+          .filter(team => {
+            const teamAnswer = teamAnswers[team.id];
+            if (!teamAnswer || String(teamAnswer).trim() === '') return false;
+
+            // For go-wide mode (comma-separated answers), check if ANY answer matches
+            const answers = String(teamAnswer)
+              .split(',')
+              .map(a => a.trim().toLowerCase());
+            const correctAnswerLower = String(correctAnswer).toLowerCase().trim();
+
+            // Check if any of the team's answers matches the correct answer
+            return answers.some(ans => ans === correctAnswerLower);
+          })
+          .map(team => team.id);
+
+        // Determine fastest correct team
+        let fastestTeamId: string | undefined;
+        if (correctTeamIds.length > 0) {
+          const correctTeamsWithTimes = correctTeamIds
+            .map(teamId => ({ teamId, time: teamResponseTimes[teamId] || Infinity }))
+            .sort((a, b) => a.time - b.time);
+          fastestTeamId = correctTeamsWithTimes[0]?.teamId;
+        }
+
+        // Award points using unified scoring function
+        handleComputeAndAwardScores(correctTeamIds, 'keypad', fastestTeamId, teamResponseTimes);
+
+        // Apply evil mode penalties if enabled (evilModeEnabled and punishmentEnabled are from component-level useSettings)
+        if (evilModeEnabled || punishmentEnabled) {
+          const wrongTeamIds = quizzes
+            .filter(team => {
+              const teamAnswer = teamAnswers[team.id];
+              // Team answered but it was wrong (not in correct team list)
+              return teamAnswer && String(teamAnswer).trim() !== '' && !correctTeamIds.includes(team.id);
+            })
+            .map(team => team.id);
+
+          const noAnswerTeamIds = quizzes
+            .filter(team => {
+              const teamAnswer = teamAnswers[team.id];
+              // Team didn't answer or submitted empty answer
+              return !teamAnswer || String(teamAnswer).trim() === '';
+            })
+            .map(team => team.id);
+
+          handleApplyEvilModePenalty(wrongTeamIds, noAnswerTeamIds, 'keypad');
+        }
+
+        console.log(`[QuizPack] Scoring applied for question ${currentLoadedQuestionIndex + 1}`);
+      }
+    }
 
     // Send results summary to external display
     if (isQuizPackMode && externalWindow && loadedQuizQuestions.length > 0) {
@@ -2325,16 +2512,21 @@ export function QuizHost() {
   };
 
   const handleDisplayModeChange = (mode: "basic" | "slideshow" | "scores" | "leaderboard-intro" | "leaderboard-reveal" | "timer" | "correctAnswer") => {
+    console.log('[handleDisplayModeChange] Display mode changing to:', mode);
     setDisplayMode(mode);
-    
+
     // Remember user's preference for non-leaderboard modes
     if (mode === "basic" || mode === "slideshow" || mode === "scores") {
+      console.log('[handleDisplayModeChange] Saving user preference:', mode);
       setUserSelectedDisplayMode(mode);
     }
-    
+
     // Update external display if open
     if (externalWindow && !externalWindow.closed) {
+      console.log('[handleDisplayModeChange] External window is open, updating display with mode:', mode);
       updateExternalDisplay(externalWindow, mode);
+    } else {
+      console.log('[handleDisplayModeChange] External window not available or closed', { hasWindow: !!externalWindow, isClosed: externalWindow?.closed });
     }
   };
 
@@ -2580,7 +2772,8 @@ export function QuizHost() {
 
         // Wait for the external display window to load and set up listeners
         setTimeout(() => {
-          updateExternalDisplay({ _isElectronWindow: true } as any, displayMode);
+          console.log('[QuizHost] Sending initial display mode to external window:', userSelectedDisplayMode);
+          updateExternalDisplay({ _isElectronWindow: true } as any, userSelectedDisplayMode);
         }, 800);
       } catch (error) {
         console.error('Failed to open external display:', error);
@@ -2602,7 +2795,8 @@ export function QuizHost() {
 
         // Wait for the external display app to load and set up its message listener
         setTimeout(() => {
-          updateExternalDisplay(newWindow, displayMode);
+          console.log('[QuizHost] Sending initial display mode to browser window:', userSelectedDisplayMode);
+          updateExternalDisplay(newWindow, userSelectedDisplayMode);
         }, 800);
       } else {
         alert('Please allow popups for this site to enable external display.');
@@ -2643,7 +2837,8 @@ export function QuizHost() {
     }, 1000);
 
     setTimeout(() => {
-      updateExternalDisplay(newWindow, displayMode);
+      console.log('[QuizHost] Sending initial display mode to blank window:', userSelectedDisplayMode);
+      updateExternalDisplay(newWindow, userSelectedDisplayMode);
     }, 800);
   };
 
@@ -2668,11 +2863,11 @@ export function QuizHost() {
     }
   };
 
-  const updateExternalDisplay = (window: Window, mode: string, data?: any) => {
-    if (!window) return;
+  const updateExternalDisplay = (displayWindow: Window, mode: string, data?: any) => {
+    if (!displayWindow) return;
 
     // Check if this is an Electron window marker
-    const isElectronWindow = (window as any)._isElectronWindow;
+    const isElectronWindow = (displayWindow as any)._isElectronWindow;
 
     const messageData = {
       type: 'DISPLAY_UPDATE',
@@ -2702,12 +2897,14 @@ export function QuizHost() {
     };
 
     if (isElectronWindow) {
-      // Send via IPC for Electron windows
+      // Send via IPC for Electron windows - use global window object, not the marker parameter
+      console.log('[updateExternalDisplay] Sending to Electron external display with mode:', mode);
       (window as any).api?.ipc?.send('external-display/update', messageData);
     } else {
       // Send via postMessage for browser windows
-      if (!window.closed) {
-        window.postMessage(messageData, '*');
+      if (!displayWindow.closed) {
+        console.log('[updateExternalDisplay] Sending to Browser external display with mode:', mode);
+        displayWindow.postMessage(messageData, '*');
       }
     }
   };
@@ -2857,6 +3054,144 @@ export function QuizHost() {
       return newQuizzes;
     });
   }, [teamLayoutMode, scoresHidden, scoresPaused]);
+
+  /**
+   * Compute and award points to ALL teams (correct, wrong, no-answer)
+   * Handles: normal points, speed bonus, staggered mode, go-wide penalty, evil/punishment modes
+   * This is the unified scoring function that replaces the old handleAwardPointsWithScoring
+   */
+  const handleComputeAndAwardScores = useCallback((
+    correctTeamIds: string[],
+    gameMode: 'keypad' | 'buzzin' | 'nearestwins' | 'wheelspinner',
+    fastestTeamId?: string,
+    teamResponseTimes?: { [teamId: string]: number }
+  ) => {
+    if (scoresPaused) {
+      console.log('[Scoring] Scores are paused. Ignoring points award.');
+      return;
+    }
+
+    // Use current scoring settings from component-level useSettings
+    const scoringConfig: ScoringConfig = {
+      pointsValue: currentRoundPoints || defaultPoints || 0,
+      speedBonusValue: currentRoundSpeedBonus || defaultSpeedBonus || 0,
+      evilModeEnabled: evilModeEnabled || false,
+      punishmentModeEnabled: punishmentEnabled || false,
+      staggeredEnabled: staggeredEnabled || false,
+      goWideEnabled: goWideEnabled || false
+    };
+
+    // Process all teams (correct, wrong, and no-answer)
+    quizzes.forEach((team) => {
+      const teamAnswer = teamAnswers[team.id];
+      const teamResponse = teamResponseTimes?.[team.id];
+
+      // Determine if this team answered correctly
+      const isCorrect = correctTeamIds.includes(team.id);
+      const hasNoAnswer = !teamAnswer || String(teamAnswer).trim() === '';
+
+      // Determine if team submitted 2 answers (go-wide) - use tracked answerCount or default
+      const answerCount = teamAnswerCounts[team.id] || (isCorrect || !hasNoAnswer ? 1 : 0);
+
+      // Determine rank for staggered mode (only for correct teams)
+      let teamRank: number | undefined;
+      if (isCorrect) {
+        if (fastestTeamId === team.id) {
+          teamRank = 1;
+        } else if (staggeredEnabled && teamResponse) {
+          teamRank = Object.entries(teamResponseTimes || {})
+            .filter(([id]) => correctTeamIds.includes(id))
+            .sort(([, timeA], [, timeB]) => timeA - timeB)
+            .findIndex(([id]) => id === team.id) + 1;
+        }
+      }
+
+      const scoreResult = calculateTeamPoints({
+        teamId: team.id,
+        correctAnswer: isCorrect,
+        noAnswer: hasNoAnswer,
+        answerCount,
+        responseTime: teamResponse || 0,
+        rank: teamRank
+      }, scoringConfig, correctTeamIds.length);
+
+      // Only apply score change if there's a non-zero change
+      if (scoreResult.totalPoints !== 0) {
+        console.log(`[Scoring] Team ${team.name}: ${scoreResult.description}`);
+        handleScoreChange(team.id, scoreResult.totalPoints);
+      }
+    });
+
+    console.log('[Scoring] All team scores computed and awarded for game mode:', gameMode);
+  }, [quizzes, teamAnswers, teamAnswerCounts, teamResponseTimes, currentRoundPoints, currentRoundSpeedBonus, scoresPaused, handleScoreChange]);
+
+  // Keep backward compatibility alias
+  const handleAwardPointsWithScoring = handleComputeAndAwardScores;
+
+  /**
+   * Apply evil mode and punishment mode penalties to wrong/no-answer teams
+   * Handles: evil mode (wrong answer penalty), punishment mode (no-answer penalty)
+   */
+  const handleApplyEvilModePenalty = useCallback((
+    wrongTeamIds: string[],
+    noAnswerTeamIds: string[],
+    gameMode: 'keypad' | 'buzzin' | 'nearestwins' | 'wheelspinner'
+  ) => {
+    if (scoresPaused) {
+      console.log('[Evil Mode] Scores are paused. Ignoring penalty.');
+      return;
+    }
+
+    // Use current round points or default points from component-level useSettings
+    const scoringConfig: ScoringConfig = {
+      pointsValue: currentRoundPoints || defaultPoints || 0,
+      speedBonusValue: 0, // No speed bonus for penalties
+      evilModeEnabled: evilModeEnabled || false,
+      punishmentModeEnabled: punishmentEnabled || false,
+      staggeredEnabled: false, // Staggered doesn't apply to penalties
+      goWideEnabled: false // Go-wide doesn't apply to penalties
+    };
+
+    // Apply penalties to wrong answer teams
+    wrongTeamIds.forEach((teamId) => {
+      const team = quizzes.find(t => t.id === teamId);
+      if (!team) return;
+
+      const scoreResult = calculateTeamPoints({
+        teamId,
+        correctAnswer: false,
+        noAnswer: false,
+        answerCount: 1,
+        responseTime: 0
+      }, scoringConfig, 0);
+
+      if (scoreResult.totalPoints !== 0) {
+        console.log(`[Evil Mode] Team ${team.name}: ${scoreResult.description}`);
+        handleScoreChange(teamId, scoreResult.totalPoints);
+      }
+    });
+
+    // Apply penalties to no-answer teams
+    noAnswerTeamIds.forEach((teamId) => {
+      const team = quizzes.find(t => t.id === teamId);
+      if (!team) return;
+
+      const scoreResult = calculateTeamPoints({
+        teamId,
+        correctAnswer: false,
+        noAnswer: true,
+        answerCount: 0,
+        responseTime: 0
+      }, scoringConfig, 0);
+
+      if (scoreResult.totalPoints !== 0) {
+        console.log(`[Evil Mode] Team ${team.name}: ${scoreResult.description}`);
+        handleScoreChange(teamId, scoreResult.totalPoints);
+      }
+    });
+
+    console.log('[Evil Mode] Penalties applied successfully for game mode:', gameMode);
+  }, [quizzes, currentRoundPoints, defaultPoints, evilModeEnabled, punishmentEnabled, scoresPaused, handleScoreChange]);
 
   const handleScoreSet = useCallback((teamId: string, newScore: number) => {
     // Check if scores are paused
@@ -3158,9 +3493,11 @@ export function QuizHost() {
     );
   };
 
-  // Empty lobby - delete all teams
-  const handleEmptyLobby = () => {
+  // Empty lobby - delete all teams and clear crash recovery
+  const handleEmptyLobby = async () => {
     setQuizzes([]);
+    // Clear saved game state on crash recovery
+    await clearGameState().catch(err => console.error('[Crash Recovery] Error clearing game state:', err));
   };
 
   // Handle host location change
@@ -3290,6 +3627,7 @@ export function QuizHost() {
             onSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
             currentRoundPoints={currentRoundPoints}
             currentRoundSpeedBonus={currentRoundSpeedBonus}
+            onGameTimerStateChange={setGameTimerRunning}
           />
         </div>
       );
@@ -3309,10 +3647,11 @@ export function QuizHost() {
               externalWindow={externalWindow}
               onExternalDisplayUpdate={handleExternalDisplayUpdate}
               teams={quizzes}
+              teamAnswers={teamAnswers}
               onTeamAnswerUpdate={handleTeamAnswerUpdate}
               onTeamResponseTimeUpdate={handleTeamResponseTimeUpdate}
-              onAwardPoints={handleScoreChange}
-              onEvilModePenalty={handleScoreChange}
+              onAwardPoints={handleAwardPointsWithScoring}
+              onEvilModePenalty={handleApplyEvilModePenalty}
               currentRoundPoints={currentRoundPoints}
               currentRoundSpeedBonus={currentRoundSpeedBonus}
               onCurrentRoundPointsChange={handleCurrentRoundPointsChange}
@@ -3336,6 +3675,7 @@ export function QuizHost() {
               onGameFastestRevealed={setGameFastestRevealed}
               onTeamsAnsweredCorrectly={setTeamsAnsweredCorrectly}
               onGameAnswerSelected={setGameAnswerSelected}
+              onTimerStart={handleGameTimerStart}
             />
           </div>
           
@@ -3554,8 +3894,9 @@ export function QuizHost() {
             onDeleteTeam={handleDeleteTeam}
             onTeamDoubleClick={handleTeamDoubleClick}
             teamAnswers={getCurrentGameMode() !== null ? teamAnswers : {}}
-            teamResponseTimes={getCurrentGameMode() !== null && (showTeamAnswers || Object.keys(teamResponseTimes).length > 0) ? teamResponseTimes : {}}
-            showAnswers={getCurrentGameMode() !== null && (showTeamAnswers || Object.keys(teamAnswers).length > 0 || Object.keys(teamResponseTimes).length > 0)}
+            teamResponseTimes={getCurrentGameMode() !== null ? teamResponseTimes : {}}
+            lastResponseTimes={getCurrentGameMode() !== null ? lastResponseTimes : {}}
+            showAnswers={getCurrentGameMode() !== null && (showTeamAnswers || Object.keys(teamAnswers).length > 0 || Object.keys(teamResponseTimes).length > 0 || Object.keys(lastResponseTimes).length > 0)}
             scoresPaused={scoresPaused}
             scoresHidden={scoresHidden}
             teamAnswerStatuses={teamAnswerStatuses}
@@ -3624,6 +3965,32 @@ export function QuizHost() {
             onStartTimer={handleNavBarStartTimer}
             onSilentTimer={handleNavBarSilentTimer}
             onHideQuestion={handleHideQuestion}
+            onReveal={
+              isQuizPackMode || flowState.isQuestionMode
+                ? () => {
+                    handleRevealAnswer();
+                    handlePrimaryAction();
+                  }
+                : gameActionHandlers?.reveal ?? (() => {})
+            }
+            onNextAction={() => {
+              if (isQuizPackMode || flowState.isQuestionMode) {
+                // Quiz pack mode - use primary action handler which manages flow state machine
+                handlePrimaryAction();
+              } else if (gameActionHandlers?.nextQuestion) {
+                // On-the-spot mode - use game action handlers
+                gameActionHandlers.nextQuestion();
+              }
+            }}
+            onRevealFastestTeam={() => {
+              if (isQuizPackMode || flowState.isQuestionMode) {
+                // Quiz pack mode - use primary action handler to transition flow state
+                handlePrimaryAction();
+              } else if (gameActionHandlers?.revealFastestTeam) {
+                // On-the-spot mode - use game action handlers
+                gameActionHandlers.revealFastestTeam();
+              }
+            }}
             leftSidebarWidth={sidebarWidth}
             isTimerRunning={timer.isRunning}
             timerProgress={timer.progress}
@@ -3654,6 +4021,8 @@ export function QuizHost() {
             onDisplaySettings={handleDisplaySettings}
             leftSidebarWidth={sidebarWidth}
             currentGameMode={getCurrentGameMode()}
+            isOnTheSpotTimerRunning={gameTimerRunning}
+            isQuizPackTimerRunning={showQuizPackDisplay && timer.isRunning}
             goWideEnabled={goWideEnabled}
             evilModeEnabled={evilModeEnabled}
             onGoWideToggle={handleGoWideToggle}
@@ -3769,23 +4138,7 @@ export function QuizHost() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Next Question Button - appears at bottom right when fastest team display is shown */}
-      {showFastestTeamDisplay && (
-        <div className="fixed bottom-20 right-6 z-50">
-          <Button
-            className="bg-[#3498db] hover:bg-[#2980b9] text-white border-0 shadow-lg flex items-center gap-3 px-8 py-6 text-xl"
-            onClick={() => {
-              // Close fastest team display and trigger next question in KeypadInterface
-              setShowFastestTeamDisplay(false);
-              setKeypadNextQuestionTrigger(prev => prev + 1);
-              console.log('Next Question clicked - advancing to question type selection');
-            }}
-          >
-            Next Question
-            <ChevronRight className="h-6 w-6" />
-          </Button>
-        </div>
-      )}
+      {/* Next Question button is now handled by QuestionNavigationBar for unified control */}
 
     </div>
   );

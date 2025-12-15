@@ -71,8 +71,11 @@ async function startBackend({ port = 4310 } = {}) {
   const wss = new WebSocketServer({ server, path: '/events' });
   loadEvents(wss);
 
-  // Track network players: deviceId -> { ws, playerId, teamName, status }
+  // Track network players: deviceId -> { ws, playerId, teamName, status, teamPhoto, timestamp }
   const networkPlayers = new Map();
+
+  // Store recent answers for retrieval by host app
+  const recentAnswers = new Map(); // deviceId -> { playerId, teamName, answer, timestamp }
 
   // Handle incoming WebSocket messages from players
   wss.on('connection', (ws) => {
@@ -121,8 +124,12 @@ async function startBackend({ port = 4310 } = {}) {
                 playerId,
                 teamName: data.teamName,
                 status: 'pending', // pending, approved, declined
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                teamPhoto: data.teamPhoto || null // Extract team photo from join payload
               });
+              if (data.teamPhoto) {
+                log.info(`[WS-${connectionId}] ✅ Team photo received for ${data.teamName} (size: ${data.teamPhoto.length} bytes)`);
+              }
               log.info(`[WS-${connectionId}] Stored player connection. Total players: ${networkPlayers.size}`);
             } catch (storeErr) {
               log.error(`[WS-${connectionId}] ❌ Failed to store player connection:`, storeErr.message);
@@ -139,6 +146,7 @@ async function startBackend({ port = 4310 } = {}) {
                 playerId,
                 deviceId,
                 teamName: data.teamName,
+                teamPhoto: data.teamPhoto || null,
                 timestamp: Date.now()
               });
               log.info(`[WS-${connectionId}] PLAYER_JOIN message prepared, size: ${joinMessage.length} bytes`);
@@ -174,7 +182,19 @@ async function startBackend({ port = 4310 } = {}) {
           }
         } else if (data.type === 'PLAYER_ANSWER') {
           try {
-            log.info(`[WS-${connectionId}] 📝 Player answer: ${data.teamName} answered: ${data.answer}`);
+            log.info(`[WS-${connectionId}] 📝 Player answer: ${data.teamName} answered:`, data.answer);
+
+            // Store answer for host app retrieval via IPC
+            const answerTimestamp = Date.now();
+            recentAnswers.set(deviceId, {
+              playerId: data.playerId,
+              deviceId: deviceId,
+              teamName: data.teamName,
+              answer: data.answer,
+              timestamp: answerTimestamp
+            });
+            log.info(`[WS-${connectionId}] ✅ Stored player answer. Total stored: ${recentAnswers.size}`);
+
             // Broadcast to other clients (host)
             try {
               const answerClients = Array.from(wss.clients).filter(c => c.readyState === 1 && c !== ws);
@@ -186,7 +206,7 @@ async function startBackend({ port = 4310 } = {}) {
                 deviceId: deviceId,
                 teamName: data.teamName,
                 answer: data.answer,
-                timestamp: Date.now()
+                timestamp: answerTimestamp
               });
 
               answerClients.forEach((client, idx) => {
@@ -435,10 +455,18 @@ async function startBackend({ port = 4310 } = {}) {
         playerId: player.playerId,
         teamName: player.teamName,
         status: player.status,
-        timestamp: player.timestamp
+        timestamp: player.timestamp,
+        teamPhoto: player.teamPhoto || null // Include team photo
       });
     });
     return players;
+  }
+
+  // Helper function to get pending player answers
+  function getPendingAnswers() {
+    const answers = Array.from(recentAnswers.values());
+    recentAnswers.clear(); // Clear after retrieval
+    return answers;
   }
 
   // Helper function to broadcast display mode to all connected players
@@ -680,7 +708,7 @@ async function startBackend({ port = 4310 } = {}) {
     }
   }
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest };
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest };
 }
 
 module.exports = { startBackend };

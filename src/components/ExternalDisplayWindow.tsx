@@ -65,6 +65,7 @@ export function ExternalDisplayWindow() {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'DISPLAY_UPDATE') {
         const newMode = event.data.mode || 'basic';
+        console.log('[ExternalDisplayWindow] Received DISPLAY_UPDATE message with mode:', newMode);
         setDisplayData(prevData => {
           if ((newMode === 'timer' || newMode === 'correctAnswer' || newMode === 'questionWaiting') && prevData.mode !== newMode) {
             setDynamicBackgroundColor(getRandomDynamicColor());
@@ -104,6 +105,7 @@ export function ExternalDisplayWindow() {
     if (isElectron) {
       removeIpcListener = window.api?.ipc.on("external-display/update", (data) => {
         const newMode = data.mode || 'basic';
+        console.log('[ExternalDisplayWindow] Received IPC external-display/update message with mode:', newMode);
         setDisplayData(prevData => {
           if ((newMode === 'timer' || newMode === 'correctAnswer' || newMode === 'questionWaiting') && prevData.mode !== newMode) {
             setDynamicBackgroundColor(getRandomDynamicColor());

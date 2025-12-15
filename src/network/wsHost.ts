@@ -168,10 +168,10 @@ class HostNetwork {
   /**
    * Helper to reveal the correct answer.
    */
-  public sendReveal(answer: string, correctIndex?: number, type?: string) {
+  public sendReveal(answer: string, correctIndex?: number, type?: string, selectedAnswers?: string[]) {
     this.broadcast({
       type: 'REVEAL',
-      data: { answer, correctIndex, type },
+      data: { answer, correctIndex, type, selectedAnswers: selectedAnswers || [] },
     });
   }
 
