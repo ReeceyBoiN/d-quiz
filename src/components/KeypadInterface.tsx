@@ -1222,8 +1222,10 @@ export function KeypadInterface({
   };
 
   // Auto-advance to results screen when timer finishes and answer is selected
+  // Only auto-advance when user is in a game screen (not question selection)
   useEffect(() => {
-    if (timerFinished && currentScreen !== 'results') {
+    // Guard against auto-advancing when in question-types or config screens
+    if (timerFinished && currentScreen !== 'results' && currentScreen !== 'question-types' && currentScreen !== 'config') {
       const hasAnswer = currentScreen === 'letters-game'
         ? selectedLetter
         : currentScreen === 'multiple-choice-game'
@@ -1743,12 +1745,12 @@ export function KeypadInterface({
                     onClick={() => setNumbersAnswer(prev => prev.slice(0, -1))}
                     disabled={numbersAnswerConfirmed}
                     className={`${currentDesign.buttonSize} ${currentDesign.buttonText} font-bold transition-all duration-200 hover:scale-105 ${
-                      numbersAnswerConfirmed 
-                        ? 'bg-gray-500 text-gray-300 cursor-not-allowed border border-gray-400 opacity-50' 
+                      numbersAnswerConfirmed
+                        ? 'bg-gray-500 text-gray-300 cursor-not-allowed border border-gray-400 opacity-50'
                         : 'bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white border-2 border-orange-400 shadow-lg shadow-orange-500/30'
                     }`}
                   >
-                    ��
+                    {'<'}
                   </Button>
                 </div>
               </div>

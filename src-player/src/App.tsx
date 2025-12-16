@@ -47,10 +47,14 @@ export default function App() {
   const [showFastestTeam, setShowFastestTeam] = useState(false);
   const [fastestTeamName, setFastestTeamName] = useState<string>('');
   const [fastestTeamPhoto, setFastestTeamPhoto] = useState<string | null>(null);
+  const [showAnswerFeedback, setShowAnswerFeedback] = useState(false);
+  const [isAnswerCorrect, setIsAnswerCorrect] = useState<boolean | undefined>();
+  const [submittedAnswer, setSubmittedAnswer] = useState<any>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const displayModeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fastestTeamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const submittedAnswerRef = useRef<any>(null); // Store answer in ref for immediate access, bypassing async state updates
 
   const { settings, isLoaded: playerSettingsLoaded } = usePlayerSettings();
 
@@ -77,6 +81,81 @@ export default function App() {
       }
     };
   }, [showFastestTeam]);
+
+  // Helper function to determine if player's answer is correct
+  const determineAnswerCorrectness = (submittedAnswerObj: any, correctAnswer: any, questionType?: string): boolean => {
+    // If no answer was submitted, it's incorrect
+    if (!submittedAnswerObj) {
+      console.log('[Player] ❌ No answer submitted, marking as incorrect');
+      return false;
+    }
+
+    // If no correct answer provided, can't determine correctness
+    if (!correctAnswer && correctAnswer !== 0) {
+      console.log('[Player] ❌ No correct answer provided, marking as incorrect');
+      return false;
+    }
+
+    console.log('[Player] 🔍 Correctness check - submittedAnswerObj:', submittedAnswerObj, 'correctAnswer:', correctAnswer, 'questionType param:', questionType);
+
+    const normalizeString = (str: any): string => {
+      if (str === null || str === undefined) return '';
+      return String(str).toLowerCase().trim();
+    };
+
+    // Extract the actual answer value from the submitted answer object
+    let submittedValue = submittedAnswerObj?.answer ?? submittedAnswerObj;
+    const allAnswers = submittedAnswerObj?.allAnswers;
+
+    // Determine type with priority: use submittedAnswerObj.questionType first, then parameter
+    let type = '';
+    if (submittedAnswerObj?.questionType) {
+      type = submittedAnswerObj.questionType.toLowerCase().trim();
+    } else if (questionType) {
+      type = questionType.toLowerCase().trim();
+    }
+
+    console.log('[Player] 🔍 Type detection - extracted type:', type, 'from submittedAnswerObj.questionType:', submittedAnswerObj?.questionType, 'from param:', questionType);
+    console.log('[Player] 🔍 Submitted value:', submittedValue, 'All answers:', allAnswers);
+
+    // Validate submitted value
+    if (!submittedValue && submittedValue !== 0) {
+      console.log('[Player] ❌ No submitted value found after extraction, marking as incorrect');
+      return false;
+    }
+
+    // Normalize correct answer
+    const normalizedCorrect = normalizeString(correctAnswer);
+
+    // Handle go-wide mode (multiple answers)
+    if (allAnswers && Array.isArray(allAnswers) && allAnswers.length > 0) {
+      console.log('[Player] 🔍 Checking go-wide mode answers:', allAnswers, 'against:', correctAnswer);
+      // Player is correct if ANY of their answers match the correct answer
+      return allAnswers.some((ans: any) => {
+        const normalizedAns = normalizeString(ans);
+        const matches = normalizedAns === normalizedCorrect;
+        console.log('[Player] 🔍 Go-wide comparison:', normalizedAns, '===', normalizedCorrect, '=', matches);
+        return matches;
+      });
+    }
+
+    // Handle single answer based on question type
+    if (type === 'numbers') {
+      console.log('[Player] 🔍 NUMBERS MODE comparison - submittedValue:', submittedValue, 'type:', typeof submittedValue);
+      // For numbers, do numeric comparison
+      const submittedNum = typeof submittedValue === 'number' ? submittedValue : parseInt(String(submittedValue), 10);
+      const correctNum = parseInt(String(correctAnswer), 10);
+      const isCorrect = !isNaN(submittedNum) && !isNaN(correctNum) && submittedNum === correctNum;
+      console.log('[Player] ✅ Numbers comparison:', submittedNum, '===', correctNum, '=', isCorrect, '(submittedNum type:', typeof submittedNum, 'correctNum type:', typeof correctNum, ')');
+      return isCorrect;
+    }
+
+    // For all other types (letters, multiple-choice, sequence, etc.), do string comparison
+    const normalizedSubmitted = normalizeString(submittedValue);
+    const isCorrect = normalizedSubmitted === normalizedCorrect;
+    console.log('[Player] ✅ String comparison:', normalizedSubmitted, '===', normalizedCorrect, '=', isCorrect);
+    return isCorrect;
+  };
 
   const handleConnect = useCallback((ws: WebSocket) => {
     console.log('[Player] handleConnect callback - storing WebSocket reference');
@@ -217,17 +296,54 @@ export default function App() {
         setShowTimer(false);
         break;
       case 'REVEAL':
-        console.log('[Player] REVEAL message received:', message.data?.answer);
+        console.log('[Player] 📢 REVEAL message received - full data:', message.data);
+        const revealedCorrectAnswer = message.data?.answer ?? message.data?.correctAnswer;
+        console.log('[Player] 📢 Extracted revealed correct answer:', revealedCorrectAnswer);
+        console.log('[Player] 📢 Current submitted answer state:', submittedAnswer);
+        console.log('[Player] 📢 Current question:', currentQuestion);
+        console.log('[Player] 📢 Submitted answer from REF:', submittedAnswerRef.current);
+
+        // Use REF value (synchronously captured at submission) instead of state (which may not have updated yet)
+        // This bypasses React's async state batching to ensure the answer is available immediately
+        const cachedSubmittedAnswer = submittedAnswerRef.current ?? submittedAnswer;
+        const cachedQuestionType = currentQuestion?.type;
+        const cachedCurrentQuestion = { ...currentQuestion };
+
         setAnswerRevealed(true);
-        setCorrectAnswer(message.data?.answer ?? message.data?.correctAnswer);
+        setCorrectAnswer(revealedCorrectAnswer);
         if (message.data?.selectedAnswers) {
           setSelectedAnswers(message.data.selectedAnswers);
         }
         setCurrentQuestion((prev: any) => ({
           ...prev,
           revealed: true,
-          revealedAnswer: message.data?.answer ?? message.data?.correctAnswer,
+          revealedAnswer: revealedCorrectAnswer,
         }));
+
+        // Determine if player's answer is correct using CACHED values
+        // This ensures we use the values from submission, not potentially cleared state
+        try {
+          console.log('[Player] 📢 Calling determineAnswerCorrectness with CACHED values:', {
+            submittedAnswer: cachedSubmittedAnswer,
+            revealedCorrectAnswer: revealedCorrectAnswer,
+            questionType: cachedQuestionType,
+            questionTypeDebug: {
+              raw: cachedQuestionType,
+              normalized: cachedQuestionType?.toLowerCase()
+            }
+          });
+
+          const isCorrect = determineAnswerCorrectness(
+            cachedSubmittedAnswer,
+            revealedCorrectAnswer,
+            cachedQuestionType
+          );
+          console.log('[Player] ✅ Answer correctness result:', isCorrect, 'submitted:', cachedSubmittedAnswer, 'correct:', revealedCorrectAnswer, 'cached question type:', cachedQuestionType);
+          setShowAnswerFeedback(true);
+          setIsAnswerCorrect(isCorrect);
+        } catch (err) {
+          console.error('[Player] ❌ Error determining answer correctness:', err);
+        }
         break;
       case 'NEXT':
         console.log('[Player] NEXT message received - clearing all question state immediately');
@@ -240,6 +356,10 @@ export default function App() {
         setShowFastestTeam(false);
         setFastestTeamName('');
         setFastestTeamPhoto(null);
+        setShowAnswerFeedback(false);
+        setIsAnswerCorrect(undefined);
+        setSubmittedAnswer(null);
+        submittedAnswerRef.current = null;
 
         // Cancel fastest team timer if running
         if (fastestTeamTimerRef.current) {
@@ -258,6 +378,8 @@ export default function App() {
         break;
       case 'PICTURE':
         setCurrentScreen('display');
+        setShowAnswerFeedback(false);
+        setIsAnswerCorrect(undefined);
         if (message.data?.image) {
           setCurrentQuestion((prev: any) => ({
             ...prev,
@@ -277,6 +399,10 @@ export default function App() {
             console.log('[Player] ⚠️  Ignoring DISPLAY_MODE message - question/input screen is currently active, deferring display mode change');
             break;
           }
+
+          // Clear answer feedback when switching display modes
+          setShowAnswerFeedback(false);
+          setIsAnswerCorrect(undefined);
 
           if (message.data?.mode) {
             try {
@@ -430,6 +556,12 @@ export default function App() {
   };
 
   const handleAnswerSubmit = (answer: any) => {
+    // Store answer in BOTH state (for UI updates) AND ref (for immediate access in REVEAL handler)
+    // The ref ensures answer is available synchronously when REVEAL arrives, bypassing React's async state updates
+    submittedAnswerRef.current = answer;
+    console.log('[Player] Answer submitted - stored in ref:', answer);
+    setSubmittedAnswer(answer);
+
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'PLAYER_ANSWER',
@@ -442,7 +574,7 @@ export default function App() {
   };
 
   return (
-    <NetworkContext.Provider value={{ isConnected, playerId, teamName, playerSettings: settings, goWideEnabled, answerRevealed, correctAnswer, selectedAnswers }}>
+    <NetworkContext.Provider value={{ isConnected, playerId, teamName, playerSettings: settings, goWideEnabled, answerRevealed, correctAnswer, selectedAnswers, showAnswerFeedback, isAnswerCorrect }}>
       <div className="h-screen w-screen bg-gradient-to-b from-slate-900 to-slate-800 flex flex-col">
         <div className="flex-1 overflow-hidden">
           {!isConnected && currentScreen === 'team-entry' && (

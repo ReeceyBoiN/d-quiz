@@ -60,6 +60,8 @@ export function QuestionDisplay({
   const [submitted, setSubmitted] = useState(false);
   const [timerEnded, setTimerEnded] = useState(false);
   const [submittedAnswer, setSubmittedAnswer] = useState<string | null>(null);
+  const [numberInput, setNumberInput] = useState<string>('0');
+  const [numberSubmitted, setNumberSubmitted] = useState(false);
 
   // Reset state when question changes
   useEffect(() => {
@@ -67,6 +69,8 @@ export function QuestionDisplay({
     setSubmitted(false);
     setTimerEnded(false);
     setSubmittedAnswer(null);
+    setNumberInput('0');
+    setNumberSubmitted(false);
   }, [question]);
 
   // Track when timer ends
@@ -135,6 +139,64 @@ export function QuestionDisplay({
     }
   };
 
+  // Handle number pad digit entry (1-9)
+  const handleNumberDigit = (digit: string) => {
+    if (timerEnded || numberSubmitted) return;
+
+    // Prevent leading zeros (0 -> stay as 0, but can't prepend)
+    if (numberInput === '0') {
+      setNumberInput(digit);
+    } else {
+      // Prevent excessively long numbers (max 10 digits)
+      if (numberInput.length < 10) {
+        setNumberInput(numberInput + digit);
+      }
+    }
+  };
+
+  // Handle zero button
+  const handleNumberZero = () => {
+    if (timerEnded || numberSubmitted) return;
+
+    // Prevent leading zeros
+    if (numberInput === '0') {
+      return; // Stay at 0
+    }
+
+    // Add zero if not already at max length
+    if (numberInput.length < 10) {
+      setNumberInput(numberInput + '0');
+    }
+  };
+
+  // Handle clear button
+  const handleClearNumber = () => {
+    if (timerEnded || numberSubmitted) return;
+    setNumberInput('0');
+  };
+
+  // Handle submit button
+  const handleSubmitNumber = () => {
+    if (timerEnded || numberSubmitted) return;
+
+    // Convert to number
+    const numericValue = parseInt(numberInput, 10);
+
+    // Set submitted answer for display feedback (mirrors letters behavior)
+    setSubmittedAnswer(String(numericValue));
+
+    // Send the answer
+    onAnswerSubmit({
+      questionType: question?.type,
+      answer: numericValue,
+      answerIndex: 0,
+      answerCount: 1
+    });
+
+    // Lock the keypad
+    setNumberSubmitted(true);
+  };
+
   // Display question text - handle both q and text properties
   const questionText = question?.q || question?.text || '';
   const options = question?.options || [];
@@ -181,10 +243,9 @@ export function QuestionDisplay({
     return LETTERS_GRID;
   };
 
-  // Generate number options (1, 2, 3, ...)
+  // Generate number options (1, 2, 3, ... 9)
   const generateNumberOptions = () => {
-    if (options.length === 0) return [];
-    return Array.from({ length: options.length }, (_, i) => String(i + 1)); // 1, 2, 3, ...
+    return ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
   };
 
   // Determine button state classes
@@ -415,38 +476,80 @@ export function QuestionDisplay({
         {/* Number Options */}
         {isNumbers && (
           <div className="w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg">
+            {/* Submission Feedback */}
+            {submittedAnswer && (
+              <div className="mb-2 sm:mb-3 md:mb-4 p-3 sm:p-4 md:p-6 lg:p-8 bg-gradient-to-r from-cyan-500 to-cyan-600 rounded-lg sm:rounded-xl md:rounded-2xl text-center shadow-lg">
+                <p className="text-white font-bold text-base sm:text-lg md:text-xl lg:text-2xl">
+                  ✓ Answer Submitted
+                </p>
+                <p className="text-cyan-100 font-semibold text-sm sm:text-base md:text-lg lg:text-xl mt-1 sm:mt-2">
+                  {submittedAnswer}
+                </p>
+              </div>
+            )}
+
             {/* Display area for entered number */}
             <div className="mb-2 sm:mb-3 md:mb-4 p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl border-2 border-cyan-400 bg-slate-800 text-center">
-              <p className="text-white font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl">0</p>
+              <p className="text-white font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl">{numberInput}</p>
             </div>
             {/* Number grid - 3 columns */}
             <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 mb-2 sm:mb-3 md:mb-4 lg:mb-5">
               {generateNumberOptions().map((number, index) => (
                 <button
                   key={index}
-                  onClick={() => handleAnswerSelect(number)}
-                  disabled={
-                    timerEnded ||
-                    (!goWideEnabled && submitted && !selectedAnswers.includes(number))
-                  }
-                  className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform active:scale-95 ${getButtonStateClasses(
-                    number
-                  )} ${getAnimationClass(number)}`}
+                  onClick={() => handleNumberDigit(number)}
+                  disabled={timerEnded || numberSubmitted}
+                  className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform ${
+                    !numberSubmitted && !timerEnded ? 'active:scale-95' : ''
+                  } ${
+                    numberSubmitted || timerEnded
+                      ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                      : 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
+                  }`}
                 >
                   {number}
-                  {getRevealIcon(number)}
                 </button>
               ))}
             </div>
             {/* Control buttons row */}
             <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
-              <button className="aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl bg-red-500 hover:bg-red-600 text-white transition-all active:scale-95">
+              <button
+                onClick={handleClearNumber}
+                disabled={timerEnded || numberSubmitted}
+                className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
+                  !numberSubmitted && !timerEnded ? 'active:scale-95' : ''
+                } ${
+                  numberSubmitted || timerEnded
+                    ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                    : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer'
+                }`}
+              >
                 CLR
               </button>
-              <button className="aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl bg-cyan-500 hover:bg-cyan-600 text-white transition-all active:scale-95">
+              <button
+                onClick={handleNumberZero}
+                disabled={timerEnded || numberSubmitted}
+                className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
+                  !numberSubmitted && !timerEnded ? 'active:scale-95' : ''
+                } ${
+                  numberSubmitted || timerEnded
+                    ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                    : 'bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer'
+                }`}
+              >
                 0
               </button>
-              <button className="aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl bg-green-500 hover:bg-green-600 text-white transition-all active:scale-95">
+              <button
+                onClick={handleSubmitNumber}
+                disabled={timerEnded || numberSubmitted}
+                className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
+                  !numberSubmitted && !timerEnded ? 'active:scale-95' : ''
+                } ${
+                  numberSubmitted || timerEnded
+                    ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                    : 'bg-green-500 hover:bg-green-600 text-white cursor-pointer'
+                }`}
+              >
                 ✓
               </button>
             </div>
@@ -524,6 +627,39 @@ export function QuestionDisplay({
         {!goWideEnabled && selectedAnswers.length > 0 && !timerEnded && 'Answer submitted! Waiting for timer to end...'}
         {timerEnded && !answerRevealed && 'Waiting for reveal...'}
       </div>
+
+      {/* Answer Feedback Overlay */}
+      {answerRevealed && networkContext?.showAnswerFeedback && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div className="flex flex-col items-center justify-center gap-6">
+            {networkContext?.isAnswerCorrect ? (
+              <div
+                className="text-9xl text-green-500 font-bold"
+                style={{
+                  textShadow: '0 0 30px rgba(34, 197, 94, 0.8), 0 0 60px rgba(34, 197, 94, 0.6), 0 0 90px rgba(34, 197, 94, 0.4)',
+                  filter: 'drop-shadow(0 0 25px rgba(34, 197, 94, 0.8)) drop-shadow(0 0 50px rgba(34, 197, 94, 0.5))',
+                  textRendering: 'optimizeLegibility',
+                  WebkitTextStroke: '1px rgba(34, 197, 94, 0.3)'
+                }}
+              >
+                ✓
+              </div>
+            ) : (
+              <div
+                className="text-9xl text-red-500 font-bold"
+                style={{
+                  textShadow: '0 0 30px rgba(239, 68, 68, 0.8), 0 0 60px rgba(239, 68, 68, 0.6), 0 0 90px rgba(239, 68, 68, 0.4)',
+                  filter: 'drop-shadow(0 0 25px rgba(239, 68, 68, 0.8)) drop-shadow(0 0 50px rgba(239, 68, 68, 0.5))',
+                  textRendering: 'optimizeLegibility',
+                  WebkitTextStroke: '1px rgba(239, 68, 68, 0.3)'
+                }}
+              >
+                ✗
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

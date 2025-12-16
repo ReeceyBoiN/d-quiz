@@ -11,6 +11,8 @@ interface NetworkContextType {
   answerRevealed?: boolean;
   correctAnswer?: string | number | (string | number)[];
   selectedAnswers?: any[];
+  showAnswerFeedback?: boolean;
+  isAnswerCorrect?: boolean;
 }
 
 export const NetworkContext = createContext<NetworkContextType | undefined>(undefined);
