@@ -543,11 +543,8 @@ export function QuizHost() {
 
       const isSilent = flowState.answerSubmitted === 'silent'; // Check if silent timer was used
       timer.start(flowState.totalTime, isSilent);
-
-      // Set game timer start time for response time calculation (for both quiz pack and on-the-spot modes)
-      const now = Date.now();
-      setGameTimerStartTime(now);
-      console.log('[QuizHost] Game timer start time set for response time calculation:', now);
+      // Note: gameTimerStartTime is now set in handlePrimaryAction before sending timer to players
+      // This ensures players and host use the same reference point for response time calculation
 
     } else if (flowState.flow !== 'running' && flowState.flow !== 'timeup') {
       timer.stop();
@@ -1197,6 +1194,7 @@ export function QuizHost() {
     // Reset all game-related state
     setTeamAnswers({});
     setTeamResponseTimes({});
+    setLastResponseTimes({});
     setTeamAnswerCounts({});
     setShowTeamAnswers(false);
     setTeamAnswerStatuses({});
@@ -1228,6 +1226,7 @@ export function QuizHost() {
     // If empty object is passed, clear response times; otherwise merge to preserve network player timings
     if (Object.keys(responseTimes).length === 0) {
       setTeamResponseTimes({});
+      setGameTimerStartTime(null); // Reset timer start time when clearing response times
     } else {
       setTeamResponseTimes(prev => ({ ...prev, ...responseTimes }));
       // Also update last response times for persistence
@@ -1288,6 +1287,10 @@ export function QuizHost() {
 
   const handleQuizPackClose = () => {
     setShowQuizPackDisplay(false);
+
+    // Clear response times when closing quiz pack
+    setTeamResponseTimes({});
+    setLastResponseTimes({});
 
     // Reset external display to default mode when closing quiz pack
     if (externalWindow && !externalWindow.closed) {
@@ -1469,8 +1472,13 @@ export function QuizHost() {
       }
 
       case 'sent-question': {
-        // Start audible timer
-        sendTimerToPlayers(flowState.totalTime, false);
+        // Capture timer start time BEFORE sending to players so they use the same reference point
+        const now = Date.now();
+        setGameTimerStartTime(now);
+        console.log('[QuizHost] SENT-QUESTION: Setting gameTimerStartTime to', now, 'for question index:', currentLoadedQuestionIndex);
+
+        // Start audible timer and send with the same timestamp
+        sendTimerToPlayers(flowState.totalTime, false, now);
         // Play countdown audio with normal sound
         playCountdownAudio(flowState.totalTime, false).catch(error => {
           console.error('[QuizHost] Error playing countdown audio:', error);
@@ -1680,9 +1688,12 @@ export function QuizHost() {
             // Clear team answers and statuses for next question
             setTeamAnswers({});
             setTeamResponseTimes({});
+            setLastResponseTimes({});
             setTeamAnswerCounts({});
             setTeamAnswerStatuses({});
             setTeamCorrectRankings({});
+            console.log('[QuizHost] ADVANCING QUESTION: Resetting gameTimerStartTime from', gameTimerStartTime, 'to null for next question');
+            setGameTimerStartTime(null); // Reset timer start time for new question
 
             setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex + 1);
             setHideQuestionMode(false); // Reset hide question flag for next question
@@ -1767,7 +1778,12 @@ export function QuizHost() {
    * Silent timer handler - starts timer with silent countdown audio.
    */
   const handleSilentTimer = useCallback(() => {
-    sendTimerToPlayers(flowState.totalTime, true);
+    // Capture timer start time BEFORE sending to players so they use the same reference point
+    const now = Date.now();
+    setGameTimerStartTime(now);
+    console.log('[QuizHost] SILENT TIMER: Setting gameTimerStartTime to', now);
+
+    sendTimerToPlayers(flowState.totalTime, true, now);
     if (externalWindow) {
       sendToExternalDisplay(
         { type: 'TIMER', data: { seconds: flowState.totalTime, totalTime: flowState.totalTime }, totalTime: flowState.totalTime }
@@ -2118,8 +2134,8 @@ export function QuizHost() {
   // Handle game timer start - capture the start time for accurate response time calculation
   const handleGameTimerStart = useCallback((startTime: number) => {
     setGameTimerStartTime(startTime);
-    console.log('[QuizHost] Game timer started at:', startTime, 'Current time:', Date.now(), 'Difference:', Date.now() - startTime);
-  }, []);
+    console.log('[QuizHost] TIMER CALLBACK: Game timer started at:', startTime, 'Current time:', Date.now(), 'Difference:', Date.now() - startTime, 'Current question index:', currentLoadedQuestionIndex);
+  }, [currentLoadedQuestionIndex]);
 
   // Update team answer statuses and calculate rankings for background colors
   const handleTeamAnswerStatusUpdate = useCallback((correctAnswer: string | null, questionType: string | null) => {
@@ -2328,10 +2344,10 @@ export function QuizHost() {
       // Compute response time from when timer started to when the player submitted their answer
       // timestamp is when the player submitted on their device
       let responseTime = 0;
-      if (gameTimerStartTime && timestamp) {
+      if (gameTimerStartTime !== null && gameTimerStartTime !== undefined && timestamp) {
         // Correct calculation: answer submission time - timer start time
         responseTime = timestamp - gameTimerStartTime;
-      } else if (gameTimerStartTime) {
+      } else if (gameTimerStartTime !== null && gameTimerStartTime !== undefined) {
         // Fallback: current time - timer start time (if timestamp is missing)
         responseTime = Date.now() - gameTimerStartTime;
       }
@@ -2342,6 +2358,8 @@ export function QuizHost() {
           console.log('[QuizHost] Updated teamResponseTimes:', updated, 'calculation: timestamp(' + timestamp + ') - gameTimerStartTime(' + gameTimerStartTime + ') = ' + responseTime);
           return updated;
         });
+      } else {
+        console.log('[QuizHost] Response time NOT recorded for team:', teamId, '- gameTimerStartTime:', gameTimerStartTime, 'timestamp:', timestamp, 'responseTime:', responseTime);
       }
 
       // Ensure team answers are visible
@@ -2500,6 +2518,7 @@ export function QuizHost() {
     // Clear response times when starting timer for new question
     setTeamResponseTimes({});
     setLastResponseTimes({});
+    setGameTimerStartTime(null); // Reset timer start time for new question
   };
 
   const handleResetQuestion = () => {
@@ -2509,6 +2528,7 @@ export function QuizHost() {
     // Clear response times when resetting question
     setTeamResponseTimes({});
     setLastResponseTimes({});
+    setGameTimerStartTime(null); // Reset timer start time for new question
   };
 
   const handleDisplayModeChange = (mode: "basic" | "slideshow" | "scores" | "leaderboard-intro" | "leaderboard-reveal" | "timer" | "correctAnswer") => {

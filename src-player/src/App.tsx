@@ -55,6 +55,7 @@ export default function App() {
   const displayModeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fastestTeamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const submittedAnswerRef = useRef<any>(null); // Store answer in ref for immediate access, bypassing async state updates
+  const timerStartTimeRef = useRef<number | null>(null); // Store timer start time from host for accurate response time calculation
 
   const { settings, isLoaded: playerSettingsLoaded } = usePlayerSettings();
 
@@ -261,6 +262,9 @@ export default function App() {
           console.log('[Player] Cancelled display mode timer - question arrived');
         }
 
+        // Clear previous timer start time for new question
+        timerStartTimeRef.current = null;
+
         // Extract go wide flag from question
         const goWideFlag = message.data?.goWideEnabled ?? false;
         setGoWideEnabled(goWideFlag);
@@ -285,6 +289,13 @@ export default function App() {
         break;
       case 'TIMER_START':
         const timerDuration = message.data?.seconds || 30;
+        // Store the timer start time from host for accurate response time calculation
+        // This ensures player and host use the same reference point
+        const hostTimerStartTime = message.data?.timerStartTime;
+        if (hostTimerStartTime) {
+          timerStartTimeRef.current = hostTimerStartTime;
+          console.log('[Player] Timer start received with host timestamp:', hostTimerStartTime, 'current device time:', Date.now(), 'diff:', Date.now() - hostTimerStartTime);
+        }
         setTotalTimerLength(timerDuration);
         setTimeRemaining(timerDuration);
         setShowTimer(true);
@@ -360,6 +371,7 @@ export default function App() {
         setIsAnswerCorrect(undefined);
         setSubmittedAnswer(null);
         submittedAnswerRef.current = null;
+        timerStartTimeRef.current = null; // Clear stale timer reference to prevent using previous question's timestamp
 
         // Cancel fastest team timer if running
         if (fastestTeamTimerRef.current) {
@@ -570,6 +582,12 @@ export default function App() {
         answer,
         timestamp: Date.now(),
       }));
+      // Note: Host will use the received timerStartTime to calculate accurate response times
+      // Response time = submission timestamp - host timerStartTime
+      if (timerStartTimeRef.current) {
+        const responseTime = Date.now() - timerStartTimeRef.current;
+        console.log('[Player] Answer submitted after', (responseTime / 1000).toFixed(2), 'seconds from timer start');
+      }
     }
   };
 

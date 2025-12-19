@@ -144,11 +144,12 @@ class HostNetwork {
 
   /**
    * Helper to start timer on players and external display.
+   * Includes timerStartTime so players can accurately calculate response times using the same reference point.
    */
-  public sendTimerStart(seconds: number, silent: boolean = false) {
+  public sendTimerStart(seconds: number, silent: boolean = false, timerStartTime?: number) {
     this.broadcast({
       type: 'TIMER_START',
-      data: { seconds, silent },
+      data: { seconds, silent, timerStartTime: timerStartTime || Date.now() },
     });
     // Also send TIMER for external display countdown animation
     this.broadcast({
@@ -277,8 +278,8 @@ export function sendQuestionToPlayers(text: string, options?: string[], type?: s
   hostNetwork.sendQuestion(text, options, type);
 }
 
-export function sendTimerToPlayers(seconds: number, silent: boolean = false) {
-  hostNetwork.sendTimerStart(seconds, silent);
+export function sendTimerToPlayers(seconds: number, silent: boolean = false, timerStartTime?: number) {
+  hostNetwork.sendTimerStart(seconds, silent, timerStartTime);
 }
 
 export function sendRevealToPlayers(answer: string, correctIndex?: number, type?: string) {
