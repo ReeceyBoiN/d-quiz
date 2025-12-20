@@ -119,17 +119,30 @@ export function calculateAllTeamPoints(
 
 /**
  * Rank correct teams by response time
+ * Filters out teams with invalid response times (undefined or null)
  */
 export function rankCorrectTeams(
-  correctTeams: Array<{ teamId: string; responseTime: number }>
+  correctTeams: Array<{ teamId: string; responseTime: number | undefined }>
 ): { [teamId: string]: number } {
   const rankings: { [teamId: string]: number } = {};
 
+  // Filter out teams with undefined/null response times (these are invalid/missed answers)
+  const validTeams = correctTeams.filter(team =>
+    team.responseTime !== undefined && team.responseTime !== null
+  );
+
+  if (validTeams.length === 0) {
+    console.log('[scoringEngine] rankCorrectTeams: No valid teams with response times to rank');
+    return rankings;
+  }
+
   // Sort by response time (ascending - fastest first)
-  correctTeams
-    .sort((a, b) => a.responseTime - b.responseTime)
+  validTeams
+    .sort((a, b) => (a.responseTime ?? Infinity) - (b.responseTime ?? Infinity))
     .forEach((team, index) => {
-      rankings[team.teamId] = index + 1; // 1st place, 2nd place, etc.
+      const rank = index + 1; // 1st place, 2nd place, etc.
+      rankings[team.teamId] = rank;
+      console.log('[scoringEngine] rankCorrectTeams: Team', team.teamId, 'ranked', rank, 'with response time:', team.responseTime, 'ms (', (team.responseTime / 1000).toFixed(2), 's)');
     });
 
   return rankings;

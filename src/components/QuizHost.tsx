@@ -171,6 +171,40 @@ const mockParticipants: Participant[] = [
   { id: "5", name: "Eve Adams", score: 200, isConnected: true, streak: 7 }
 ];
 
+/**
+ * Validate response time based on timing constraints
+ * @param responseTime - Time in milliseconds from timer start to submission
+ * @param timeLimit - Total time allowed for the question in seconds
+ * @returns Validated response time in milliseconds, or undefined if invalid
+ */
+function validateResponseTime(
+  responseTime: number | undefined,
+  timeLimit: number
+): number | undefined {
+  // No response time recorded
+  if (responseTime === undefined || responseTime === null) {
+    return undefined;
+  }
+
+  // Pre-timer submission (submitted before timer started) - convert to 0.0
+  if (responseTime < 0) {
+    console.log('[QuizHost] validateResponseTime: Pre-timer submission detected, converting to 0.0');
+    return 0;
+  }
+
+  // Convert timeLimit from seconds to milliseconds for comparison
+  const timeLimitMs = timeLimit * 1000;
+
+  // Response within time limit - valid
+  if (responseTime <= timeLimitMs) {
+    return responseTime;
+  }
+
+  // Response after time limit - missed answer, invalid
+  console.log('[QuizHost] validateResponseTime: Missed answer detected - responseTime(' + responseTime + 'ms) > timeLimit(' + timeLimitMs + 'ms)');
+  return undefined;
+}
+
 export function QuizHost() {
   // Settings context
   const {
@@ -423,6 +457,7 @@ export function QuizHost() {
   const [gameTimerTimeRemaining, setGameTimerTimeRemaining] = useState(0);
   const [gameTimerTotalTime, setGameTimerTotalTime] = useState(0);
   const [gameTimerStartTime, setGameTimerStartTime] = useState<number | null>(null);
+  const [currentQuestionTimerId, setCurrentQuestionTimerId] = useState<number | null>(null); // Track which question the timer is for
 
   // Debug effect to log gameTimerRunning state changes
   useEffect(() => {
@@ -497,13 +532,16 @@ export function QuizHost() {
         }));
         timer.reset(totalTime);
 
-        // Clear old answers from previous question
+        // Clear old answers and response times from previous question for fresh state
+        console.log('[QuizHost] QUESTION_CHANGE: Clearing response times and answers for new question index:', currentLoadedQuestionIndex);
         setTeamAnswers({});
         setTeamResponseTimes({});
+        setLastResponseTimes({});
         setTeamAnswerCounts({});
         setShowTeamAnswers(false);
         setTeamAnswerStatuses({});
         setTeamCorrectRankings({});
+        setGameTimerStartTime(null); // Reset timer start time for new question
 
         // Broadcast placeholder question to players immediately so they see answer pads right away
         try {
@@ -535,6 +573,71 @@ export function QuizHost() {
       }
     }
   }, [currentLoadedQuestionIndex, showQuizPackDisplay, loadedQuizQuestions, gameModeTimers, flowState.currentQuestionIndex, timer, flowState.isQuestionMode]);
+
+  // Initialize state for the first question (index 0) when quiz pack first loads
+  // This effect runs separately from the question-change effect because the change effect
+  // doesn't trigger when currentLoadedQuestionIndex is 0 (since both indices start at 0)
+  useEffect(() => {
+    if (showQuizPackDisplay && flowState.isQuestionMode && loadedQuizQuestions.length > 0 && currentLoadedQuestionIndex === 0) {
+      const currentQuestion = loadedQuizQuestions[0];
+      // Only initialize once when flow state is still idle (hasn't been set to ready yet)
+      if (currentQuestion && flowState.flow === 'idle') {
+        console.log('[QuizHost] FIRST_QUESTION_INIT: Initializing state for question 0');
+        const totalTime = getTotalTimeForQuestion(currentQuestion, gameModeTimers);
+        setFlowState(prev => ({
+          ...prev,
+          flow: 'ready',
+          totalTime,
+          timeRemaining: totalTime,
+          currentQuestionIndex: 0,
+          currentQuestion,
+          pictureSent: false,
+          questionSent: false,
+          answerSubmitted: undefined,
+        }));
+        timer.reset(totalTime);
+
+        // Clear response times and timer for fresh first question state
+        console.log('[QuizHost] FIRST_QUESTION_INIT: Clearing response times and timer start time');
+        setTeamAnswers({});
+        setTeamResponseTimes({});
+        setLastResponseTimes({});
+        setTeamAnswerCounts({});
+        setShowTeamAnswers(false);
+        setTeamAnswerStatuses({});
+        setTeamCorrectRankings({});
+        setGameTimerStartTime(null); // Ensure timer start time is null until timer actually starts
+
+        // Broadcast placeholder question to players immediately so they see answer pads right away
+        try {
+          let placeholderCount =
+            currentQuestion.type === 'letters' ? 6 : // A-F
+            currentQuestion.type === 'multi' || currentQuestion.type === 'multiple-choice' ? 4 : // 4 options
+            currentQuestion.type === 'numbers' ? 4 : // 4 numbers
+            currentQuestion.type === 'nearest' ? 4 : // 4 numbers
+            currentQuestion.type === 'sequence' ? currentQuestion.options?.length || 3 : // Use actual options count
+            1; // 1 for buzzin
+
+          const placeholderOptions = Array.from({ length: placeholderCount }, (_, i) => `option_${i + 1}`);
+
+          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          broadcastQuestionToPlayers({
+            text: 'Waiting for question...',
+            q: 'Waiting for question...',
+            options: placeholderOptions,
+            type: normalizedType,
+            imageUrl: currentQuestion.imageDataUrl || null,
+            isPlaceholder: true,
+            goWideEnabled: goWideEnabled,
+          });
+
+          console.log('[QuizHost] Broadcasting placeholder question for first question with type:', currentQuestion.type, '-> normalized:', normalizedType, 'options count:', placeholderCount);
+        } catch (err) {
+          console.error('[QuizHost] Error broadcasting placeholder question for first question:', err);
+        }
+      }
+    }
+  }, [showQuizPackDisplay, flowState.isQuestionMode, loadedQuizQuestions, gameModeTimers, timer, goWideEnabled]);
 
   // Handle timer when flow state changes to 'running'
   useEffect(() => {
@@ -1227,12 +1330,30 @@ export function QuizHost() {
     if (Object.keys(responseTimes).length === 0) {
       setTeamResponseTimes({});
       setGameTimerStartTime(null); // Reset timer start time when clearing response times
+      setCurrentQuestionTimerId(null); // Reset question timer ID
     } else {
-      setTeamResponseTimes(prev => ({ ...prev, ...responseTimes }));
-      // Also update last response times for persistence
-      setLastResponseTimes(prev => ({ ...prev, ...responseTimes }));
+      // Validate response times against the current question's time limit
+      const validatedTimes: {[teamId: string]: number} = {};
+      const timeLimit = flowState.totalTime; // Time limit in seconds from flow state
+
+      Object.entries(responseTimes).forEach(([teamId, responseTime]) => {
+        const validated = validateResponseTime(responseTime, timeLimit);
+        if (validated !== undefined) {
+          validatedTimes[teamId] = validated;
+          console.log('[QuizHost] handleTeamResponseTimeUpdate: Team', teamId, 'response time validated:', validated, 'ms (', (validated / 1000).toFixed(2), 's)');
+        } else {
+          console.log('[QuizHost] handleTeamResponseTimeUpdate: Team', teamId, 'response time invalid:', responseTime, 'ms - not storing');
+        }
+      });
+
+      // Only merge valid response times
+      if (Object.keys(validatedTimes).length > 0) {
+        setTeamResponseTimes(prev => ({ ...prev, ...validatedTimes }));
+        // Also update last response times for persistence
+        setLastResponseTimes(prev => ({ ...prev, ...validatedTimes }));
+      }
     }
-  }, []);
+  }, [flowState.totalTime]);
 
   // Handle timer state updates from keypad interface
   const handleTimerStateChange = useCallback((isRunning: boolean, timeRemaining: number, totalTime: number) => {
@@ -1472,12 +1593,12 @@ export function QuizHost() {
       }
 
       case 'sent-question': {
-        // Capture timer start time BEFORE sending to players so they use the same reference point
-        const now = Date.now();
-        setGameTimerStartTime(now);
-        console.log('[QuizHost] SENT-QUESTION: Setting gameTimerStartTime to', now, 'for question index:', currentLoadedQuestionIndex);
+        // Note: Timer start time is now set exclusively via handleGameTimerStart callback
+        // from KeypadInterface when the timer actually starts. This ensures a single source
+        // of truth for response time calculations across all game modes.
 
-        // Start audible timer and send with the same timestamp
+        // Start audible timer without capturing time here - let timer callback handle it
+        const now = Date.now();
         sendTimerToPlayers(flowState.totalTime, false, now);
         // Play countdown audio with normal sound
         playCountdownAudio(flowState.totalTime, false).catch(error => {
@@ -1777,29 +1898,6 @@ export function QuizHost() {
   /**
    * Silent timer handler - starts timer with silent countdown audio.
    */
-  const handleSilentTimer = useCallback(() => {
-    // Capture timer start time BEFORE sending to players so they use the same reference point
-    const now = Date.now();
-    setGameTimerStartTime(now);
-    console.log('[QuizHost] SILENT TIMER: Setting gameTimerStartTime to', now);
-
-    sendTimerToPlayers(flowState.totalTime, true, now);
-    if (externalWindow) {
-      sendToExternalDisplay(
-        { type: 'TIMER', data: { seconds: flowState.totalTime, totalTime: flowState.totalTime }, totalTime: flowState.totalTime }
-      );
-    }
-    // Play silent countdown audio
-    playCountdownAudio(flowState.totalTime, true).catch(error => {
-      console.error('[QuizHost] Error playing silent countdown audio:', error);
-    });
-    setFlowState(prev => ({
-      ...prev,
-      flow: 'running',
-      answerSubmitted: 'silent',
-    }));
-  }, [flowState.totalTime, externalWindow]);
-
   /**
    * Helper function to get the correct answer from a question in all formats
    * For multi-choice and letters: prioritizes correctIndex to ensure letter format (A, B, C, etc.)
@@ -1865,13 +1963,41 @@ export function QuizHost() {
    */
   const handleNavBarSilentTimer = useCallback(() => {
     if (isQuizPackMode || flowState.isQuestionMode) {
-      // For quiz pack mode, use the silent timer handler
-      handleSilentTimer();
+      // For quiz pack mode: play silent timer audio and start timer
+      const now = Date.now();
+
+      // Play silent timer audio file (countdown without voice/beeps)
+      playCountdownAudio(flowState.totalTime, true).catch(error => {
+        console.error('[QuizHost] Error playing silent countdown audio:', error);
+      });
+
+      // Set the timer start time for accurate response time calculation
+      setGameTimerStartTime(now);
+      console.log('[QuizHost] SILENT_TIMER: Setting gameTimerStartTime to', now);
+
+      // Send timer to players
+      sendTimerToPlayers(flowState.totalTime, true, now);
+
+      // Update external display with timer
+      if (externalWindow) {
+        sendToExternalDisplay({
+          type: 'TIMER',
+          data: { seconds: flowState.totalTime, totalTime: flowState.totalTime },
+          totalTime: flowState.totalTime
+        });
+      }
+
+      // Transition to running state which will trigger local timer start
+      setFlowState(prev => ({
+        ...prev,
+        flow: 'running',
+        answerSubmitted: 'silent',
+      }));
     } else if (gameActionHandlers?.silentTimer) {
       // For on-the-spot modes, use the game-specific silent timer handler
       gameActionHandlers.silentTimer();
     }
-  }, [isQuizPackMode, flowState.isQuestionMode, gameActionHandlers, handleSilentTimer]);
+  }, [isQuizPackMode, flowState.totalTime, flowState.isQuestionMode, externalWindow, gameActionHandlers]);
 
   /**
    * Hide question handler - prevents question from being sent to players and external display.
@@ -2131,11 +2257,21 @@ export function QuizHost() {
     setActiveTab("home"); // Return to home when closed
   }, []);
 
-  // Handle game timer start - capture the start time for accurate response time calculation
+  // Handle game timer start - capture the start time and question context for accurate response time calculation
   const handleGameTimerStart = useCallback((startTime: number) => {
+    // Only update gameTimerStartTime if this timer is for the current question
+    // This prevents timer start times from previous questions from being used
+    const questionId = currentLoadedQuestionIndex;
+
+    // Check if this timer is for a different question than the last timer
+    if (currentQuestionTimerId !== questionId) {
+      setCurrentQuestionTimerId(questionId);
+      console.log('[QuizHost] TIMER_START: New question timer - question index:', questionId, 'timer start time:', startTime);
+    }
+
     setGameTimerStartTime(startTime);
-    console.log('[QuizHost] TIMER CALLBACK: Game timer started at:', startTime, 'Current time:', Date.now(), 'Difference:', Date.now() - startTime, 'Current question index:', currentLoadedQuestionIndex);
-  }, [currentLoadedQuestionIndex]);
+    console.log('[QuizHost] TIMER_START: Game timer started at:', startTime, 'for question:', questionId, 'Current time:', Date.now(), 'Time since start:', Date.now() - startTime);
+  }, [currentLoadedQuestionIndex, currentQuestionTimerId]);
 
   // Update team answer statuses and calculate rankings for background colors
   const handleTeamAnswerStatusUpdate = useCallback((correctAnswer: string | null, questionType: string | null) => {
@@ -2343,23 +2479,31 @@ export function QuizHost() {
 
       // Compute response time from when timer started to when the player submitted their answer
       // timestamp is when the player submitted on their device
-      let responseTime = 0;
+      let responseTime: number | undefined = undefined;
       if (gameTimerStartTime !== null && gameTimerStartTime !== undefined && timestamp) {
         // Correct calculation: answer submission time - timer start time
         responseTime = timestamp - gameTimerStartTime;
       } else if (gameTimerStartTime !== null && gameTimerStartTime !== undefined) {
         // Fallback: current time - timer start time (if timestamp is missing)
         responseTime = Date.now() - gameTimerStartTime;
+      } else {
+        // No timer started yet - don't calculate response time
+        console.log('[QuizHost] PLAYER_ANSWER: No timer started for team', teamId, '- gameTimerStartTime is null');
       }
 
-      if (responseTime > 0) {
-        setTeamResponseTimes(prev => {
-          const updated = { ...prev, [teamId]: responseTime };
-          console.log('[QuizHost] Updated teamResponseTimes:', updated, 'calculation: timestamp(' + timestamp + ') - gameTimerStartTime(' + gameTimerStartTime + ') = ' + responseTime);
-          return updated;
-        });
-      } else {
-        console.log('[QuizHost] Response time NOT recorded for team:', teamId, '- gameTimerStartTime:', gameTimerStartTime, 'timestamp:', timestamp, 'responseTime:', responseTime);
+      // Validate response time against the current question's time limit
+      if (responseTime !== undefined) {
+        const validatedResponseTime = validateResponseTime(responseTime, flowState.totalTime);
+
+        if (validatedResponseTime !== undefined) {
+          setTeamResponseTimes(prev => {
+            const updated = { ...prev, [teamId]: validatedResponseTime };
+            console.log('[QuizHost] PLAYER_ANSWER: Team', teamId, 'response time validated:', validatedResponseTime, 'ms (', (validatedResponseTime / 1000).toFixed(2), 's) - calculation: timestamp(' + timestamp + ') - gameTimerStartTime(' + gameTimerStartTime + ')');
+            return updated;
+          });
+        } else {
+          console.log('[QuizHost] PLAYER_ANSWER: Team', teamId, 'response time invalid (missed or error):', responseTime, 'ms - gameTimerStartTime:', gameTimerStartTime, 'timestamp:', timestamp);
+        }
       }
 
       // Ensure team answers are visible
@@ -2389,7 +2533,7 @@ export function QuizHost() {
       clearInterval(pollInterval);
       if (unsubscribe) unsubscribe();
     };
-  }, [quizzes]); // Re-register listener when quizzes change to ensure latest team list is used
+  }, [quizzes, gameTimerStartTime, flowState.totalTime]); // Re-register listener when quizzes, timer, or question time limit changes - ensures handler has current gameTimerStartTime for accurate response time calculation
 
   const handleRevealAnswer = () => {
     setShowAnswer(true);

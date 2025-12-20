@@ -898,10 +898,15 @@ export function KeypadInterface({
             }));
 
             // Capture answer time
+            // Calculate response time from timer start
+            // If timerStartTime is null, this means the answer was submitted before timer started (pre-timer)
+            // In that case, responseTime = Date.now() - Date.now() = 0, which is correct
+            const responseTime = Date.now() - (timerStartTime || Date.now());
             setTeamAnswerTimes(prev => ({
               ...prev,
-              'host': Date.now() - (timerStartTime || Date.now())
+              'host': responseTime
             }));
+            console.log('[KeypadInterface] Host answer time calculated: timerStartTime =', timerStartTime, ', responseTime =', responseTime, 'ms (', (responseTime / 1000).toFixed(2), 's)');
           }
 
           setTimerFinished(true);
@@ -1257,6 +1262,11 @@ export function KeypadInterface({
   // Update parent component when team response times change
   useEffect(() => {
     if (onTeamResponseTimeUpdate && Object.keys(teamAnswerTimes).length > 0) {
+      console.log('[KeypadInterface] Sending response times to parent:', teamAnswerTimes);
+      // Log each team's response time for debugging
+      Object.entries(teamAnswerTimes).forEach(([teamId, time]) => {
+        console.log('[KeypadInterface] Team', teamId, 'response time:', time, 'ms (', (time / 1000).toFixed(2), 's)');
+      });
       onTeamResponseTimeUpdate(teamAnswerTimes);
     }
   }, [teamAnswerTimes, onTeamResponseTimeUpdate]);
