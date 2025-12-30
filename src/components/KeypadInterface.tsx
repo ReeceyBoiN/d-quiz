@@ -9,6 +9,7 @@ import { Switch } from "./ui/switch";
 import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
+import { sendTimeUpToPlayers } from "../network/wsHost";
 
 interface LoadedQuestion {
   type: string;
@@ -742,6 +743,9 @@ export function KeypadInterface({
             onTimerLockChange(true);
           }
 
+          // Notify players that time is up
+          sendTimeUpToPlayers();
+
           // Log the appropriate answer based on current screen
           const answer = currentScreen === 'letters-game'
             ? selectedLetter
@@ -881,6 +885,9 @@ export function KeypadInterface({
           if (onTimerLockChange) {
             onTimerLockChange(true);
           }
+
+          // Notify players that time is up
+          sendTimeUpToPlayers();
 
           // Log the appropriate answer based on current screen
           const answer = currentScreen === 'letters-game'

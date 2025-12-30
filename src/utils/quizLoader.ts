@@ -87,6 +87,21 @@ function parseQuestion(qEl: Element, roundGame: string) {
     }
   }
 
+  if (type === "letters") {
+    if (/^[A-Za-z]$/.test(shortAns)) {
+      const i = letterToIndex(shortAns);
+      if (i !== undefined) {
+        correctIndex = i;
+        if (!answerText) answerText = shortAns.toUpperCase();
+      }
+    } else if (answerText && /^[A-Za-z]$/.test(answerText)) {
+      const i = letterToIndex(answerText);
+      if (i !== undefined) {
+        correctIndex = i;
+      }
+    }
+  }
+
   const imageDataUrl = pictureB64 ? toDataUrlFromBase64(pictureB64) : undefined;
 
   return {

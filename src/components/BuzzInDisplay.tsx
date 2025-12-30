@@ -4,6 +4,7 @@ import { Card, CardContent } from "./ui/card";
 import { Zap, Trophy, Users, Timer, CheckCircle } from "lucide-react";
 import { CountdownTimer } from "./CountdownTimer";
 import { useSettings } from "../utils/SettingsContext";
+import { sendTimeUpToPlayers } from "../network/wsHost";
 
 type BuzzInMode = "points" | "classic" | "advanced";
 type BuzzInState = "waiting" | "buzzed" | "answered" | "complete";
@@ -86,6 +87,8 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: B
       }, 1000);
       return () => clearTimeout(timer);
     } else if (timeRemaining === 0) {
+      // Notify players that time is up
+      sendTimeUpToPlayers();
       handleWrongAnswer();
     }
   }, [timeRemaining]);

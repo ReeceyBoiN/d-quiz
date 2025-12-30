@@ -708,7 +708,51 @@ async function startBackend({ port = 4310 } = {}) {
     }
   }
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest };
+  // Helper function to broadcast time up (timer ended) to all connected players
+  function broadcastTimeUp() {
+    try {
+      log.info(`[broadcastTimeUp] Broadcasting time up signal`);
+
+      const message = JSON.stringify({
+        type: 'TIMEUP',
+        data: {},
+        timestamp: Date.now()
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+      const failedDevices = [];
+
+      networkPlayers.forEach((player, deviceId) => {
+        if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+          try {
+            log.info(`[broadcastTimeUp] Sending time up to ${deviceId}...`);
+            player.ws.send(message, (err) => {
+              if (err) {
+                log.error(`❌ [broadcastTimeUp] ws.send callback error for ${deviceId}:`, err.message);
+              } else {
+                log.debug(`[broadcastTimeUp] Successfully sent time up to ${deviceId}`);
+              }
+            });
+            successCount++;
+          } catch (error) {
+            log.error(`❌ Failed to send time up to ${deviceId}:`, error.message);
+            failCount++;
+            failedDevices.push(deviceId);
+          }
+        }
+      });
+
+      log.info(`⏱️ Broadcast TIMEUP to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed (${failedDevices.join(', ')})` : ''));
+    } catch (err) {
+      log.error(`❌ broadcastTimeUp error:`, err.message);
+      if (err && err.stack) {
+        log.error(`[broadcastTimeUp] Error stack:`, err.stack);
+      }
+    }
+  }
+
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp };
 }
 
 module.exports = { startBackend };

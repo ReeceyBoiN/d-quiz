@@ -6,6 +6,7 @@ import { Slider } from "./ui/slider";
 import { Checkbox } from "./ui/checkbox";
 import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
+import { sendTimeUpToPlayers } from "../network/wsHost";
 interface NearestWinsInterfaceProps {
   onBack: () => void;
   onExternalDisplayUpdate?: (data: any) => void;
@@ -392,19 +393,19 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
           
           if (newValue < 0) {
             setIsTimerRunning(false);
-            
+
             // Lock the timer to prevent any further submissions
             setTimerLocked(true);
-            
+
             // Notify parent component about timer lock state
             if (onTimerLockChange) {
               onTimerLockChange(true);
             }
-            
 
-            
+            // Notify players that time is up
+            sendTimeUpToPlayers();
 
-            
+
             // Only move to results screen if answer has been confirmed
             if (answerConfirmed) {
               setCurrentScreen('results');

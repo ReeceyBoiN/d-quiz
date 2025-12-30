@@ -380,6 +380,37 @@ async function boot() {
     }
   });
 
+  // Broadcast time up signal to player devices (timer ended)
+  router.mount('network/broadcast-timeup', async () => {
+    try {
+      log.info('[IPC] network/broadcast-timeup called');
+
+      if (!backend || !backend.broadcastTimeUp) {
+        log.error('[IPC] Backend not initialized for broadcast-timeup');
+        throw new Error('Backend not initialized');
+      }
+
+      log.info('[IPC] Broadcasting time up signal');
+
+      try {
+        backend.broadcastTimeUp();
+        log.info('[IPC] backend.broadcastTimeUp completed successfully');
+      } catch (broadcastErr) {
+        log.error('[IPC] backend.broadcastTimeUp threw error:', broadcastErr.message);
+        if (broadcastErr.stack) {
+          log.error('[IPC] broadcastTimeUp error stack:', broadcastErr.stack);
+        }
+        throw broadcastErr;
+      }
+
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-timeup error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
+    }
+  });
+
   log.info('App boot complete');
 }
 

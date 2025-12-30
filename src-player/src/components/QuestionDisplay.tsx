@@ -10,6 +10,7 @@ interface QuestionDisplayProps {
   timeRemaining: number;
   showTimer: boolean;
   totalTimerLength?: number;
+  timerEnded?: boolean;
   onAnswerSubmit: (answer: any) => void;
 }
 
@@ -47,6 +48,7 @@ export function QuestionDisplay({
   timeRemaining,
   showTimer,
   totalTimerLength = 30,
+  timerEnded: timerEndedProp,
   onAnswerSubmit,
 }: QuestionDisplayProps) {
   const { settings } = usePlayerSettings();
@@ -73,12 +75,16 @@ export function QuestionDisplay({
     setNumberSubmitted(false);
   }, [question]);
 
-  // Track when timer ends
+  // Track when timer ends (from both prop and local timer)
   useEffect(() => {
-    if (timeRemaining <= 0 && showTimer) {
+    if (timerEndedProp) {
+      // If parent says timer ended (from TIMEUP message), respect that
+      setTimerEnded(true);
+    } else if (timeRemaining <= 0 && showTimer) {
+      // Or if local timer reached zero, mark as ended
       setTimerEnded(true);
     }
-  }, [timeRemaining, showTimer]);
+  }, [timeRemaining, showTimer, timerEndedProp]);
 
   const handleAnswerSelect = (answerValue: string | number) => {
     // Can't select if timer ended
@@ -248,6 +254,22 @@ export function QuestionDisplay({
     return ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
   };
 
+  // Helper function to check if a button (including multi-letter buttons) contains the correct answer
+  const isButtonCorrect = (buttonLabel: string | number, correctAns: string | number | undefined): boolean => {
+    if (!correctAns) return false;
+
+    const normalizedCorrect = String(correctAns).toUpperCase();
+    const normalizedButton = String(buttonLabel).toUpperCase();
+
+    // For multi-letter buttons (like "QV", "XZ"), check if correct answer is any of the letters
+    if (normalizedButton.length > 1) {
+      return normalizedButton.split('').some(letter => letter === normalizedCorrect);
+    }
+
+    // For single-letter buttons, direct comparison
+    return normalizedButton === normalizedCorrect;
+  };
+
   // Determine button state classes
   const getButtonStateClasses = (answerValue: string | number, index?: number) => {
     const isSelected = selectedAnswers.includes(answerValue);
@@ -269,9 +291,12 @@ export function QuestionDisplay({
     const answersToCompare = answerRevealed && networkSelectedAnswers.length > 0 ? networkSelectedAnswers : selectedAnswers;
     const normalizedSelectedAnswers = answersToCompare.map(a => normalizeForComparison(a));
 
-    const isCorrect = Array.isArray(normalizedCorrectAnswer)
-      ? normalizedCorrectAnswer.some(ans => ans === normalizedAnswerValue)
-      : normalizedCorrectAnswer === normalizedAnswerValue;
+    // Check if button is correct - handles multi-letter buttons (QV, XZ) and single letters
+    const isCorrect = isLetters && typeof answerValue === 'string' && answerValue.length > 1
+      ? isButtonCorrect(answerValue, normalizedCorrectAnswer)
+      : Array.isArray(normalizedCorrectAnswer)
+        ? normalizedCorrectAnswer.some(ans => ans === normalizedAnswerValue)
+        : normalizedCorrectAnswer === normalizedAnswerValue;
 
     const isUserSelected = normalizedSelectedAnswers.includes(normalizedAnswerValue);
 
@@ -326,9 +351,12 @@ export function QuestionDisplay({
     const answersToCompare = answerRevealed && networkSelectedAnswers.length > 0 ? networkSelectedAnswers : selectedAnswers;
     const normalizedSelectedAnswers = answersToCompare.map(a => normalizeForComparison(a));
 
-    const isCorrect = Array.isArray(normalizedCorrectAnswer)
-      ? normalizedCorrectAnswer.some(ans => ans === normalizedAnswerValue)
-      : normalizedCorrectAnswer === normalizedAnswerValue;
+    // Check if button is correct - handles multi-letter buttons (QV, XZ) and single letters
+    const isCorrect = isLetters && typeof answerValue === 'string' && answerValue.length > 1
+      ? isButtonCorrect(answerValue, normalizedCorrectAnswer)
+      : Array.isArray(normalizedCorrectAnswer)
+        ? normalizedCorrectAnswer.some(ans => ans === normalizedAnswerValue)
+        : normalizedCorrectAnswer === normalizedAnswerValue;
 
     const isUserSelected = normalizedSelectedAnswers.includes(normalizedAnswerValue);
 

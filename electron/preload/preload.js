@@ -62,6 +62,7 @@ contextBridge.exposeInMainWorld('api', {
     broadcastQuestion: (data) => invoke('network/broadcast-question', data),
     broadcastReveal: (data) => invoke('network/broadcast-reveal', data),
     broadcastFastest: (data) => invoke('network/broadcast-fastest', data),
+    broadcastTimeUp: () => invoke('network/broadcast-timeup'),
   },
 
   // --- 🔹 IPC event helpers (for external display, etc.) ---

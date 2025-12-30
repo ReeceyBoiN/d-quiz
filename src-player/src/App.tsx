@@ -50,10 +50,12 @@ export default function App() {
   const [showAnswerFeedback, setShowAnswerFeedback] = useState(false);
   const [isAnswerCorrect, setIsAnswerCorrect] = useState<boolean | undefined>();
   const [submittedAnswer, setSubmittedAnswer] = useState<any>(null);
+  const [timerEnded, setTimerEnded] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const displayModeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fastestTeamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerLockDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Track 1-second delay before locking inputs
   const submittedAnswerRef = useRef<any>(null); // Store answer in ref for immediate access, bypassing async state updates
   const timerStartTimeRef = useRef<number | null>(null); // Store timer start time from host for accurate response time calculation
 
@@ -82,6 +84,16 @@ export default function App() {
       }
     };
   }, [showFastestTeam]);
+
+  // Cleanup timer lock delay on component unmount
+  useEffect(() => {
+    return () => {
+      if (timerLockDelayRef.current) {
+        clearTimeout(timerLockDelayRef.current);
+        timerLockDelayRef.current = null;
+      }
+    };
+  }, []);
 
   // Helper function to determine if player's answer is correct
   const determineAnswerCorrectness = (submittedAnswerObj: any, correctAnswer: any, questionType?: string): boolean => {
@@ -162,6 +174,15 @@ export default function App() {
     console.log('[Player] handleConnect callback - storing WebSocket reference');
     wsRef.current = ws;
     console.log('[Player] WebSocket stored, readyState:', ws.readyState, '(1=open)');
+  }, []);
+
+  // Clear any pending timer lock delay timeout
+  const clearTimerLockDelay = useCallback(() => {
+    if (timerLockDelayRef.current) {
+      clearTimeout(timerLockDelayRef.current);
+      timerLockDelayRef.current = null;
+      console.log('[Player] Cleared pending timer lock delay');
+    }
   }, []);
 
   const handleMessage = useCallback((message: HostMessage) => {
@@ -262,8 +283,14 @@ export default function App() {
           console.log('[Player] Cancelled display mode timer - question arrived');
         }
 
+        // Clear any pending timer lock delay when new question arrives
+        clearTimerLockDelay();
+
         // Clear previous timer start time for new question
         timerStartTimeRef.current = null;
+
+        // Reset timer ended state for new question
+        setTimerEnded(false);
 
         // Extract go wide flag from question
         const goWideFlag = message.data?.goWideEnabled ?? false;
@@ -288,6 +315,9 @@ export default function App() {
         setCurrentScreen('question');
         break;
       case 'TIMER_START':
+        // Clear any pending timer lock delay when new timer starts
+        clearTimerLockDelay();
+
         const timerDuration = message.data?.seconds || 30;
         // Store the timer start time from host for accurate response time calculation
         // This ensures player and host use the same reference point
@@ -305,8 +335,27 @@ export default function App() {
         break;
       case 'TIMEUP':
         setShowTimer(false);
+        // Clear any existing timeout and set new delayed lock (1 second grace period for latency)
+        clearTimerLockDelay();
+        timerLockDelayRef.current = setTimeout(() => {
+          console.log('[Player] Timer lock delay complete, disabling inputs');
+          setTimerEnded(true);
+        }, 1000);
+        break;
+      case 'LOCK':
+        // Explicit lock handler for robustness - ensures timer is locked even if only LOCK is sent
+        setShowTimer(false);
+        // Clear any existing timeout and set new delayed lock (1 second grace period for latency)
+        clearTimerLockDelay();
+        timerLockDelayRef.current = setTimeout(() => {
+          console.log('[Player] Lock delay complete, disabling inputs');
+          setTimerEnded(true);
+        }, 1000);
         break;
       case 'REVEAL':
+        // Clear any pending timer lock delay when answer is revealed
+        clearTimerLockDelay();
+
         console.log('[Player] 📢 REVEAL message received - full data:', message.data);
         const revealedCorrectAnswer = message.data?.answer ?? message.data?.correctAnswer;
         console.log('[Player] 📢 Extracted revealed correct answer:', revealedCorrectAnswer);
@@ -358,12 +407,16 @@ export default function App() {
         break;
       case 'NEXT':
         console.log('[Player] NEXT message received - clearing all question state immediately');
+        // Clear any pending timer lock delay when moving to next question
+        clearTimerLockDelay();
+
         setCurrentQuestion(null);
         setGoWideEnabled(false);
         setAnswerRevealed(false);
         setCorrectAnswer(undefined);
         setSelectedAnswers([]);
         setShowTimer(false);
+        setTimerEnded(false);
         setShowFastestTeam(false);
         setFastestTeamName('');
         setFastestTeamPhoto(null);
@@ -643,10 +696,11 @@ export default function App() {
 
           {isConnected && currentScreen === 'ready-for-question' && (
             <QuestionDisplay
-              question={undefined}
+              question={null}
               timeRemaining={timeRemaining}
               showTimer={showTimer}
               totalTimerLength={totalTimerLength}
+              timerEnded={timerEnded}
               onAnswerSubmit={handleAnswerSubmit}
             />
           )}
@@ -658,6 +712,7 @@ export default function App() {
                 timeRemaining={timeRemaining}
                 showTimer={showTimer}
                 totalTimerLength={totalTimerLength}
+                timerEnded={timerEnded}
                 onAnswerSubmit={handleAnswerSubmit}
               />
               {showFastestTeam && (

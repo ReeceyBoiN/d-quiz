@@ -36,7 +36,7 @@ import { useQuizData } from "../utils/QuizDataContext";
 import { useTimer } from "../hooks/useTimer";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage } from "../state/flowState";
-import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage } from "../network/wsHost";
+import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { calculateTeamPoints, rankCorrectTeams, shouldAutoDisableGoWide, type ScoringConfig } from "../utils/scoringEngine";
 import { saveGameState, createGameStateSnapshot, type RoundSettings } from "../utils/gameStatePersistence";
@@ -355,8 +355,8 @@ export function QuizHost() {
         flow: 'timeup',
         timeRemaining: 0,
       }));
-
-
+      // Notify players that time is up
+      sendTimeUpToPlayers();
     },
     onTick: (remaining) => {
       setFlowState(prev => ({

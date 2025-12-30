@@ -317,3 +317,23 @@ export function getNetworkPlayers() {
 export function isPlayerRegistered(playerId: string): boolean {
   return hostNetwork.isPlayerRegistered(playerId);
 }
+
+export function sendTimeUpToPlayers() {
+  // Send local listeners first (for internal displays)
+  hostNetwork.sendTimeUp();
+
+  // Send via IPC to backend/WebSocket for remote players (Electron)
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.broadcastTimeUp) {
+      console.log('[wsHost] Calling IPC broadcastTimeUp to notify players');
+      api.network.broadcastTimeUp().catch((err: any) => {
+        console.error('[wsHost] IPC broadcastTimeUp error:', err);
+      });
+    } else {
+      console.log('[wsHost] broadcastTimeUp IPC not available (browser mode or dev)');
+    }
+  } catch (err) {
+    console.error('[wsHost] Error calling broadcastTimeUp IPC:', err);
+  }
+}
