@@ -56,6 +56,73 @@ async function startBackend({ port = 4310 } = {}) {
   // Load API endpoints first (before the catch-all)
   loadEndpoints(app);
 
+  // Landing page at root - redirects users to the player app
+  app.get('/', (req, res) => {
+    const landingHtml = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>PopQuiz - Loading...</title>
+        <style>
+          body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+          }
+          .container {
+            text-align: center;
+            color: white;
+          }
+          h1 {
+            font-size: 2.5em;
+            margin: 0 0 0.5em 0;
+          }
+          p {
+            font-size: 1.1em;
+            margin: 0 0 2em 0;
+            opacity: 0.9;
+          }
+          .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 2em auto;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>PopQuiz</h1>
+          <p>Redirecting to player app...</p>
+          <div class="spinner"></div>
+        </div>
+        <script>
+          // Redirect to the player app after a brief moment
+          setTimeout(() => {
+            window.location.href = '/index.html';
+          }, 500);
+        </script>
+      </body>
+      </html>
+    `;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(landingHtml);
+  });
+
   // SPA fallback - serve index.html for all non-API routes (catch-all at the end)
   app.use((req, res) => {
     const indexPath = path.join(playerAppPath, 'index.html');

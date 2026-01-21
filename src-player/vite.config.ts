@@ -18,5 +18,12 @@ export default defineConfig({
   server: {
     port: 3001,
     open: true,
+    proxy: {
+      '/events': {
+        target: 'ws://localhost:4310',
+        ws: true,
+        rewriteWsOrigin: true,
+      },
+    },
   },
 });
