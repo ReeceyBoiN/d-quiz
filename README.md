@@ -28,3 +28,11 @@
  need arrows for next quesstion and previous question
 
  add logic if player joins mid question
+
+ points arent always getting added to a team if they answer correctly
+
+ pictures when sent to the phone need to be clickable to disapear rather than show above the options
+
+ sound needs to be mapped in the files for applause and timer countdown
+
+ arrow keys to skip questions and also a show/hide answer at bottom of the screen for host
