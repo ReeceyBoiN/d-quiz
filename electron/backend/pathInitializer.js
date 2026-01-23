@@ -3,10 +3,10 @@
  * Creates the required folder structure in Documents/PopQuiz/Resources on app startup
  */
 
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
-const log = require('electron-log');
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
+import log from 'electron-log';
 
 // Folder structure to create
 const FOLDERS_TO_CREATE = [
@@ -74,6 +74,28 @@ function createFolderStructure() {
 }
 
 /**
+ * Recursively copy directory
+ */
+function copyDirectoryRecursive(source, destination) {
+  if (!fs.existsSync(destination)) {
+    fs.mkdirSync(destination, { recursive: true });
+  }
+
+  const files = fs.readdirSync(source);
+  
+  files.forEach((file) => {
+    const sourceFile = path.join(source, file);
+    const destFile = path.join(destination, file);
+    
+    if (fs.statSync(sourceFile).isDirectory()) {
+      copyDirectoryRecursive(sourceFile, destFile);
+    } else {
+      fs.copyFileSync(sourceFile, destFile);
+    }
+  });
+}
+
+/**
  * Migrate existing sounds from old location to new location
  * This is a one-time migration for existing installations
  */
@@ -116,28 +138,6 @@ function migrateSoundsIfNeeded() {
 }
 
 /**
- * Recursively copy directory
- */
-function copyDirectoryRecursive(source, destination) {
-  if (!fs.existsSync(destination)) {
-    fs.mkdirSync(destination, { recursive: true });
-  }
-
-  const files = fs.readdirSync(source);
-  
-  files.forEach((file) => {
-    const sourceFile = path.join(source, file);
-    const destFile = path.join(destination, file);
-    
-    if (fs.statSync(sourceFile).isDirectory()) {
-      copyDirectoryRecursive(sourceFile, destFile);
-    } else {
-      fs.copyFileSync(sourceFile, destFile);
-    }
-  });
-}
-
-/**
  * Initialize all paths on app startup
  */
 function initializePaths() {
@@ -149,7 +149,7 @@ function initializePaths() {
   log.info('[PathInitializer] Path initialization complete');
 }
 
-module.exports = {
+export {
   initializePaths,
   getDocumentsPath,
   getPopQuizRootPath,

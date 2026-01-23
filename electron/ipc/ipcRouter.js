@@ -1,5 +1,6 @@
-const log = require('electron-log');
-const { z } = require('zod');
+import log from 'electron-log';
+import { z } from 'zod';
+
 const handlers = new Map();
 
 /**
@@ -24,4 +25,4 @@ function createIpcRouter(ipcMain) {
   return { mount };
 }
 
-module.exports = { createIpcRouter };
+export { createIpcRouter };

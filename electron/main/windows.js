@@ -1,5 +1,8 @@
-const { BrowserWindow } = require('electron');
-const path = require('path');
+import { BrowserWindow } from 'electron';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let externalWindow = null;
 
@@ -77,4 +80,4 @@ function createExternalWindow() {
   return externalWindow;
 }
 
-module.exports = { createMainWindow, createExternalWindow };
+export { createMainWindow, createExternalWindow };

@@ -8,6 +8,7 @@ dist/
 build/
 out/
 win-unpacked/
+dist-player/
 
 # Ignore temporary logs and cache
 *.log

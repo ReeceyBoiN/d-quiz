@@ -1,10 +1,14 @@
 
   # Quiz 5 - Reece - Ready
 
-  Run `npm install` to install the dependencies.
+Action	Command
+First setup	- npm ci
+After pulling updates -	npm ci
+Add new package -	npm - install pkg-name --save-exact (then commit lock file)
+Never use	- npm install (without lock file strict mode)
 
-  Run `npm run dev:builder` to start the development server.
-  
+
+
    Fixes Needed:
 
 

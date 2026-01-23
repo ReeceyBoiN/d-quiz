@@ -1,4 +1,4 @@
-const { app, session } = require('electron');
+import { app, session } from 'electron';
 
 function applySecurity() {
   app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicyByDefault');
@@ -37,4 +37,4 @@ function applySecurity() {
   });
 }
 
-module.exports = { applySecurity };
+export { applySecurity };

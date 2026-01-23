@@ -1,12 +1,13 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
-const path = require('path');
-const fs = require('fs');
-const log = require('electron-log');
-const { createMainWindow, createExternalWindow } = require('./windows');
-const { applySecurity } = require('./security');
-const { createIpcRouter } = require('../ipc/ipcRouter');
-const { startBackend } = require('../backend/server');
-const { initializePaths, getResourcePaths } = require('../backend/pathInitializer');
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import path from 'path';
+import fs from 'fs';
+import log from 'electron-log';
+import { createMainWindow, createExternalWindow } from './windows.js';
+import { applySecurity } from './security.js';
+import { createIpcRouter } from '../ipc/ipcRouter.js';
+import { startBackend } from '../backend/server.js';
+import { initializePaths, getResourcePaths } from '../backend/pathInitializer.js';
+import os from 'os';
 
 let mainWindow;
 
@@ -36,7 +37,6 @@ async function boot() {
 
   // Helper to get local IP address for network access
   const getLocalIPAddress = () => {
-    const os = require('os');
     const interfaces = os.networkInterfaces();
     log.info('[IP Detection] Available network interfaces:', Object.keys(interfaces));
 
@@ -66,7 +66,6 @@ async function boot() {
     log.info(`📍 Local IP: ${localIP}`);
     log.info(`🌐 Network access URL: http://${localIP}:${backend.port}`);
     log.info(`🔌 WebSocket URL: ws://${localIP}:${backend.port}/events`);
-    log.info(`📌 Environment variables set: BACKEND_URL=${process.env.BACKEND_URL}, BACKEND_WS=${process.env.BACKEND_WS}`);
   } catch (err) {
     if (err.code === 'EADDRINUSE') {
       log.warn(`Port ${port} is in use, trying port ${port + 1}`);
@@ -75,8 +74,6 @@ async function boot() {
         process.env.BACKEND_URL = `http://${localIP}:${backend.port}`;
         process.env.BACKEND_WS = `ws://${localIP}:${backend.port}/events`;
         log.info(`Backend server started on fallback port ${backend.port}`);
-        log.info(`Network access URL: http://${localIP}:${backend.port}`);
-        log.info(`WebSocket URL: ws://${localIP}:${backend.port}/events`);
       } catch (err2) {
         log.error('Failed to start backend server on any port:', err2.message);
       }
@@ -107,8 +104,13 @@ async function boot() {
     }
   });
   router.mount('app/ready', async () => ({ ok: true, version: app.getVersion() }));
-  router.mount('quiz/start', require('../modules/quizEngine').startQuiz);
-  router.mount('quiz/score', require('../modules/scoring').scoreAttempt);
+  
+  // Dynamic imports for quiz modules
+  const quizEngine = await import('../modules/quizEngine.js');
+  const scoring = await import('../modules/scoring.js');
+  
+  router.mount('quiz/start', quizEngine.startQuiz);
+  router.mount('quiz/score', scoring.scoreAttempt);
 
   // Network player management endpoints
   router.mount('network/pending-teams', async () => {
@@ -419,4 +421,4 @@ boot().catch(err => {
   app.quit();
 });
 
-module.exports = { /* reserved for tests */ };
+export { /* reserved for tests */ };

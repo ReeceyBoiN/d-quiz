@@ -1,3 +1,5 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 
 const alias = {
@@ -42,9 +44,9 @@ const alias = {
   '@': path.resolve(__dirname, './src'),
 };
 
-export default {
+export default defineConfig({
   base: './',
-  plugins: [],
+  plugins: [react()],
   resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
     alias,
@@ -60,4 +62,4 @@ export default {
     port: 3000,
     open: false,
   },
-};
+});
