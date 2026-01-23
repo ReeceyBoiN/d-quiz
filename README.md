@@ -1,20 +1,10 @@
 
   # Quiz 5 - Reece - Ready
 
-  This is a code bundle for Quiz 5 - Reece - Ready. The original project is available at https://www.figma.com/design/ZLJookmFmhZlO3WJIT8zDx/Quiz-5---Reece---Ready.
+  Run `npm install` to install the dependencies.
 
-  ## Running the code
-
-  Run `npm i` to install the dependencies.
-
-  Run `npm run dev` to start the development server.
+  Run `npm run dev:builder` to start the development server.
   
-  IDK what im doing lol
-
-
-
-
-
    Fixes Needed:
 
 
@@ -36,3 +26,7 @@
  sound needs to be mapped in the files for applause and timer countdown
 
  arrow keys to skip questions and also a show/hide answer at bottom of the screen for host
+
+ enforce demo mode into application to stop hosts from bypassing licence
+
+ 
