@@ -35,7 +35,6 @@ interface StatusBarProps {
   onGlobalScrambleKeypad?: () => void;
   scoresPaused?: boolean;
   onPauseScoresToggle?: () => void;
-  // Additional button states for highlighting
   scoresHidden?: boolean;
   onToggleHideScores?: () => void;
   teamLayoutMode?: 'default' | 'alphabetical' | 'random';
@@ -86,8 +85,8 @@ interface GameModeConfigPanelProps {
   showWheelSpinnerInterface?: boolean;
   showBuzzInMode?: boolean;
   onEndRound?: () => void;
-  timerIsRunning?: boolean; // Disable controls when on-the-spot timer is running
-  isQuizPackTimerRunning?: boolean; // Disable controls when quiz pack timer is running
+  isOnTheSpotTimerRunning?: boolean;
+  isQuizPackTimerRunning?: boolean;
 }
 
 function GameModeConfigPanel({
@@ -111,7 +110,6 @@ function GameModeConfigPanel({
   isOnTheSpotTimerRunning = false,
   isQuizPackTimerRunning = false
 }: GameModeConfigPanelProps) {
-  // Combine both timer states
   const timerIsRunning = isOnTheSpotTimerRunning || isQuizPackTimerRunning;
   useEffect(() => {
     console.log('[GameModeConfigPanel] Timer running:', { isOnTheSpotTimerRunning, isQuizPackTimerRunning, timerIsRunning });
@@ -125,29 +123,22 @@ function GameModeConfigPanel({
     updateStaggeredEnabled,
     updateGoWideEnabled,
     updateEvilModeEnabled,
-    punishmentEnabled,
-    updatePunishmentEnabled
   } = useSettings();
   
-  // Use current round scores from props when available, otherwise fallback to defaults
-  // For buzz-in mode, use gameModePoints.buzzin from settings context
-  // This ensures that once current round scores are set, they stay independent of default changes
-  const localPoints = gameMode === "buzzin" 
-    ? gameModePoints.buzzin 
-    : (currentRoundPoints !== null ? currentRoundPoints : defaultPoints);
-  const localSpeedBonus = currentRoundSpeedBonus !== null ? currentRoundSpeedBonus : defaultSpeedBonus;
-  const localWinnerPoints = currentRoundWinnerPoints !== null ? currentRoundWinnerPoints : gameModePoints.nearestwins;
+  const localPoints: number = gameMode === "buzzin" 
+    ? (gameModePoints.buzzin ?? 0)
+    : (currentRoundPoints ?? defaultPoints ?? 0);
+  const localSpeedBonus: number = currentRoundSpeedBonus ?? defaultSpeedBonus ?? 0;
+  const localWinnerPoints: number = currentRoundWinnerPoints ?? (gameModePoints.nearestwins ?? 0);
 
   const handlePointsChange = (value: string | number) => {
     const num = typeof value === 'string' ? (isNaN(parseInt(value)) ? 0 : parseInt(value)) : value;
     
-    // For buzz-in mode, update gameModePoints.buzzin in settings context
     if (gameMode === "buzzin") {
       if (num !== localPoints) {
         updateGameModePoints('buzzin', num);
       }
     } else {
-      // For other modes, use the onCurrentRoundPointsChange prop
       if (num !== localPoints && onCurrentRoundPointsChange) {
         onCurrentRoundPointsChange(num);
       }
@@ -193,8 +184,7 @@ function GameModeConfigPanel({
                 disabled={timerIsRunning}
                 onClick={() => {
                   if (timerIsRunning) return;
-                  const currentValue = parseInt(localPoints.toString()) || 0;
-                  const newValue = Math.max(0, currentValue - 1);
+                  const newValue = Math.max(0, localPoints - 1);
                   handlePointsChange(newValue.toString());
                 }}
               >
@@ -251,8 +241,7 @@ function GameModeConfigPanel({
                 disabled={timerIsRunning}
                 onClick={() => {
                   if (timerIsRunning) return;
-                  const currentValue = parseInt(localSpeedBonus.toString()) || 0;
-                  const newValue = Math.max(0, currentValue - 1);
+                  const newValue = Math.max(0, localSpeedBonus - 1);
                   handleSpeedBonusChange(newValue.toString());
                 }}
               >
@@ -390,8 +379,7 @@ function GameModeConfigPanel({
                 disabled={timerIsRunning}
                 onClick={() => {
                   if (timerIsRunning) return;
-                  const currentValue = parseInt(localWinnerPoints.toString()) || 0;
-                  const newValue = Math.max(0, currentValue - 1);
+                  const newValue = Math.max(0, localWinnerPoints - 1);
                   handleWinnerPointsChange(newValue.toString());
                 }}
               >
@@ -819,7 +807,7 @@ export function StatusBar({
                     </div>
                     <Switch
                       checked={teamPhotosAutoApprove}
-                      onCheckedChange={(checked) => updateTeamPhotosAutoApprove(checked)}
+                      onCheckedChange={(checked: boolean) => updateTeamPhotosAutoApprove(checked)}
                     />
                   </div>
                 </div>
