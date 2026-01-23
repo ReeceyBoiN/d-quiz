@@ -33,4 +33,6 @@ Never use	- npm install (without lock file strict mode)
 
  enforce demo mode into application to stop hosts from bypassing licence
 
+ Add the filter for questions so "THE LION KING" answer isnt a "T" as we're ignoring the word "THE"
+
  
