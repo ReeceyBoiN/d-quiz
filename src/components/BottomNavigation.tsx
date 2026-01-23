@@ -175,7 +175,7 @@ function GameModeConfigPanel({
         <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center" style={{ margin: '0 5px', opacity: timerIsRunning ? 0.5 : 1, pointerEvents: timerIsRunning ? 'none' : 'auto' }}>
           <div className="flex flex-col gap-0.5 w-28">
             <div className="w-full h-5 flex items-center justify-center">
-              <span className="text-white text-xs font-medium font-bold font-normal text-[15px]">POINTS</span>
+              <span className="text-white text-xs font-medium text-[15px]">POINTS</span>
             </div>
             <div className="flex gap-0.5 w-full">
               <Button
@@ -233,7 +233,7 @@ function GameModeConfigPanel({
         <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center" style={{ opacity: timerIsRunning ? 0.5 : 1, pointerEvents: timerIsRunning ? 'none' : 'auto' }}>
           <div className="flex flex-col gap-0.5 w-28">
             <div className="w-full flex items-center justify-center" style={{ marginRight: '23px' }}>
-              <span className="text-white text-xs font-medium font-bold no-underline font-normal text-[15px]">BONUS</span>
+              <span className="text-white text-xs font-medium text-[15px]">BONUS</span>
             </div>
             <div className="flex gap-0.5 w-full">
               <Button
@@ -291,7 +291,7 @@ function GameModeConfigPanel({
         <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center items-center" style={{ marginLeft: '5px', opacity: timerIsRunning ? 0.5 : 1, pointerEvents: timerIsRunning ? 'none' : 'auto' }}>
           <div className="flex flex-col gap-0.5 w-32">
             <div className="w-full flex items-center justify-center">
-              <span className="text-white text-xs font-medium font-bold font-normal text-[15px]">MODES</span>
+              <span className="text-white text-xs font-medium text-[15px]">MODES</span>
             </div>
             <div className="flex gap-0.5 w-full">
               {/* Staggered Mode */}
@@ -372,7 +372,7 @@ function GameModeConfigPanel({
         <div className="bg-[rgba(92,97,107,1)] rounded px-1.5 py-0 border shadow-sm h-full flex flex-col justify-center" style={{ opacity: timerIsRunning ? 0.5 : 1, pointerEvents: timerIsRunning ? 'none' : 'auto' }}>
           <div className="flex flex-col gap-0.5 w-32">
             <div className="w-full flex items-center justify-center">
-              <span className="text-white text-xs font-medium font-bold font-normal text-[15px]">WINNER POINTS</span>
+              <span className="text-white text-xs font-medium text-[15px]">WINNER POINTS</span>
             </div>
             <div className="flex gap-0.5 w-full">
               <Button
