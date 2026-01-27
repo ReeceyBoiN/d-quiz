@@ -1739,7 +1739,7 @@ export function QuizHost() {
         const isOnTheSpotMode = showKeypadInterface && !isQuizPackMode;
 
         if (!isOnTheSpotMode && isQuizPackMode) {
-          // For quiz pack: Show fastest team on external display and player portals
+          // For quiz pack: Show fastest team on external display, player portals, AND host screen
           const correctTeams = quizzes.filter(team => teamAnswerStatuses[team.id] === 'correct');
           const fastestTeam = correctTeams.length > 0
             ? correctTeams.reduce((fastest, current) => {
@@ -1750,6 +1750,14 @@ export function QuizHost() {
             : null;
 
           if (fastestTeam) {
+            const fastestTeamResponseTime = teamResponseTimes[fastestTeam.id] || 0;
+
+            // Show FastestTeamDisplay on host screen (same as keypad mode)
+            handleFastestTeamReveal({
+              team: fastestTeam,
+              responseTime: fastestTeamResponseTime
+            });
+
             // Send to player portals
             sendFastestToDisplay(fastestTeam.name, currentLoadedQuestionIndex + 1, fastestTeam.photoUrl);
 
@@ -3775,8 +3783,26 @@ export function QuizHost() {
       );
     }
 
-    // Fallback to old QuizPackDisplay for config screen
+    // Fallback to old QuizPackDisplay for config screen (but show fastest team if applicable)
     else if (showQuizPackDisplay && !flowState.isQuestionMode) {
+      // If fastest team should be displayed, show it instead of the config screen
+      if (showFastestTeamDisplay) {
+        return (
+          <div className="flex-1 overflow-hidden">
+            <FastestTeamDisplay
+              fastestTeam={fastestTeamData}
+              teams={quizzes}
+              hostLocation={hostLocation}
+              onClose={handleFastestTeamClose}
+              onFastestTeamLocationChange={handleTeamLocationChange}
+              onHostLocationChange={handleHostLocationChange}
+              onScrambleKeypad={handleScrambleKeypad}
+              onBlockTeam={handleBlockTeam}
+            />
+          </div>
+        );
+      }
+
       return (
         <div className="flex-1 overflow-hidden h-full w-full flex">
           <QuizPackDisplay

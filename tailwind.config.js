@@ -1,11 +1,38 @@
 /** @type {import('tailwindcss').Config} */
+
+// Import centralized breakpoints
+import { BREAKPOINTS } from './src/utils/responsiveConfig.js';
+
 export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
+    // Override Tailwind's default breakpoints with our centralized ones
+    screens: {
+      xs: `${BREAKPOINTS.xs}px`,
+      sm: `${BREAKPOINTS.sm}px`,
+      md: `${BREAKPOINTS.md}px`,
+      lg: `${BREAKPOINTS.lg}px`,
+      xl: `${BREAKPOINTS.xl}px`,
+      '2xl': `${BREAKPOINTS['2xl']}px`,
+    },
     extend: {
+      // Fluid typography using CSS clamp()
+      fontSize: {
+        // Display/heading sizes
+        'fluid-display': 'clamp(2rem, 8vw, 5rem)',  // 32px to 80px
+        'fluid-h1': 'clamp(1.875rem, 6vw, 3.75rem)',  // 30px to 60px
+        'fluid-h2': 'clamp(1.5rem, 4.5vw, 3rem)',    // 24px to 48px
+        'fluid-h3': 'clamp(1.25rem, 3.5vw, 2.25rem)', // 20px to 36px
+        'fluid-h4': 'clamp(1rem, 2.5vw, 1.75rem)',    // 16px to 28px
+        // Body sizes
+        'fluid-lg': 'clamp(1.125rem, 2.5vw, 1.5rem)',   // 18px to 24px
+        'fluid-base': 'clamp(0.9rem, 2vw, 1.125rem)',   // 14.4px to 18px
+        'fluid-sm': 'clamp(0.75rem, 1.5vw, 1rem)',      // 12px to 16px
+        'fluid-xs': 'clamp(0.625rem, 1vw, 0.875rem)',   // 10px to 14px
+      },
       animation: {
         'flash-green': 'flashGreen 0.5s ease-in-out infinite',
         'flash-red': 'flashRed 0.5s ease-in-out infinite',

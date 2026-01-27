@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useSettings } from "../utils/SettingsContext";
+import { FastestTeamOverlaySimplified } from "./FastestTeamOverlaySimplified";
+import { fluidSize, fluidHeight, isUltraWide, isSquareViewport } from "../utils/responsiveSizing";
 
 declare global {
   interface Window {
@@ -233,26 +235,26 @@ export function ExternalDisplayWindow() {
     switch (style) {
       case 'digital':
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ backgroundColor: 'black', border: '4px solid #22c55e', borderRadius: '8px', padding: '32px', boxShadow: '0 0 20px rgba(34, 197, 94, 0.3)' }}>
-              <div style={{ textAlign: 'center', fontFamily: 'monospace', color: '#22c55e', fontSize: '12rem', fontWeight: 'bold', textShadow: '0 0 10px currentColor' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+            <div style={{ backgroundColor: 'black', border: '4px solid #22c55e', borderRadius: '8px', padding: 'clamp(16px, 3vw, 48px)', boxShadow: '0 0 20px rgba(34, 197, 94, 0.3)' }}>
+              <div style={{ textAlign: 'center', fontFamily: 'monospace', color: '#22c55e', fontSize: 'clamp(3rem, 15vw, 12rem)', fontWeight: 'bold', textShadow: '0 0 10px currentColor' }}>
                 {String(timerNum).padStart(2, '0')}
               </div>
             </div>
-            <div style={{ textAlign: 'center', fontSize: '24px', color: '#dcfce7', marginTop: '16px' }}>seconds</div>
+            <div style={{ textAlign: 'center', fontSize: 'clamp(1rem, 3vw, 2rem)', color: '#dcfce7', marginTop: 'clamp(8px, 2vw, 16px)' }}>seconds</div>
           </div>
         );
 
       case 'pulsing':
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
             <div style={{
               backgroundColor: '#3b82f6', borderRadius: '50%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontWeight: 'bold', width: '30rem', height: '30rem',
+              color: 'white', fontWeight: 'bold', width: 'clamp(150px, 60vmin, 600px)', height: 'clamp(150px, 60vmin, 600px)',
               animation: timerNum <= 10 ? 'pulse 0.5s ease-in-out infinite' : 'pulse 2s ease-in-out infinite'
             }}>
-              <div style={{ fontSize: '12rem' }}>{timerNum}</div>
-              <div style={{ fontSize: '24px', marginTop: '8px' }}>seconds</div>
+              <div style={{ fontSize: 'clamp(2rem, 20vmin, 12rem)' }}>{timerNum}</div>
+              <div style={{ fontSize: 'clamp(0.75rem, 3vmin, 2rem)', marginTop: 'clamp(4px, 1vmin, 8px)' }}>seconds</div>
             </div>
           </div>
         );
@@ -261,28 +263,28 @@ export function ExternalDisplayWindow() {
         const progress = actualTime / totalTime;
         const progressTransitionMs = Math.max(800, totalTime * 950); // Dynamic transition in milliseconds
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '32px', width: '100%', maxWidth: '64rem', margin: '0 auto' }}>
-            <div style={{ width: '100%', height: '48px', backgroundColor: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'clamp(16px, 5vmin, 48px)', width: '100%', maxWidth: '90vw', margin: '0 auto', padding: '0 clamp(16px, 5vw, 40px)' }}>
+            <div style={{ width: '100%', height: 'clamp(24px, 5vmin, 64px)', backgroundColor: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
               <div style={{
                 height: '100%', transition: `all ${progressTransitionMs}ms linear`,
                 width: (progress * 100) + '%',
                 background: 'linear-gradient(90deg, #3b82f6, #1d4ed8)'
               }} />
             </div>
-            <div style={{ fontSize: '12rem', fontWeight: 'bold', color: '#3b82f6' }}>{timerNum}</div>
-            <div style={{ fontSize: '24px', color: 'white' }}>seconds</div>
+            <div style={{ fontSize: 'clamp(2rem, 15vmin, 12rem)', fontWeight: 'bold', color: '#3b82f6' }}>{timerNum}</div>
+            <div style={{ fontSize: 'clamp(0.75rem, 3vmin, 2rem)', color: 'white' }}>seconds</div>
           </div>
         );
 
       case 'matrix':
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ backgroundColor: 'black', border: '1px solid #22c55e', borderRadius: '8px', position: 'relative', overflow: 'hidden', width: '30rem', height: '30rem' }}>
-              <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e', fontFamily: 'monospace', fontSize: '12rem', fontWeight: 'bold', textShadow: '0 0 10px currentColor' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+            <div style={{ backgroundColor: 'black', border: '1px solid #22c55e', borderRadius: '8px', position: 'relative', overflow: 'hidden', width: 'clamp(150px, 60vmin, 500px)', height: 'clamp(150px, 60vmin, 500px)' }}>
+              <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e', fontFamily: 'monospace', fontSize: 'clamp(3rem, 15vmin, 12rem)', fontWeight: 'bold', textShadow: '0 0 10px currentColor' }}>
                 {String(timerNum).padStart(2, '0')}
               </div>
             </div>
-            <div style={{ color: '#22c55e', fontSize: '24px', marginTop: '16px' }}>seconds</div>
+            <div style={{ color: '#22c55e', fontSize: 'clamp(1rem, 3vw, 2rem)', marginTop: 'clamp(8px, 2vw, 16px)' }}>seconds</div>
           </div>
         );
 
@@ -290,37 +292,37 @@ export function ExternalDisplayWindow() {
         const liquidProgress = actualTime / totalTime;
         const liquidTransitionMs = Math.max(800, totalTime * 950); // Dynamic transition in milliseconds
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
-            <div style={{ position: 'relative', borderRadius: '50%', border: '4px solid #d1d5db', overflow: 'hidden', width: '30rem', height: '30rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'clamp(16px, 5vmin, 48px)', width: '100%', height: '100%' }}>
+            <div style={{ position: 'relative', borderRadius: '50%', border: '4px solid #d1d5db', overflow: 'hidden', width: 'clamp(150px, 60vmin, 600px)', height: 'clamp(150px, 60vmin, 600px)' }}>
               <div style={{ position: 'absolute', inset: 0, backgroundColor: '#e5e7eb' }}></div>
               <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0, transition: `all ${liquidTransitionMs}ms linear`,
                 height: (liquidProgress * 100) + '%',
                 background: 'linear-gradient(180deg, #3b82f6, #1d4ed8)'
               }} />
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12rem', fontWeight: 'bold', color: 'white', zIndex: 10, textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'clamp(2rem, 15vmin, 12rem)', fontWeight: 'bold', color: 'white', zIndex: 10, textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}>
                 {timerNum}
               </div>
             </div>
-            <div style={{ fontSize: '24px', color: 'white' }}>seconds</div>
+            <div style={{ fontSize: 'clamp(0.75rem, 3vmin, 2rem)', color: 'white' }}>seconds</div>
           </div>
         );
 
       case 'gradient':
         const hue = (timerNum / totalTime) * 120;
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
-            <div style={{ position: 'relative', borderRadius: '50%', overflow: 'hidden', width: '30rem', height: '30rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'clamp(16px, 5vmin, 48px)', width: '100%', height: '100%' }}>
+            <div style={{ position: 'relative', borderRadius: '50%', overflow: 'hidden', width: 'clamp(150px, 60vmin, 600px)', height: 'clamp(150px, 60vmin, 600px)' }}>
               <div style={{
                 position: 'absolute', inset: 0, borderRadius: '50%',
                 background: 'conic-gradient(from 0deg, hsl(' + hue + ', 70%, 50%) 0%, hsl(60, 70%, 50%) 25%, hsl(30, 70%, 50%) 50%, hsl(0, 70%, 50%) 75%, hsl(' + hue + ', 70%, 50%) 100%)',
                 animation: 'spin 3s linear infinite'
               }} />
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12rem', fontWeight: 'bold', color: 'white', zIndex: 10, textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'clamp(2rem, 15vmin, 12rem)', fontWeight: 'bold', color: 'white', zIndex: 10, textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>
                 {timerNum}
               </div>
             </div>
-            <div style={{ fontSize: '24px', color: 'white' }}>seconds</div>
+            <div style={{ fontSize: 'clamp(0.75rem, 3vmin, 2rem)', color: 'white' }}>seconds</div>
           </div>
         );
 
@@ -336,8 +338,8 @@ export function ExternalDisplayWindow() {
         const transitionDuration = Math.max(0.1, actualTime);
 
         return (
-          <div style={{ position: 'relative', display: 'inline-block' }}>
-            <svg style={{ width: '30rem', height: '30rem', transform: 'rotate(-90deg)' }} viewBox="0 0 100 100">
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+            <svg style={{ width: 'clamp(150px, 60vmin, 600px)', height: 'clamp(150px, 60vmin, 600px)', transform: 'rotate(-90deg)' }} viewBox="0 0 100 100">
               <circle cx="50" cy="50" r={radius} stroke="rgba(255,255,255,0.1)" strokeWidth="8" fill="none" />
               <circle
                 cx="50"
@@ -354,10 +356,10 @@ export function ExternalDisplayWindow() {
             </svg>
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '12rem', fontWeight: 'bold', color: '#ef4444' }}>
+                <div style={{ fontSize: 'clamp(2rem, 15vmin, 12rem)', fontWeight: 'bold', color: '#ef4444' }}>
                   {timerNum}
                 </div>
-                <div style={{ fontSize: '24px', color: 'white', marginTop: '8px' }}>
+                <div style={{ fontSize: 'clamp(0.75rem, 3vmin, 2rem)', color: 'white', marginTop: 'clamp(4px, 1vmin, 8px)' }}>
                   seconds
                 </div>
               </div>
@@ -377,13 +379,13 @@ export function ExternalDisplayWindow() {
           }}>
             <div style={{ position: 'relative', zIndex: 10, textAlign: 'center', transform: 'rotate(-6deg)' }}>
               <div style={{
-                backgroundColor: '#f97316', color: 'black', padding: '64px 80px', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+                backgroundColor: '#f97316', color: 'black', padding: 'clamp(32px, 8vmin, 64px) clamp(40px, 10vmin, 80px)', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
                 border: '6px solid white', transform: 'rotate(3deg)', transition: 'transform 0.3s ease'
               }}>
-                <h1 style={{ fontSize: 'clamp(3rem, 12vw, 10rem)', fontWeight: 900, letterSpacing: '0.05em', margin: 0, color: 'black', textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', lineHeight: 0.9 }}>
+                <h1 style={{ fontSize: 'clamp(2rem, 10vmin, 10rem)', fontWeight: 900, letterSpacing: '0.05em', margin: 0, color: 'black', textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', lineHeight: 0.9 }}>
                   POP
                 </h1>
-                <h2 style={{ fontSize: 'clamp(3rem, 12vw, 10rem)', fontWeight: 900, letterSpacing: '0.05em', margin: 0, color: 'black', textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', lineHeight: 0.9 }}>
+                <h2 style={{ fontSize: 'clamp(2rem, 10vmin, 10rem)', fontWeight: 900, letterSpacing: '0.05em', margin: 0, color: 'black', textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', lineHeight: 0.9 }}>
                   QUIZ!
                 </h2>
               </div>
@@ -450,14 +452,14 @@ export function ExternalDisplayWindow() {
                 paddingRight: displayData.data?.imageDataUrl ? '0' : gapSize
               }}>
                 {/* Question Header */}
-                <div style={{ marginBottom: isMobileSize ? '20px' : '30px' }}>
-                  <h1 style={{ fontSize: headerFontSize, fontWeight: 'bold', color: '#f97316', margin: '0 0 15px 0' }}>
+                <div style={{ marginBottom: 'clamp(16px, 3vmin, 30px)' }}>
+                  <h1 style={{ fontSize: 'clamp(1.25rem, 2.5vmin, 2.25rem)', fontWeight: 'bold', color: '#f97316', margin: '0 0 clamp(8px, 1vmin, 15px) 0' }}>
                     Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
                   </h1>
                   {displayData.data?.hidden ? (
-                    <div style={{ fontSize: isMobileSize ? '64px' : '96px', fontWeight: 'bold', color: '#9ca3af', textAlign: 'center', marginTop: '20px' }}>?</div>
+                    <div style={{ fontSize: 'clamp(3rem, 12vmin, 10rem)', fontWeight: 'bold', color: '#9ca3af', textAlign: 'center', marginTop: 'clamp(12px, 2vmin, 20px)' }}>?</div>
                   ) : (
-                    <h2 style={{ fontSize: questionFontSize, fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.3' }}>
+                    <h2 style={{ fontSize: 'clamp(1.25rem, 4vmin, 3rem)', fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.3' }}>
                       {displayData.data?.text || 'Loading question...'}
                     </h2>
                   )}
@@ -465,7 +467,7 @@ export function ExternalDisplayWindow() {
 
                 {/* Options */}
                 {displayData.data?.options && displayData.data.options.length > 0 && !displayData.data?.hidden && (
-                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobileSize ? '120px' : '180px'}, 1fr))`, gap: isMobileSize ? '10px' : '16px', marginTop: isMobileSize ? '10px' : '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(clamp(100px, 15vw, 250px), 1fr))', gap: 'clamp(8px, 1.5vmin, 16px)', marginTop: 'clamp(8px, 1.5vmin, 20px)' }}>
                     {displayData.data.options.map((option: string, index: number) => {
                       const letterMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
                       return (
@@ -473,13 +475,13 @@ export function ExternalDisplayWindow() {
                           backgroundColor: '#374151',
                           border: '2px solid #f97316',
                           borderRadius: '8px',
-                          padding: isMobileSize ? '10px' : '16px',
+                          padding: 'clamp(8px, 1.5vmin, 16px)',
                           textAlign: 'center',
-                          fontSize: optionFontSize,
+                          fontSize: 'clamp(0.75rem, 1.5vmin, 1.25rem)',
                           fontWeight: '600',
                           color: 'white'
                         }}>
-                          <div style={{ marginBottom: '8px', fontSize: isMobileSize ? '18px' : '28px', color: '#f97316' }}>{letterMap[index]}</div>
+                          <div style={{ marginBottom: 'clamp(4px, 0.8vmin, 8px)', fontSize: 'clamp(1rem, 2.5vmin, 2rem)', color: '#f97316' }}>{letterMap[index]}</div>
                           <div>{option}</div>
                         </div>
                       );
@@ -528,8 +530,9 @@ export function ExternalDisplayWindow() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 zIndex: 10,
-                transform: 'scale(0.425)',
-                transformOrigin: 'bottom right'
+                width: 'clamp(80px, 20vw, 300px)',
+                height: 'clamp(80px, 20vw, 300px)',
+                overflow: 'hidden'
               }}>
                 {renderCountdownTimer(timeRemaining, displayData.countdownStyle || displayData.data?.countdownStyle || 'circular', displayData.data?.totalTime || displayData.totalTime || 30, 120)}
               </div>
@@ -556,7 +559,7 @@ export function ExternalDisplayWindow() {
             {/* Progress bar at top - show while timer is active */}
             {isTimerActive && (
               <div style={{
-                height: '12px',
+                height: 'clamp(6px, 1.5vmin, 12px)',
                 backgroundColor: '#e5e7eb',
                 width: '100%',
                 position: 'relative',
@@ -573,9 +576,9 @@ export function ExternalDisplayWindow() {
             )}
 
             {/* Content area - centered */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '32px', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                <h1 style={{ fontSize: '48px', fontWeight: 'bold', color: '#1f2937' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 'clamp(16px, 3vmin, 32px)', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ textAlign: 'center', marginBottom: 'clamp(16px, 3vmin, 32px)' }}>
+                <h1 style={{ fontSize: 'clamp(1.5rem, 4vmin, 3rem)', fontWeight: 'bold', color: '#1f2937' }}>
                   Question {(displayData.questionInfo && displayData.questionInfo.number) || 1}
                 </h1>
               </div>
@@ -594,8 +597,9 @@ export function ExternalDisplayWindow() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 zIndex: 10,
-                transform: 'scale(0.355)',
-                transformOrigin: 'bottom right'
+                width: 'clamp(80px, 18vw, 280px)',
+                height: 'clamp(80px, 18vw, 280px)',
+                overflow: 'hidden'
               }}>
                 {renderCountdownTimer(timerValue, displayData.countdownStyle, displayData.totalTime || 30, 120)}
               </div>
@@ -605,16 +609,16 @@ export function ExternalDisplayWindow() {
 
       case 'question':
         return (
-          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: 'clamp(20px, 4vmin, 40px)', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
             {/* Question Header */}
-            <div style={{ marginBottom: '40px', textAlign: 'center', width: '100%' }}>
-              <h1 style={{ fontSize: '56px', fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
+            <div style={{ marginBottom: 'clamp(20px, 4vmin, 40px)', textAlign: 'center', width: '100%' }}>
+              <h1 style={{ fontSize: 'clamp(1.5rem, 3vmin, 3.5rem)', fontWeight: 'bold', color: '#f97316', margin: '0 0 clamp(12px, 2vmin, 20px) 0' }}>
                 Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
               </h1>
               {displayData.data?.hidden ? (
-                <div style={{ fontSize: '120px', fontWeight: 'bold', color: '#9ca3af' }}>?</div>
+                <div style={{ fontSize: 'clamp(3rem, 15vmin, 10rem)', fontWeight: 'bold', color: '#9ca3af' }}>?</div>
               ) : (
-                <h2 style={{ fontSize: '48px', fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2', maxWidth: '90vw' }}>
+                <h2 style={{ fontSize: 'clamp(1.5rem, 5vmin, 3rem)', fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2', maxWidth: '90vw' }}>
                   {displayData.data?.text || 'Loading question...'}
                 </h2>
               )}
@@ -622,7 +626,7 @@ export function ExternalDisplayWindow() {
 
             {/* Options for Multiple Choice and Sequence */}
             {displayData.data?.options && displayData.data.options.length > 0 && !displayData.data?.hidden && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', width: '100%', maxWidth: '1200px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(clamp(120px, 15vw, 250px), 1fr))', gap: 'clamp(12px, 2vmin, 20px)', width: '100%', maxWidth: '90vw' }}>
                 {displayData.data.options.map((option: string, index: number) => {
                   const letterMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
                   return (
@@ -630,13 +634,13 @@ export function ExternalDisplayWindow() {
                       backgroundColor: '#374151',
                       border: '3px solid #f97316',
                       borderRadius: '12px',
-                      padding: '20px',
+                      padding: 'clamp(12px, 2vmin, 20px)',
                       textAlign: 'center',
-                      fontSize: '28px',
+                      fontSize: 'clamp(1rem, 1.8vmin, 1.75rem)',
                       fontWeight: '600',
                       color: 'white'
                     }}>
-                      <div style={{ marginBottom: '10px', fontSize: '36px', color: '#f97316' }}>{letterMap[index]}</div>
+                      <div style={{ marginBottom: 'clamp(6px, 1vmin, 10px)', fontSize: 'clamp(1.5rem, 3vmin, 2.25rem)', color: '#f97316' }}>{letterMap[index]}</div>
                       <div>{option}</div>
                     </div>
                   );
@@ -648,58 +652,58 @@ export function ExternalDisplayWindow() {
 
       case 'resultsSummary':
         return (
-          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}>
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: 'clamp(20px, 4vmin, 40px)', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}>
             {/* Question and Answer at top */}
-            <div style={{ marginBottom: displayData.data?.correctCount !== undefined ? '40px' : '60px', textAlign: 'center', width: '100%' }}>
-              <h1 style={{ fontSize: '48px', fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
+            <div style={{ marginBottom: displayData.data?.correctCount !== undefined ? 'clamp(20px, 4vmin, 40px)' : 'clamp(30px, 6vmin, 60px)', textAlign: 'center', width: '100%' }}>
+              <h1 style={{ fontSize: 'clamp(1.5rem, 3vmin, 3rem)', fontWeight: 'bold', color: '#f97316', margin: '0 0 clamp(12px, 2vmin, 20px) 0' }}>
                 Question {displayData.data?.questionNumber || 1}
               </h1>
-              <h2 style={{ fontSize: '40px', fontWeight: '600', color: 'white', margin: '0 0 30px 0', lineHeight: '1.3' }}>
+              <h2 style={{ fontSize: 'clamp(1.25rem, 4vmin, 2.5rem)', fontWeight: '600', color: 'white', margin: '0 0 clamp(16px, 2vmin, 30px) 0', lineHeight: '1.3' }}>
                 {displayData.data?.text || ''}
               </h2>
-              <div style={{ fontSize: '42px', fontWeight: 'bold', color: '#10b981', margin: '0 0 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-                <span style={{ fontSize: '48px' }}>✓</span>
+              <div style={{ fontSize: 'clamp(1.25rem, 3.5vmin, 2.75rem)', fontWeight: 'bold', color: '#10b981', margin: '0 0 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'clamp(8px, 1.5vmin, 16px)' }}>
+                <span style={{ fontSize: 'clamp(1.5rem, 4vmin, 3rem)' }}>✓</span>
                 <span>{displayData.data?.answer || 'No answer available'}</span>
               </div>
             </div>
 
             {/* Results Summary Grid - only show if team answer counts exist */}
             {displayData.data?.correctCount !== undefined && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', width: '100%', maxWidth: '800px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(clamp(100px, 20vw, 200px), 1fr))', gap: 'clamp(12px, 2vmin, 24px)', width: '100%', maxWidth: '90vw' }}>
               {/* Correct */}
               <div style={{
                 backgroundColor: '#10b981',
                 borderRadius: '16px',
-                padding: '30px',
+                padding: 'clamp(16px, 2.5vmin, 30px)',
                 textAlign: 'center',
                 border: '4px solid white'
               }}>
-                <div style={{ fontSize: '24px', fontWeight: '600', color: 'white', marginBottom: '10px' }}>Correct</div>
-                <div style={{ fontSize: '56px', fontWeight: 'bold', color: 'white' }}>{displayData.data?.correctCount || 0}</div>
+                <div style={{ fontSize: 'clamp(0.875rem, 1.8vmin, 1.5rem)', fontWeight: '600', color: 'white', marginBottom: 'clamp(6px, 1vmin, 10px)' }}>Correct</div>
+                <div style={{ fontSize: 'clamp(1.75rem, 4vmin, 3.5rem)', fontWeight: 'bold', color: 'white' }}>{displayData.data?.correctCount || 0}</div>
               </div>
 
               {/* Incorrect */}
               <div style={{
                 backgroundColor: '#ef4444',
                 borderRadius: '16px',
-                padding: '30px',
+                padding: 'clamp(16px, 2.5vmin, 30px)',
                 textAlign: 'center',
                 border: '4px solid white'
               }}>
-                <div style={{ fontSize: '24px', fontWeight: '600', color: 'white', marginBottom: '10px' }}>Incorrect</div>
-                <div style={{ fontSize: '56px', fontWeight: 'bold', color: 'white' }}>{displayData.data?.incorrectCount || 0}</div>
+                <div style={{ fontSize: 'clamp(0.875rem, 1.8vmin, 1.5rem)', fontWeight: '600', color: 'white', marginBottom: 'clamp(6px, 1vmin, 10px)' }}>Incorrect</div>
+                <div style={{ fontSize: 'clamp(1.75rem, 4vmin, 3.5rem)', fontWeight: 'bold', color: 'white' }}>{displayData.data?.incorrectCount || 0}</div>
               </div>
 
               {/* No Answer */}
               <div style={{
                 backgroundColor: '#6b7280',
                 borderRadius: '16px',
-                padding: '30px',
+                padding: 'clamp(16px, 2.5vmin, 30px)',
                 textAlign: 'center',
                 border: '4px solid white'
               }}>
-                <div style={{ fontSize: '24px', fontWeight: '600', color: 'white', marginBottom: '10px' }}>No Answer</div>
-                <div style={{ fontSize: '56px', fontWeight: 'bold', color: 'white' }}>{displayData.data?.noAnswerCount || 0}</div>
+                <div style={{ fontSize: 'clamp(0.875rem, 1.8vmin, 1.5rem)', fontWeight: '600', color: 'white', marginBottom: 'clamp(6px, 1vmin, 10px)' }}>No Answer</div>
+                <div style={{ fontSize: 'clamp(1.75rem, 4vmin, 3.5rem)', fontWeight: 'bold', color: 'white' }}>{displayData.data?.noAnswerCount || 0}</div>
               </div>
             </div>
             )}
@@ -708,45 +712,25 @@ export function ExternalDisplayWindow() {
 
       case 'fastestTeam':
         return (
-          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
-            {/* Subheader */}
-            <div style={{ fontSize: '32px', fontWeight: '600', color: '#9ca3af', marginBottom: '30px', textAlign: 'center' }}>
-              The fastest correct team was:
-            </div>
-
-            {/* Team Name with animation */}
-            <div style={{
-              fontSize: 'clamp(3rem, 10vw, 8rem)',
-              fontWeight: 'bold',
-              color: '#f97316',
-              textAlign: 'center',
-              padding: '40px',
-              border: '6px solid #f97316',
-              borderRadius: '24px',
-              backgroundColor: '#374151',
-              animation: 'scaleInAnimation 0.6s ease-out',
-              maxWidth: '90vw',
-              wordWrap: 'break-word',
-              overflowWrap: 'break-word'
-            }}>
-              {displayData.data?.teamName || 'No Team'}
-            </div>
-          </div>
+          <FastestTeamOverlaySimplified
+            teamName={displayData.data?.teamName || 'No Team'}
+            teamPhoto={displayData.data?.teamPhoto || undefined}
+          />
         );
 
       case 'scores':
         return (
-          <div style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px' }}>
-            <div style={{ backgroundColor: '#1f2937', borderRadius: '8px', padding: '32px', width: '100%', maxWidth: '56rem' }}>
-              <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: '#f97316', textAlign: 'center', marginBottom: '32px' }}>★ LIVE SCORES ★</h1>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'clamp(16px, 3vmin, 32px)' }}>
+            <div style={{ backgroundColor: '#1f2937', borderRadius: '8px', padding: 'clamp(16px, 3vmin, 32px)', width: '100%', maxWidth: '90vw' }}>
+              <h1 style={{ fontSize: 'clamp(1.25rem, 2.5vmin, 2rem)', fontWeight: 'bold', color: '#f97316', textAlign: 'center', marginBottom: 'clamp(16px, 2.5vmin, 32px)' }}>★ LIVE SCORES ★</h1>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(8px, 1.5vmin, 16px)' }}>
                 {displayData.quizzes.sort((a, b) => (b.score || 0) - (a.score || 0)).map((team, index) => (
-                  <div key={team.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#374151', padding: '16px', borderRadius: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#60a5fa' }}>#{index + 1}</span>
-                      <span style={{ fontSize: '20px', color: 'white' }}>{team.name}</span>
+                  <div key={team.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#374151', padding: 'clamp(8px, 1.5vmin, 16px)', borderRadius: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(8px, 1.5vmin, 16px)' }}>
+                      <span style={{ fontSize: 'clamp(1rem, 1.8vmin, 1.5rem)', fontWeight: 'bold', color: '#60a5fa' }}>#{index + 1}</span>
+                      <span style={{ fontSize: 'clamp(0.875rem, 1.5vmin, 1.25rem)', color: 'white' }}>{team.name}</span>
                     </div>
-                    <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#4ade80' }}>{team.score || 0}</span>
+                    <span style={{ fontSize: 'clamp(1rem, 1.8vmin, 1.5rem)', fontWeight: 'bold', color: '#4ade80' }}>{team.score || 0}</span>
                   </div>
                 ))}
               </div>
