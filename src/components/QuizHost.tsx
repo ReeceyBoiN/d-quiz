@@ -746,7 +746,8 @@ export function QuizHost() {
         // Get WebSocket URL - support both Electron and browser dev mode
         let backendWs: string | null = null;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const hostname = window.location.hostname;
+        // If hostname is empty (Electron file:// protocol), default to localhost
+        const hostname = window.location.hostname || 'localhost';
 
         if ((window as any).api?.backend?.ws) {
           // Electron mode - get URL from IPC
