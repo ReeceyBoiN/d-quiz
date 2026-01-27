@@ -43,7 +43,12 @@ export function useNetworkConnection({
 
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/events`;
+
+        // Get backend URL from environment variable or construct from current window location
+        // If hostname is empty (Electron file:// protocol), default to localhost
+        let backendHost = import.meta.env.VITE_BACKEND_HOST || window.location.hostname || 'localhost';
+        const backendPort = import.meta.env.VITE_BACKEND_PORT || 4310;
+        const wsUrl = `${protocol}//${backendHost}:${backendPort}/events`;
 
         console.log(`[Player Connection Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS}] Connecting to: ${wsUrl}`);
         wsInstance = new WebSocket(wsUrl);
