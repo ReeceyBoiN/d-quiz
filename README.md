@@ -35,7 +35,8 @@ Never use	- npm install (without lock file strict mode)
 
  Add the filter for questions so "THE LION KING" answer isnt a "T" as we're ignoring the word "THE"
 
- P:
- the fastest team screen on quiz pack mode, the team pic, team name, team grid and points awarded and stats etc arent visible like they are on the keypad on the spot mode. can you deep dive and fix this. ask me questions if you need
+ Team Pic sent from phone not getting assigned to a team or coming through to host app
+
+ Points
 
  Scaling visually needs adding

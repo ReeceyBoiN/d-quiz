@@ -1829,6 +1829,7 @@ export function QuizHost() {
             setHideQuestionMode(false); // Reset hide question flag for next question
             setShowAnswer(false); // Reset answer visibility for next question
             setFastestTeamRevealTime(null); // Reset reveal time
+            setShowFastestTeamDisplay(false); // Close fastest team display before showing next question
             setIsSendQuestionDisabled(true); // Disable Send Question for 2 seconds
             sendNextQuestion();
 
@@ -2255,10 +2256,16 @@ export function QuizHost() {
 
   // Handle fastest team reveal
   const handleFastestTeamReveal = useCallback((fastestTeam: { team: Quiz; responseTime: number }) => {
-    setFastestTeamData(fastestTeam);
+    // Ensure team data is synced with the latest info from quizzes array (includes photoUrl, name, etc.)
+    const currentTeam = quizzes.find(q => q.id === fastestTeam.team.id);
+    if (currentTeam) {
+      setFastestTeamData({ team: currentTeam, responseTime: fastestTeam.responseTime });
+    } else {
+      setFastestTeamData(fastestTeam);
+    }
     setShowFastestTeamDisplay(true);
     setActiveTab("teams"); // Switch to teams tab to show the display
-  }, []);
+  }, [quizzes]);
 
   // Handle fastest team display close
   const handleFastestTeamClose = useCallback(() => {
@@ -3769,68 +3776,44 @@ export function QuizHost() {
       const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
 
       return (
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 relative min-h-0">
           {/* Main question display */}
-          <QuestionPanel
-            question={currentQuestion}
-            questionNumber={currentLoadedQuestionIndex + 1}
-            totalQuestions={loadedQuizQuestions.length}
-            showAnswer={flowState.flow === 'timeup' || flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
-            answerText={currentQuestion?.answerText}
-            correctIndex={currentQuestion?.correctIndex}
-          />
-        </div>
-      );
-    }
-
-    // Fallback to old QuizPackDisplay for config screen (but show fastest team if applicable)
-    else if (showQuizPackDisplay && !flowState.isQuestionMode) {
-      // If fastest team should be displayed, show it instead of the config screen
-      if (showFastestTeamDisplay) {
-        return (
-          <div className="flex-1 overflow-hidden">
-            <FastestTeamDisplay
-              fastestTeam={fastestTeamData}
-              teams={quizzes}
-              hostLocation={hostLocation}
-              onClose={handleFastestTeamClose}
-              onFastestTeamLocationChange={handleTeamLocationChange}
-              onHostLocationChange={handleHostLocationChange}
-              onScrambleKeypad={handleScrambleKeypad}
-              onBlockTeam={handleBlockTeam}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <QuestionPanel
+              question={currentQuestion}
+              questionNumber={currentLoadedQuestionIndex + 1}
+              totalQuestions={loadedQuizQuestions.length}
+              showAnswer={flowState.flow === 'timeup' || flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
+              answerText={currentQuestion?.answerText}
+              correctIndex={currentQuestion?.correctIndex}
             />
           </div>
-        );
-      }
-
-      return (
-        <div className="flex-1 overflow-hidden h-full w-full flex">
-          <QuizPackDisplay
-            questions={loadedQuizQuestions}
-            currentQuestionIndex={currentLoadedQuestionIndex}
-            onPreviousQuestion={handleQuizPackPrevious}
-            onNextQuestion={handleQuizPackNext}
-            onBack={handleQuizPackClose}
-            totalTeams={quizzes.length}
-            onStartQuiz={handleStartQuiz}
-            onStartRoundWithQuestion={handleStartRoundWithQuestion}
-            onPointsChange={handleCurrentRoundPointsChange}
-            onSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
-            currentRoundPoints={currentRoundPoints}
-            currentRoundSpeedBonus={currentRoundSpeedBonus}
-            onGameTimerStateChange={setGameTimerRunning}
-          />
+          {/* Show fastest team display as an overlay in quiz pack mode */}
+          {showFastestTeamDisplay && (
+            <div className="absolute inset-0 overflow-hidden z-50">
+              <FastestTeamDisplay
+                fastestTeam={fastestTeamData}
+                teams={quizzes}
+                hostLocation={hostLocation}
+                onClose={handleFastestTeamClose}
+                onFastestTeamLocationChange={handleTeamLocationChange}
+                onHostLocationChange={handleHostLocationChange}
+                onScrambleKeypad={handleScrambleKeypad}
+                onBlockTeam={handleBlockTeam}
+              />
+            </div>
+          )}
         </div>
       );
     }
 
     // Show keypad interface in center when active
-    // Keep it mounted even when fastest team display is shown so we can advance to next question
+    // When fastest team display is shown, it will overlay on top while keeping keypad mounted
     if (showKeypadInterface) {
       return (
         <div className="flex-1 relative min-h-0">
           {/* Keypad interface - always rendered when active */}
-          <div className={showFastestTeamDisplay ? "invisible flex-1 overflow-hidden" : "flex-1 overflow-hidden"}>
+          <div className="flex-1 overflow-hidden">
             <KeypadInterface
               key={keypadInstanceKey}
               onBack={handleKeypadClose}
@@ -3869,10 +3852,9 @@ export function QuizHost() {
               onTimerStart={handleGameTimerStart}
             />
           </div>
-          
-          {/* Fastest team display - overlays keypad interface when shown */}
+          {/* Show fastest team display as an overlay on top of keypad */}
           {showFastestTeamDisplay && (
-            <div className="absolute inset-0 z-10">
+            <div className="absolute inset-0 flex-1 overflow-hidden z-50">
               <FastestTeamDisplay
                 fastestTeam={fastestTeamData}
                 teams={quizzes}
@@ -3888,8 +3870,8 @@ export function QuizHost() {
         </div>
       );
     }
-    
-    // Show fastest team display standalone if keypad interface is not active
+
+    // Show fastest team display for quiz pack mode (when keypad is not active)
     if (showFastestTeamDisplay) {
       return (
         <div className="flex-1 overflow-hidden">
@@ -3898,8 +3880,33 @@ export function QuizHost() {
             teams={quizzes}
             hostLocation={hostLocation}
             onClose={handleFastestTeamClose}
+            onFastestTeamLocationChange={handleTeamLocationChange}
+            onHostLocationChange={handleHostLocationChange}
             onScrambleKeypad={handleScrambleKeypad}
             onBlockTeam={handleBlockTeam}
+          />
+        </div>
+      );
+    }
+
+    // Fallback to old QuizPackDisplay for config screen
+    if (showQuizPackDisplay && !flowState.isQuestionMode) {
+      return (
+        <div className="flex-1 overflow-hidden h-full w-full flex">
+          <QuizPackDisplay
+            questions={loadedQuizQuestions}
+            currentQuestionIndex={currentLoadedQuestionIndex}
+            onPreviousQuestion={handleQuizPackPrevious}
+            onNextQuestion={handleQuizPackNext}
+            onBack={handleQuizPackClose}
+            totalTeams={quizzes.length}
+            onStartQuiz={handleStartQuiz}
+            onStartRoundWithQuestion={handleStartRoundWithQuestion}
+            onPointsChange={handleCurrentRoundPointsChange}
+            onSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
+            currentRoundPoints={currentRoundPoints}
+            currentRoundSpeedBonus={currentRoundSpeedBonus}
+            onGameTimerStateChange={setGameTimerRunning}
           />
         </div>
       );

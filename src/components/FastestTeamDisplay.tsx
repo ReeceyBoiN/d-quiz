@@ -120,7 +120,7 @@ export function FastestTeamDisplay({
   };
 
   return (
-    <div className="absolute inset-0 bg-background z-50" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div className="flex-1 flex flex-col bg-background relative">
       {/* Header */}
       <div className="border-b border-border p-6 bg-card" style={{ flexShrink: 0 }}>
         <div className="flex items-center justify-between">
