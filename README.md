@@ -12,9 +12,6 @@ Never use	- npm install (without lock file strict mode)
    Fixes Needed:
 
 
- if team wrong, right answer should flash orange not green?
- red flashing not showing either on keypad 
-
  need arrows for next quesstion and previous question
 
  add logic if player joins mid question
