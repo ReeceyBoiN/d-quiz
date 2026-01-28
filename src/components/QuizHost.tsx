@@ -1372,6 +1372,7 @@ export function QuizHost() {
     // Clear loaded quiz questions to ensure on-the-spot mode doesn't auto-detect question type from previous quiz pack
     setLoadedQuizQuestions([]);
     setCurrentLoadedQuestionIndex(0);
+    setIsQuizPackMode(false); // Ensure quiz pack mode is disabled for on-the-spot
     setShowKeypadInterface(true);
     setActiveTab("teams"); // Change active tab when keypad is opened
     setKeypadInstanceKey(prev => prev + 1); // Force re-render with fresh defaults
