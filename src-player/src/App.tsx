@@ -51,6 +51,7 @@ export default function App() {
   const [isAnswerCorrect, setIsAnswerCorrect] = useState<boolean | undefined>();
   const [submittedAnswer, setSubmittedAnswer] = useState<any>(null);
   const [timerEnded, setTimerEnded] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const displayModeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -190,6 +191,12 @@ export default function App() {
       case 'TEAM_APPROVED':
         try {
           console.log('[Player] Team approved, displayData:', message.data?.displayData);
+          setIsApproved(true);
+          // Cache team name for recovery on page refresh
+          if (teamName) {
+            localStorage.setItem('popquiz_last_team_name', teamName);
+            console.log('[Player] Cached team name for recovery:', teamName);
+          }
 
           // Check if there's a current game state (late joiner sync)
           const displayData = message.data?.displayData;
@@ -273,6 +280,9 @@ export default function App() {
         setCurrentScreen('approval');
         break;
       case 'TEAM_DECLINED':
+        setIsApproved(false);
+        // Clear cached team name so user can try a different name if needed
+        localStorage.removeItem('popquiz_last_team_name');
         setCurrentScreen('declined');
         break;
       case 'QUESTION':
@@ -597,6 +607,37 @@ export default function App() {
     onConnect: handleConnect,
     onMessage: handleMessage,
   });
+
+  // Auto-rejoin when WS reconnects if team is still approved and has a name
+  // Only triggers during true reconnection, NOT during initial team entry
+  useEffect(() => {
+    if (
+      isConnected &&
+      isApproved &&
+      teamName &&
+      wsRef.current &&
+      wsRef.current.readyState === WebSocket.OPEN &&
+      currentScreen !== 'team-entry' &&
+      currentScreen !== 'declined'
+    ) {
+      // App still has team info in memory - auto-rejoin without re-entering name
+      console.log(`[Player] Auto-rejoin: Device ${deviceId} reconnecting as "${teamName}"`);
+      const rejoinPayload: any = {
+        type: 'PLAYER_JOIN',
+        playerId,
+        deviceId,
+        teamName,
+        timestamp: Date.now(),
+      };
+
+      if (settings.teamPhoto) {
+        rejoinPayload.teamPhoto = settings.teamPhoto;
+      }
+
+      wsRef.current.send(JSON.stringify(rejoinPayload));
+    }
+  }, [isConnected, isApproved, teamName, deviceId, playerId, settings, currentScreen]);
+
 
   const handleTeamNameSubmit = (name: string) => {
     setTeamName(name);

@@ -104,14 +104,27 @@ async function startBackend({ port = 4310 } = {}) {
             playerId = data.playerId;
             log.info(`[WS-${connectionId}] 🎯 Player join request: ${data.teamName} (device: ${deviceId}, player: ${playerId})`);
 
-            networkPlayers.set(deviceId, {
-              ws,
-              playerId,
-              teamName: data.teamName,
-              status: 'pending',
-              timestamp: Date.now(),
-              teamPhoto: data.teamPhoto || null
-            });
+            const existingPlayer = networkPlayers.get(deviceId);
+
+            if (existingPlayer?.approvedAt) {
+              // Reconnection - device was previously approved, update with new connection
+              existingPlayer.teamName = data.teamName;
+              existingPlayer.ws = ws;
+              existingPlayer.playerId = data.playerId;
+              log.info(`[WS-${connectionId}] 🔄 [Reconnection] Device ${deviceId} rejoining as "${data.teamName}", was approved at ${new Date(existingPlayer.approvedAt).toISOString()}`);
+            } else {
+              // New join - treat as first time
+              networkPlayers.set(deviceId, {
+                ws,
+                playerId,
+                teamName: data.teamName,
+                status: 'pending',
+                approvedAt: null,
+                timestamp: Date.now(),
+                teamPhoto: data.teamPhoto || null
+              });
+              log.info(`[WS-${connectionId}] ✨ [New Join] Device ${deviceId} joining for first time`);
+            }
             if (data.teamPhoto) {
               log.info(`[WS-${connectionId}] ✅ Team photo received for ${data.teamName} (size: ${data.teamPhoto.length} bytes)`);
             }
@@ -295,7 +308,8 @@ async function startBackend({ port = 4310 } = {}) {
       }
 
       player.status = 'approved';
-      log.info(`[approveTeam] Set player status to approved for ${deviceId}`);
+      player.approvedAt = Date.now();
+      log.info(`[approveTeam] Set player status to approved for ${deviceId}, approvedAt: ${new Date(player.approvedAt).toISOString()}`);
 
       let message;
       try {

@@ -36,7 +36,7 @@ import { useQuizData } from "../utils/QuizDataContext";
 import { useTimer } from "../hooks/useTimer";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage } from "../state/flowState";
-import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage } from "../network/wsHost";
+import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { calculateTeamPoints, rankCorrectTeams, shouldAutoDisableGoWide, type ScoringConfig } from "../utils/scoringEngine";
 import { saveGameState, createGameStateSnapshot, type RoundSettings } from "../utils/gameStatePersistence";
@@ -798,122 +798,12 @@ export function QuizHost() {
             const data = JSON.parse(event.data);
             console.log('[WebSocket Message]', data);
 
-            if (data.type === 'PLAYER_JOIN') {
-              console.log('🎯 PLAYER_JOIN received:', data);
-              const { deviceId, playerId, teamName } = data;
-
-              if (!deviceId || !teamName) {
-                console.error('Invalid PLAYER_JOIN message - missing deviceId or teamName');
-                return;
-              }
-
-              // Check if team already exists
-              if (quizzes.find(q => q.id === deviceId)) {
-                console.log('Team already exists:', deviceId);
-                return;
-              }
-
-              // Check if all existing teams have score 0
-              const allScoresZero = quizzes.every(team => (team.score || 0) === 0);
-              console.log('All scores zero?', allScoresZero, 'Current scores:', quizzes.map(q => ({ name: q.name, score: q.score })));
-
-              if (allScoresZero) {
-                // Auto-approve: add team directly to quizzes list
-                console.log('Auto-approving team:', teamName);
-                const newTeam: Quiz = {
-                  id: deviceId,
-                  name: teamName,
-                  type: 'test' as const,
-                  icon: '👤',
-                  score: 0,
-                  photoUrl: data.teamPhoto || undefined,
-                };
-
-                setQuizzes(prev => [...prev, newTeam]);
-
-                // Auto-approve via IPC (only works in Electron)
-                try {
-                  if ((window as any).api?.network?.approveTeam) {
-                    // Prepare display mode data for the newly approved player
-                    const displayData: any = {
-                      mode: playerDevicesDisplayMode
-                    };
-
-                    if (playerDevicesDisplayMode === 'slideshow') {
-                      displayData.images = playerDevicesImages.map((img, idx) => ({
-                        id: `img-${idx}`,
-                        path: img.url,
-                        name: img.name || `Image ${idx + 1}`
-                      }));
-                      displayData.rotationInterval = playerDevicesSlideshowSeconds * 1000;
-                    } else if (playerDevicesDisplayMode === 'scores') {
-                      const sortedQuizzes = [...quizzes].sort((a, b) => (b.score || 0) - (a.score || 0));
-                      displayData.scores = sortedQuizzes.map((q, idx) => ({
-                        id: q.id,
-                        name: q.name,
-                        score: q.score || 0,
-                        position: idx + 1
-                      }));
-                    }
-
-                    // Send current game state to late joiner
-                    const currentGameState: any = {};
-
-                    // For quiz pack mode - send current question and timer state
-                    if (showQuizPackDisplay && loadedQuizQuestions.length > 0 && currentLoadedQuestionIndex < loadedQuizQuestions.length) {
-                      const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
-                      const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
-
-                      currentGameState.currentQuestion = {
-                        text: currentQuestion.q,
-                        options: currentQuestion.options || [],
-                        type: normalizedType,
-                        imageDataUrl: currentQuestion.imageDataUrl || null,
-                        questionNumber: currentLoadedQuestionIndex + 1,
-                        totalQuestions: loadedQuizQuestions.length
-                      };
-
-                      // Send timer state if question is active
-                      if (flowState.flow === 'running' || flowState.flow === 'timeup') {
-                        currentGameState.timerState = {
-                          isRunning: flowState.flow === 'running',
-                          timeRemaining: Math.max(0, flowState.timeRemaining),
-                          totalTime: flowState.totalTime
-                        };
-                      }
-                    }
-
-                    // For on-the-spot modes - send current question and timer state
-                    if (gameTimerRunning) {
-                      currentGameState.timerState = {
-                        isRunning: gameTimerRunning,
-                        timeRemaining: gameTimerTimeRemaining,
-                        totalTime: gameTimerTotalTime
-                      };
-                    }
-
-                    displayData.currentGameState = currentGameState;
-
-                    console.log('Calling approveTeam IPC with displayData:', { deviceId, teamName, displayData });
-                    await (window as any).api.network.approveTeam({ deviceId, teamName, displayData });
-                    console.log('✅ Team auto-approved');
-                  } else {
-                    console.warn('api.network.approveTeam not available');
-                  }
-                } catch (err) {
-                  console.error('❌ Failed to approve team:', err);
-                }
-              } else {
-                // Add to pending teams list
-                console.log('Adding to pending teams:', teamName);
-                setPendingTeams(prev => {
-                  const updated = [...prev, { deviceId, playerId, teamName, timestamp: Date.now() }];
-                  console.log('Updated pending teams:', updated);
-                  return updated;
-                });
-                setShowPendingTeams(true);
-              }
-            }
+            // Forward message to wsHost listeners (PLAYER_JOIN, PLAYER_ANSWER, etc)
+            broadcastMessage({
+              type: data.type,
+              data,
+              timestamp: data.timestamp || Date.now()
+            });
           } catch (err) {
             console.error('Failed to parse WebSocket message:', err);
           }
@@ -1002,7 +892,7 @@ export function QuizHost() {
         photoUrl: teamPhoto || undefined,
       };
 
-      if (!quizzes.find(q => q.id === deviceId)) {
+      if (!quizzesRef.current.find(q => q.id === deviceId)) {
         setQuizzes(prev => [...prev, newTeam]);
         console.log('Added team to quizzes');
       }
@@ -2416,25 +2306,55 @@ export function QuizHost() {
   // Listen for network player registrations
   useEffect(() => {
     const handleNetworkPlayerJoin = (data: any) => {
-      const { playerId, teamName } = data;
+      const { deviceId, playerId, teamName } = data;
 
-      // Check if player already registered (using ref to access latest quizzes)
-      if (!quizzesRef.current.find(q => q.id === playerId)) {
-        const newTeam: Quiz = {
-          id: playerId,
-          name: teamName,
-          type: 'test',
-          score: 0,
-          icon: '📱',
-        };
+      if (!deviceId) {
+        console.warn('PLAYER_JOIN missing deviceId');
+        return;
+      }
 
-        setQuizzes(prev => {
-          const updated = [...prev, newTeam];
-          // Sort by score after adding
-          return updated.sort((a, b) => (b.score || 0) - (a.score || 0));
-        });
+      // Check if team with this deviceId already exists (reconnection case)
+      const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
 
-        console.log(`Network player joined: ${teamName} (${playerId})`);
+      if (existingTeam) {
+        // Reconnection - update existing team, keep score, mark as connected
+        setQuizzes(prev => prev.map(q =>
+          q.id === deviceId
+            ? { ...q, name: teamName, disconnected: false }
+            : q
+        ));
+        console.log(`🔄 Network player reconnected: ${teamName} (${deviceId}) - score preserved: ${existingTeam.score}`);
+      } else {
+        // New team - check if quiz is in progress (any team has points)
+        const hasStartedQuiz = quizzesRef.current.some(q => (q.score || 0) > 0);
+
+        if (!hasStartedQuiz) {
+          // Quiz hasn't started - auto approve new team
+          console.log('📋 Auto-approving new team (no points yet):', { deviceId, teamName });
+
+          // Add team to quizzes first
+          const newTeam: Quiz = {
+            id: deviceId,
+            name: teamName,
+            type: 'test',
+            score: 0,
+            icon: '📱',
+          };
+
+          setQuizzes(prev => {
+            const updated = [...prev, newTeam];
+            // Sort by score after adding
+            return updated.sort((a, b) => (b.score || 0) - (a.score || 0));
+          });
+
+          // Auto-approve the team
+          setTimeout(() => handleApproveTeam(deviceId, teamName), 0);
+          console.log(`✨ New network player auto-approved: ${teamName} (${deviceId})`);
+        } else {
+          // Quiz in progress - require manual approval
+          console.log('⏸️ New team requires manual approval (quiz in progress):', { deviceId, teamName });
+          setPendingTeams(prev => [...prev, { deviceId, playerId, teamName, timestamp: Date.now() }]);
+        }
       }
     };
 
@@ -2449,19 +2369,26 @@ export function QuizHost() {
   useEffect(() => {
     const handleNetworkPlayerAnswer = (data: any) => {
       console.log('🎯 PLAYER_ANSWER received:', data);
-      const playerId = data.playerId || data.deviceId;
+      const deviceId = data.deviceId;
+      const playerId = data.playerId;
       const { answer, timestamp, teamName } = data;
 
-      if (!playerId) {
-        console.warn('PLAYER_ANSWER missing playerId/deviceId');
+      if (!deviceId) {
+        console.warn('PLAYER_ANSWER missing deviceId');
         return;
       }
 
-      // Find the quiz that matches this team by team name
-      const matchingQuiz = quizzes.find(q => q.name === teamName);
-      const teamId = matchingQuiz?.id || playerId; // Fallback to playerId if no quiz found
+      // Find the quiz using deviceId (primary), playerId (fallback 1), or teamName (last resort)
+      const matchingQuiz =
+        quizzes.find(q => q.id === deviceId) ||
+        quizzes.find(q => q.id === playerId) ||
+        quizzes.find(q => q.name === teamName);
+      const teamId = matchingQuiz?.id || deviceId; // Fallback to deviceId
 
-      console.log('[QuizHost] Mapping player answer - playerId:', playerId, 'teamName:', teamName, 'teamId:', teamId);
+      if (matchingQuiz) {
+        console.log(`[QuizHost] Matched quiz: ${matchingQuiz.name} via ${deviceId ? 'deviceId' : playerId ? 'playerId' : 'teamName'}`);
+      }
+      console.log('[QuizHost] Mapping player answer - deviceId:', deviceId, 'teamName:', teamName, 'teamId:', teamId);
 
       // Update team answers for real-time display in teams column
       setTeamAnswers(prev => {

@@ -5,10 +5,15 @@ import { SettingsProvider } from "./utils/SettingsContext";
 import { AuthProvider } from "./utils/AuthContext";
 import { QuizDataProvider } from "./utils/QuizDataContext";
 import { useQuizLoader } from "./utils/useQuizLoader";
+import { initHostNetwork } from "./network/wsHost";
 
 function AppInner() {
   const { handleQuizFileSelection } = useQuizLoader();
   const isExternalDisplay = new URLSearchParams(window.location.search).get('external') === '1';
+
+  useEffect(() => {
+    initHostNetwork({ enabled: true });
+  }, []);
 
   useEffect(() => {
     const onDragOver = (e: DragEvent) => {
