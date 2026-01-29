@@ -13,6 +13,8 @@ Never use	- npm install (without lock file strict mode)
 
  points arent always getting added to a team if they answer correctly
 
+ response time isnt calced in quizpack mode
+
  x activation needs to be assigned to a specific laptop / mac address so users cant log in, activate, then turn off wifi and log into another laptop to download same activation
 
  pictures when sent to the phone need to be clickable to disapear rather than show above the options
