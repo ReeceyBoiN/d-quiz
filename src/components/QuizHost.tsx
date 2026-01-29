@@ -450,6 +450,9 @@ export function QuizHost() {
     reveal?: () => void;
     nextQuestion?: () => void;
     startTimer?: () => void;
+    silentTimer?: () => void;
+    revealFastestTeam?: () => void;
+    previousQuestion?: () => void;
   } | null>(null);
 
   // Game timer state for navigation bar
@@ -1855,15 +1858,8 @@ export function QuizHost() {
             }
             // Flow state will be reset by the effect
           } else {
-            setFlowState(prev => ({
-              ...prev,
-              flow: 'complete',
-            }));
-            setIsSendQuestionDisabled(true); // Disable Send Question for 2 seconds
-            sendEndRound();
-            if (externalWindow) {
-              sendToExternalDisplay({ type: 'END_ROUND' });
-            }
+            // Last question - call handleEndRound (performs full cleanup + broadcast)
+            handleEndRound();
           }
         }
         break;
@@ -4190,6 +4186,31 @@ export function QuizHost() {
                 gameActionHandlers.revealFastestTeam();
               }
             }}
+            onPreviousQuestion={() => {
+              if (isQuizPackMode) {
+                handleQuizPackPrevious();
+              } else if (gameActionHandlers?.previousQuestion) {
+                gameActionHandlers.previousQuestion();
+              }
+            }}
+            onNextQuestion={() => {
+              if (isQuizPackMode) {
+                handleQuizPackNext();
+              } else if (gameActionHandlers?.nextQuestion) {
+                gameActionHandlers.nextQuestion();
+              }
+            }}
+            showNavigationArrows={
+              // Show only during active gameplay
+              (showQuizPackDisplay && flowState.isQuestionMode) || // Quiz pack: active question display
+              (showKeypadInterface && ['letters-game', 'multiple-choice-game', 'numbers-game', 'sequence-game'].includes(keypadCurrentScreen)) || // On-the-spot: game screens only
+              (showNearestWinsInterface && nearestWinsCurrentScreen === 'playing') // Nearest wins: playing screen
+            }
+            canGoToPreviousQuestion={
+              isQuizPackMode
+                ? currentLoadedQuestionIndex > 0 // Quiz pack: disabled on first question
+                : true // On-the-spot: always enabled during gameplay
+            }
             leftSidebarWidth={sidebarWidth}
             isTimerRunning={timer.isRunning}
             timerProgress={timer.progress}

@@ -1165,6 +1165,56 @@ export function KeypadInterface({
     }
   }, [currentQuestion, onTimerLockChange, onTeamAnswerUpdate, onTeamResponseTimeUpdate, onAnswerStatusUpdate, externalWindow, onExternalDisplayUpdate]);
 
+  // Handle navigation to previous question
+  const handlePreviousQuestion = useCallback(() => {
+    // Reset all states for previous question
+    const previousQuestionNumber = currentQuestion - 1;
+    setCurrentQuestion(previousQuestionNumber);
+    setSelectedLetter(null);
+    setSelectedAnswers([]);
+    setNumbersAnswer('');
+    setNumbersAnswerConfirmed(false);
+    setTimerFinished(false);
+    setTimerLocked(false); // Reset timer lock for previous question
+    setTimerStartTime(null); // Reset timer start time for previous question
+
+    // Notify parent component about timer lock reset
+    if (onTimerLockChange) {
+      onTimerLockChange(false);
+    }
+
+    setAnswerRevealed(false); // Reset answer revelation state
+    setFastestTeamRevealed(false); // Reset fastest team revelation state
+    setTeamAnswers({}); // Reset team answers
+    setTeamAnswerTimes({}); // Reset team answer times
+    setCurrentScreen('question-types');
+    setQuestionType(null);
+
+    // Clear parent component state as well
+    if (onTeamAnswerUpdate) {
+      onTeamAnswerUpdate({});
+    }
+    if (onTeamResponseTimeUpdate) {
+      onTeamResponseTimeUpdate({});
+    }
+
+    // Clear team answer statuses for previous question
+    if (onAnswerStatusUpdate) {
+      onAnswerStatusUpdate(null, null);
+    }
+
+    // Send questionWaiting to external display for previous question
+    if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
+      onExternalDisplayUpdate('questionWaiting', {
+        questionInfo: {
+          number: previousQuestionNumber,
+          type: 'Question',
+          total: 0
+        }
+      });
+    }
+  }, [currentQuestion, onTimerLockChange, onTeamAnswerUpdate, onTeamResponseTimeUpdate, onAnswerStatusUpdate, externalWindow, onExternalDisplayUpdate]);
+
   // Watch for external trigger to advance to next question
   useEffect(() => {
     if (triggerNextQuestion > 0) {
@@ -1192,9 +1242,10 @@ export function KeypadInterface({
         startTimer: handleStartTimer,
         silentTimer: handleSilentTimer,
         revealFastestTeam: handleRevealFastestTeam,
+        previousQuestion: handlePreviousQuestion,
       });
     }
-  }, [onGetActionHandlers, handleReveal, handleNextQuestion, handleStartTimer, handleSilentTimer, handleRevealFastestTeam]);
+  }, [onGetActionHandlers, handleReveal, handleNextQuestion, handleStartTimer, handleSilentTimer, handleRevealFastestTeam, handlePreviousQuestion]);
 
   // Add home navigation to any nested screen
   const handleHomeNavigation = () => {
