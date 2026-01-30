@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Star, Zap, Grid3X3, Skull, ArrowLeft, Type, BarChart3, Hash, Timer, Eye, RotateCcw, CheckCircle } from "lucide-react";
@@ -339,14 +339,8 @@ export function KeypadInterface({
     }
   }, [loadedQuestions, currentQuestionIndex]);
 
-  // Auto-start quiz pack mode
-  useEffect(() => {
-    if (isQuizPackMode && currentScreen === 'config' && loadedQuestions && loadedQuestions.length > 0) {
-      // Call handleStartRound - it will use the current closure values
-      // We don't include handleStartRound in deps to avoid circular dependency during initialization
-      handleStartRound();
-    }
-  }, [isQuizPackMode, currentScreen, loadedQuestions]);
+  // Track previous isQuizPackMode value to detect mode transitions
+  const prevIsQuizPackModeRef = useRef(isQuizPackMode);
 
   // Calculate actual results based on team answers and correct answer
   // Use parent's teamAnswers (includes network player answers) instead of local state
@@ -563,6 +557,21 @@ export function KeypadInterface({
       });
     }
   }, [loadedQuestions, currentQuestionIndex, externalWindow, onExternalDisplayUpdate, currentQuestion, handleQuestionTypeSelect]);
+
+  // Auto-start quiz pack mode (moved here to be after handleStartRound is defined)
+  useEffect(() => {
+    // Only auto-start when:
+    // 1. Currently in quiz pack mode
+    // 2. On the config screen
+    // 3. Have loaded questions
+    // Avoid running the effect when transitioning FROM quiz pack mode to on-the-spot
+    if (isQuizPackMode && currentScreen === 'config' && loadedQuestions && loadedQuestions.length > 0) {
+      handleStartRound();
+    }
+
+    // Update the ref to track current mode for next effect run
+    prevIsQuizPackModeRef.current = isQuizPackMode;
+  }, [isQuizPackMode, currentScreen, loadedQuestions, handleStartRound]);
 
   const handleBackFromQuestionTypes = () => {
     setCurrentScreen('config');

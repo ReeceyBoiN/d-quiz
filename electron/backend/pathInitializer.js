@@ -101,33 +101,47 @@ function copyDirectoryRecursive(source, destination) {
  */
 function migrateSoundsIfNeeded() {
   try {
-    const oldSoundsPath = path.join(process.cwd(), 'resorces', 'sounds');
     const newSoundsPath = path.join(getPopQuizRootPath(), 'Resources', 'Sounds');
 
-    // Check if old location exists and new location is empty
-    if (fs.existsSync(oldSoundsPath)) {
-      const hasOldCountdown = fs.existsSync(path.join(oldSoundsPath, 'Countdown'));
-      const hasOldApplause = fs.existsSync(path.join(oldSoundsPath, 'Applause'));
-      
+    // Check multiple possible old locations
+    const possibleOldLocations = [
+      path.join(process.cwd(), 'resorces', 'sounds'), // Original process.cwd() location
+      path.join('C:', 'PopQuiz', 'd-quiz', 'resorces', 'sounds') // Actual old location
+    ];
+
+    let foundOldPath = null;
+    for (const oldLocation of possibleOldLocations) {
+      if (fs.existsSync(oldLocation)) {
+        foundOldPath = oldLocation;
+        log.info(`[PathInitializer] Found old sounds directory at: ${oldLocation}`);
+        break;
+      }
+    }
+
+    // If old location found, attempt migration
+    if (foundOldPath) {
+      const hasOldCountdown = fs.existsSync(path.join(foundOldPath, 'Countdown'));
+      const hasOldApplause = fs.existsSync(path.join(foundOldPath, 'Applause'));
+
       if (hasOldCountdown || hasOldApplause) {
         log.info('[PathInitializer] Found old sounds directory, attempting migration...');
-        
+
         // Copy Countdown sounds
         if (hasOldCountdown) {
-          const oldCountdownPath = path.join(oldSoundsPath, 'Countdown');
+          const oldCountdownPath = path.join(foundOldPath, 'Countdown');
           const newCountdownPath = path.join(newSoundsPath, 'Countdown');
           copyDirectoryRecursive(oldCountdownPath, newCountdownPath);
           log.info('[PathInitializer] Migrated Countdown sounds');
         }
-        
+
         // Copy Applause sounds
         if (hasOldApplause) {
-          const oldAppausePath = path.join(oldSoundsPath, 'Applause');
+          const oldAppausePath = path.join(foundOldPath, 'Applause');
           const newAppausePath = path.join(newSoundsPath, 'Applause');
           copyDirectoryRecursive(oldAppausePath, newAppausePath);
           log.info('[PathInitializer] Migrated Applause sounds');
         }
-        
+
         log.info('[PathInitializer] ✅ Sound migration completed');
       }
     }

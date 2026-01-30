@@ -15,11 +15,13 @@ Never use	- npm install (without lock file strict mode)
 
  response time isnt calced in quizpack mode
 
+ Hide question, should progress to view the next buttons of start timer rather than having to click show question to proceed too
+
  x activation needs to be assigned to a specific laptop / mac address so users cant log in, activate, then turn off wifi and log into another laptop to download same activation
 
  pictures when sent to the phone need to be clickable to disapear rather than show above the options
 
- sound needs to be mapped in the files for applause and timer countdown
+ sound needs to be mapped in the files for applause
 
  x enforce demo mode into application to stop hosts from bypassing licence
 
