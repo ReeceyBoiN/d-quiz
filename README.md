@@ -13,6 +13,8 @@ Never use	- npm install (without lock file strict mode)
 
  points arent always getting added to a team if they answer correctly
 
+ reveal answer isnt showing on player device
+
  response time isnt calced in quizpack mode
 
  Hide question, should progress to view the next buttons of start timer rather than having to click show question to proceed too
