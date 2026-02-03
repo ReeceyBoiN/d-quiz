@@ -23,14 +23,14 @@ Never use	- npm install (without lock file strict mode)
 
  pictures when sent to the phone need to be clickable to disapear rather than show above the options
 
- sound needs to be mapped in the files for applause
+ sound needs to be mapped in the files for applause so when any team answers correctly it plays one of the applause clapping noise, it can choose any of those at random in that folder but shouldnt play if 0 teams answer correctly. - We will add a toilet flush noise if all plays
 
  x enforce demo mode into application to stop hosts from bypassing licence
 
- Add the filter for questions so "THE LION KING" answer isnt a "T" as we're ignoring the word "THE"
+ Add the filter for questions so "THE LION KING" answer isnt a "T" as we're ignoring the word "THE" So for questions that may get added in the future, if the answer is "The Cat" then it should be the letter C as the correct answer.
 
- Team Pic sent from phone not getting assigned to a team or coming through to host app
+ When a Teams Pic is sent from a teams phone, its not getting assigned to the team or coming through to host app.
 
- Scaling visually needs adding
+ Scaling visually needs adding as its currently too cramped on the screen slightly whole software wide. Needs all visual elements reducing by 10% or so.
 
- Team disconnects - should go grey not disapear from the team but show they have disconeected
+ If a Team disconnects, The team in the teams list should go grey not just disapear from the teams list
