@@ -7,6 +7,9 @@ After pulling updates -	npm ci
 Add new package -	npm - install pkg-name --save-exact (then commit lock file)
 Never use	- npm install (without lock file strict mode)
 
+First Time Instructions for player app:
+Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter your IPv4 followed by ":4310" as thats the port.
+
 
 
    Fixes Needed:
