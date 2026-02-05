@@ -1590,7 +1590,9 @@ export function QuizHost() {
             );
           }
         }
-        sendRevealToPlayers(getAnswerText(currentQuestion), currentQuestion.correctIndex, currentQuestion.type);
+
+        // Broadcast reveal to player devices
+        broadcastAnswerReveal(currentQuestion);
 
         const isOnTheSpotMode = showKeypadInterface && !isQuizPackMode;
 
@@ -2465,6 +2467,29 @@ export function QuizHost() {
     };
   }, [quizzes, gameTimerStartTime, flowState.totalTime]); // Re-register listener when quizzes, timer, or question time limit changes - ensures handler has current gameTimerStartTime for accurate response time calculation
 
+  /**
+   * Centralized function to broadcast answer reveal to player devices
+   * Used by both handleRevealAnswer and handlePrimaryAction to avoid duplicate broadcasts
+   */
+  const broadcastAnswerReveal = useCallback((question: any) => {
+    if (!question || !(window as any).api?.network?.broadcastReveal) {
+      return;
+    }
+
+    try {
+      const revealData = {
+        answer: getAnswerText(question),
+        correctIndex: question.correctIndex,
+        type: question.type,
+        selectedAnswers: []
+      };
+      console.log('[QuizHost] Broadcasting reveal to players:', revealData);
+      (window as any).api.network.broadcastReveal(revealData);
+    } catch (err) {
+      console.error('[QuizHost] Error broadcasting reveal:', err);
+    }
+  }, []);
+
   const handleRevealAnswer = () => {
     setShowAnswer(true);
     // Show team answers and response times in sidebar
@@ -2551,20 +2576,7 @@ export function QuizHost() {
     // Broadcast reveal to player devices
     if (loadedQuizQuestions.length > 0) {
       const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
-      if (currentQuestion && (window as any).api?.network?.broadcastReveal) {
-        try {
-          const revealData = {
-            answer: getAnswerText(currentQuestion),
-            correctIndex: currentQuestion.correctIndex,
-            type: currentQuestion.type,
-            selectedAnswers: []
-          };
-          console.log('[QuizHost] Broadcasting reveal to players:', revealData);
-          (window as any).api.network.broadcastReveal(revealData);
-        } catch (err) {
-          console.error('[QuizHost] Error broadcasting reveal:', err);
-        }
-      }
+      broadcastAnswerReveal(currentQuestion);
     }
 
     setIsQuizActive(false);
