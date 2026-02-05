@@ -1489,12 +1489,13 @@ export function QuizHost() {
       }
 
       case 'sent-question': {
-        // Note: Timer start time is now set exclusively via handleGameTimerStart callback
-        // from KeypadInterface when the timer actually starts. This ensures a single source
-        // of truth for response time calculations across all game modes.
-
-        // Start audible timer without capturing time here - let timer callback handle it
+        // Start audible timer and capture timer start time for response time calculation
         const now = Date.now();
+
+        // Set timer start time for response time calculation (for both quiz pack and on-the-spot)
+        setGameTimerStartTime(now);
+        console.log('[QuizHost] SENT_QUESTION->RUNNING: Setting gameTimerStartTime to', now);
+
         sendTimerToPlayers(flowState.totalTime, false, now);
         // Play countdown audio with normal sound
         playCountdownAudio(flowState.totalTime, false).catch(error => {
@@ -1534,6 +1535,27 @@ export function QuizHost() {
 
         // Update state with the calculated statuses
         setTeamAnswerStatuses(newStatuses);
+
+        // Award points to teams that answered correctly in quiz pack mode
+        if (isQuizPackMode) {
+          const correctTeamIds = Object.entries(newStatuses)
+            .filter(([_, status]) => status === 'correct')
+            .map(([teamId, _]) => teamId);
+
+          if (correctTeamIds.length > 0) {
+            // Calculate fastest team among correct answers for speed bonus
+            let fastestTeamId: string | undefined;
+            const correctTeamTimes = correctTeamIds
+              .map(id => ({ id, time: teamResponseTimes[id] || Infinity }))
+              .sort((a, b) => a.time - b.time);
+            if (correctTeamTimes.length > 0) {
+              fastestTeamId = correctTeamTimes[0].id;
+            }
+
+            // Award points using the full scoring factory
+            handleComputeAndAwardScores(correctTeamIds, 'keypad', fastestTeamId, teamResponseTimes);
+          }
+        }
 
         // Send the answer to all players and external display
         if (externalWindow) {
@@ -3062,21 +3084,23 @@ export function QuizHost() {
   };
 
   const handleScoreChange = useCallback((teamId: string, change: number) => {
+    console.log('[Scoring] handleScoreChange called:', { teamId, change });
     // Check if scores are paused
     if (scoresPaused) {
-      console.log(`Scores are paused. Ignoring score change of ${change > 0 ? '+' : ''}${change} for team ${teamId}`);
+      console.log(`[Scoring] Scores are paused. Ignoring score change of ${change > 0 ? '+' : ''}${change} for team ${teamId}`);
       return;
     }
-    
+
     setQuizzes(prevQuizzes => {
       const newQuizzes = prevQuizzes.map(quiz => {
         if (quiz.id === teamId && quiz.score !== undefined) {
           // Check if team is blocked from earning points (only block positive changes)
           if (quiz.blocked && change > 0) {
-            console.log(`Team ${teamId} (${quiz.name}) is blocked from earning points. Ignoring +${change} points.`);
+            console.log(`[Scoring] Team ${teamId} (${quiz.name}) is blocked from earning points. Ignoring +${change} points.`);
             return quiz; // Return unchanged
           }
           const newScore = quiz.score + change;
+          console.log(`[Scoring] Team ${teamId} (${quiz.name}) score updated: ${quiz.score} -> ${newScore}`);
           return { ...quiz, score: newScore };
         }
         return quiz;
@@ -3130,6 +3154,7 @@ export function QuizHost() {
   // Create handleComputeAndAwardScores from factory function with useCallback
   const handleComputeAndAwardScores = useCallback(
     (correctTeamIds: string[], gameMode: 'keypad' | 'buzzin' | 'nearestwins' | 'wheelspinner', fastestTeamId?: string, teamResponseTimes?: { [teamId: string]: number }) => {
+      console.log('[Scoring] handleComputeAndAwardScores called with:', { correctTeamIds, gameMode, fastestTeamId, teamResponseTimes });
       const handler = createHandleComputeAndAwardScores(
         quizzes,
         teamAnswers,
@@ -3145,7 +3170,9 @@ export function QuizHost() {
         punishmentEnabled,
         handleScoreChange
       );
-      return handler(correctTeamIds, gameMode, fastestTeamId, teamResponseTimes);
+      const result = handler(correctTeamIds, gameMode, fastestTeamId, teamResponseTimes);
+      console.log('[Scoring] handleComputeAndAwardScores completed, result:', result);
+      return result;
     },
     [
       quizzes,
@@ -3190,6 +3217,19 @@ export function QuizHost() {
       scoresPaused,
       handleScoreChange
     ]
+  );
+
+  // Create handleNearestWinsAwardPoints wrapper for nearest wins mode
+  const handleNearestWinsAwardPoints = useCallback(
+    (correctTeamIds: string[], gameMode: 'nearestwins') => {
+      if (gameMode === 'nearestwins' && correctTeamIds.length > 0) {
+        // Award fixed points to the winner
+        correctTeamIds.forEach(teamId => {
+          handleScoreChange(teamId, currentRoundWinnerPoints || 0);
+        });
+      }
+    },
+    [currentRoundWinnerPoints, handleScoreChange]
   );
 
   const handleScoreSet = useCallback((teamId: string, newScore: number) => {
@@ -3735,12 +3775,14 @@ export function QuizHost() {
     if (showBuzzInInterface) {
       return (
         <div className="flex-1 overflow-hidden">
-          <BuzzInInterface 
+          <BuzzInInterface
             teams={quizzes}
             onStartMode={handleBuzzInStart}
             onClose={handleBuzzInClose}
             externalWindow={externalWindow}
             onExternalDisplayUpdate={handleExternalDisplayUpdate}
+            onAwardPoints={handleComputeAndAwardScores}
+            onEvilModePenalty={handleApplyEvilModePenalty}
           />
         </div>
       );
@@ -3757,7 +3799,7 @@ export function QuizHost() {
             onWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
             externalWindow={externalWindow}
             onExternalDisplayUpdate={handleExternalDisplayUpdate}
-            onAwardPoints={handleScoreChange}
+            onAwardPoints={handleNearestWinsAwardPoints}
             onGetActionHandlers={setGameActionHandlers}
             onGameTimerStateChange={setGameTimerRunning}
             onCurrentScreenChange={setNearestWinsCurrentScreen}

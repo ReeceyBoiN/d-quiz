@@ -166,6 +166,12 @@ export function KeypadInterface({
   // Debug mode state for keypad designs
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [selectedDesign, setSelectedDesign] = useState(0);
+
+  // Track if we've already broadcast the current question to prevent re-broadcasts
+  const broadcastedQuestionTypeRef = useRef<string | null>(null);
+
+  // Track the last processed triggerNextQuestion value to prevent duplicate calls
+  const lastProcessedTriggerRef = useRef<number>(0);
   
   // Get keypad design from settings context
   const { keypadDesign } = useSettings();
@@ -475,38 +481,46 @@ export function KeypadInterface({
       setCurrentScreen('sequence-game');
     }
 
-    // Now that a valid question type is selected, broadcast the question to player devices
-    try {
-      // Generate placeholder options based on question type
-      let placeholderOptions: string[] = [];
-      if (type === 'letters') {
-        // For letters, generate 26 placeholder options (one for each letter)
-        placeholderOptions = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
-      } else if (type === 'numbers') {
-        // For numbers, generate 10 placeholder options (digits 0-9)
-        placeholderOptions = Array.from({ length: 10 }, (_, i) => String(i));
-      } else if (type === 'multiple-choice') {
-        // For multiple choice, generate 6 placeholder options
-        placeholderOptions = Array.from({ length: 6 }, (_, i) => String.fromCharCode(65 + i));
-      } else if (type === 'sequence') {
-        // For sequence, generate 6 placeholder options
-        placeholderOptions = Array.from({ length: 6 }, (_, i) => String.fromCharCode(65 + i));
-      }
+    // Guard against re-broadcasting the same question type multiple times
+    // Only broadcast if this is a NEW question type (not previously broadcast)
+    if (broadcastedQuestionTypeRef.current !== type) {
+      broadcastedQuestionTypeRef.current = type;
 
-      console.log('[Keypad] Broadcasting question type:', type, 'with', placeholderOptions.length, 'options:', placeholderOptions);
-
-      (window as any).api?.ipc?.invoke('network/broadcast-question', {
-        question: {
-          type: type,
-          text: 'Question is ready...',
-          options: placeholderOptions,
-          timestamp: Date.now()
+      // Now that a valid question type is selected, broadcast the question to player devices
+      try {
+        // Generate placeholder options based on question type
+        let placeholderOptions: string[] = [];
+        if (type === 'letters') {
+          // For letters, generate 26 placeholder options (one for each letter)
+          placeholderOptions = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
+        } else if (type === 'numbers') {
+          // For numbers, generate 10 placeholder options (digits 0-9)
+          placeholderOptions = Array.from({ length: 10 }, (_, i) => String(i));
+        } else if (type === 'multiple-choice') {
+          // For multiple choice, generate 6 placeholder options
+          placeholderOptions = Array.from({ length: 6 }, (_, i) => String.fromCharCode(65 + i));
+        } else if (type === 'sequence') {
+          // For sequence, generate 6 placeholder options
+          placeholderOptions = Array.from({ length: 6 }, (_, i) => String.fromCharCode(65 + i));
         }
-      }).catch((error: any) => {
-        console.warn('[Keypad] Failed to broadcast question to players:', error);
-      });
-    } catch (err) {
-      console.warn('[Keypad] Error calling broadcast-question IPC:', err);
+
+        console.log('[Keypad] Broadcasting question type:', type, 'with', placeholderOptions.length, 'options:', placeholderOptions);
+
+        (window as any).api?.ipc?.invoke('network/broadcast-question', {
+          question: {
+            type: type,
+            text: 'Question is ready...',
+            options: placeholderOptions,
+            timestamp: Date.now()
+          }
+        }).catch((error: any) => {
+          console.warn('[Keypad] Failed to broadcast question to players:', error);
+        });
+      } catch (err) {
+        console.warn('[Keypad] Error calling broadcast-question IPC:', err);
+      }
+    } else {
+      console.log('[Keypad] Question type:', type, 'already broadcast, skipping re-broadcast');
     }
 
     const pointValue = points[0];
@@ -522,8 +536,9 @@ export function KeypadInterface({
   }, [currentLoadedQuestion, isQuizPackMode, points, speedBonus, bonusType, goWideEnabled, evilModeEnabled]);
 
   const handleStartRound = useCallback(() => {
-    // If we have loaded questions, auto-detect the question type and skip question-types screen
-    if (loadedQuestions && loadedQuestions.length > 0 && currentQuestionIndex >= 0 && currentQuestionIndex < loadedQuestions.length) {
+    // Only auto-detect question type in QUIZ PACK MODE
+    // In on-the-spot mode, we ALWAYS show the question-types screen for manual selection
+    if (isQuizPackMode && loadedQuestions && loadedQuestions.length > 0 && currentQuestionIndex >= 0 && currentQuestionIndex < loadedQuestions.length) {
       const question = loadedQuestions[currentQuestionIndex];
 
       // Auto-detect question type
@@ -540,7 +555,7 @@ export function KeypadInterface({
         setCurrentScreen('question-types');
       }
     } else {
-      // No loaded questions, show question-types screen for manual selection
+      // Show question-types screen for manual selection in on-the-spot mode OR if no loaded questions
       // Reset question type to ensure fresh selection in on-the-spot mode
       setQuestionType(null);
       setCurrentScreen('question-types');
@@ -556,16 +571,18 @@ export function KeypadInterface({
         }
       });
     }
-  }, [loadedQuestions, currentQuestionIndex, externalWindow, onExternalDisplayUpdate, currentQuestion, handleQuestionTypeSelect]);
+  }, [isQuizPackMode, loadedQuestions, currentQuestionIndex, externalWindow, onExternalDisplayUpdate, currentQuestion, handleQuestionTypeSelect]);
 
   // Auto-start quiz pack mode (moved here to be after handleStartRound is defined)
   useEffect(() => {
     // Only auto-start when:
     // 1. Currently in quiz pack mode
-    // 2. On the config screen
+    // 2. On the config screen (NOT question-types or game screens)
     // 3. Have loaded questions
     // Avoid running the effect when transitioning FROM quiz pack mode to on-the-spot
+    // Also prevent auto-start if on question-types screen - that's for manual selection
     if (isQuizPackMode && currentScreen === 'config' && loadedQuestions && loadedQuestions.length > 0) {
+      console.log('[KeypadInterface] Auto-starting quiz pack round from config screen');
       handleStartRound();
     }
 
@@ -580,6 +597,10 @@ export function KeypadInterface({
   const handleBackFromGame = () => {
     // Stop countdown audio if timer is running
     stopCountdownAudio();
+
+    // Reset broadcast guard for next question selection
+    broadcastedQuestionTypeRef.current = null;
+    console.log('[KeypadInterface] Reset broadcast guard when going back from game');
 
     setCurrentScreen('question-types');
     setSelectedLetter(null);
@@ -961,33 +982,54 @@ export function KeypadInterface({
 
   // Add function to handle revealing the correct answer
   const handleRevealAnswer = useCallback(() => {
+    console.log('[KeypadInterface] handleRevealAnswer called');
+    console.log('[KeypadInterface] onAwardPoints callback exists:', !!onAwardPoints);
+    console.log('[KeypadInterface] onEvilModePenalty callback exists:', !!onEvilModePenalty);
+
     setAnswerRevealed(true);
 
     // Award points to teams that answered correctly
     if (onAwardPoints) {
       const correctAnswer = getCorrectAnswer();
+      console.log('[KeypadInterface] Correct answer:', correctAnswer);
+      console.log('[KeypadInterface] Question type:', questionType);
+      console.log('[KeypadInterface] Total teams:', teams.length);
+
+      // Use parentTeamAnswers (includes network players) instead of local teamAnswers
+      const answersToCheck = parentTeamAnswers && Object.keys(parentTeamAnswers).length > 0 ? parentTeamAnswers : teamAnswers;
+      console.log('[KeypadInterface] Team answers being used:', answersToCheck);
+      console.log('[KeypadInterface] ParentTeamAnswers available:', parentTeamAnswers);
 
       if (correctAnswer) {
         const correctTeamIds = teams.filter(team => {
-          const teamAnswer = teamAnswers[team.id];
-          return teamAnswer && (
+          const teamAnswer = answersToCheck[team.id];
+          const isCorrect = teamAnswer && (
             (questionType === 'letters' && teamAnswer === correctAnswer) ||
             (questionType === 'multiple-choice' && teamAnswer === correctAnswer) ||
             (questionType === 'numbers' && teamAnswer === correctAnswer)
           );
+          console.log(`[KeypadInterface] Team ${team.id} (${team.name}): answer="${teamAnswer}", correct=${isCorrect}`);
+          return isCorrect;
         }).map(team => team.id);
 
+        console.log('[KeypadInterface] Correct team IDs:', correctTeamIds);
         const fastestTeam = getFastestCorrectTeam();
         const fastestTeamId = fastestTeam ? fastestTeam.team.id : undefined;
+        console.log('[KeypadInterface] Fastest team:', fastestTeamId);
 
         if (correctTeamIds.length > 0) {
+          console.log('[KeypadInterface] Calling onAwardPoints with:', { correctTeamIds, fastestTeamId });
           onAwardPoints(correctTeamIds, 'keypad', fastestTeamId, teamAnswerTimes);
+          console.log('[KeypadInterface] onAwardPoints called successfully');
+        } else {
+          console.log('[KeypadInterface] No correct teams found, skipping onAwardPoints');
         }
 
         // Apply Evil Mode penalties if enabled
         if (onEvilModePenalty && (evilModeEnabled || punishmentEnabled)) {
+          console.log('[KeypadInterface] Applying Evil Mode penalties');
           const wrongTeamIds = teams.filter(team => {
-            const teamAnswer = teamAnswers[team.id];
+            const teamAnswer = answersToCheck[team.id];
             // Team answered but got it wrong
             return teamAnswer && teamAnswer.trim() !== '' && !(
               (questionType === 'letters' && teamAnswer === correctAnswer) ||
@@ -997,14 +1039,22 @@ export function KeypadInterface({
           }).map(team => team.id);
 
           const noAnswerTeamIds = teams.filter(team => {
-            const teamAnswer = teamAnswers[team.id];
+            const teamAnswer = answersToCheck[team.id];
             // Team didn't answer or gave empty answer
             return !teamAnswer || teamAnswer.trim() === '';
           }).map(team => team.id);
 
+          console.log('[KeypadInterface] Wrong team IDs:', wrongTeamIds);
+          console.log('[KeypadInterface] No-answer team IDs:', noAnswerTeamIds);
           onEvilModePenalty(wrongTeamIds, noAnswerTeamIds, 'keypad');
+        } else {
+          console.log('[KeypadInterface] Evil Mode penalty skipped - onEvilModePenalty exists:', !!onEvilModePenalty, 'evilModeEnabled:', evilModeEnabled, 'punishmentEnabled:', punishmentEnabled);
         }
+      } else {
+        console.log('[KeypadInterface] No correct answer found, skipping point awards');
       }
+    } else {
+      console.log('[KeypadInterface] onAwardPoints callback not available, skipping point awards');
     }
 
     // Send correct answer to external display with stats
@@ -1046,7 +1096,7 @@ export function KeypadInterface({
         console.error('[KeypadInterface] Error broadcasting reveal:', err);
       }
     }
-  }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes, getCorrectAnswer, questionType, isQuizPackMode, currentLoadedQuestion?.correctIndex]);
+  }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes, getCorrectAnswer, questionType, isQuizPackMode, currentLoadedQuestion?.correctIndex, parentTeamAnswers]);
 
   // Add function to handle revealing the fastest team
   const handleRevealFastestTeam = useCallback(() => {
@@ -1135,6 +1185,10 @@ export function KeypadInterface({
     setTimerLocked(false); // Reset timer lock for next question
     setTimerStartTime(null); // Reset timer start time for next question
 
+    // Reset broadcast guard to allow broadcasting the next question type
+    broadcastedQuestionTypeRef.current = null;
+    console.log('[KeypadInterface] Reset broadcast guard for next question');
+
     // Notify parent component about timer lock reset
     if (onTimerLockChange) {
       onTimerLockChange(false);
@@ -1187,6 +1241,10 @@ export function KeypadInterface({
     setTimerLocked(false); // Reset timer lock for previous question
     setTimerStartTime(null); // Reset timer start time for previous question
 
+    // Reset broadcast guard to allow broadcasting the previous question type
+    broadcastedQuestionTypeRef.current = null;
+    console.log('[KeypadInterface] Reset broadcast guard for previous question');
+
     // Notify parent component about timer lock reset
     if (onTimerLockChange) {
       onTimerLockChange(false);
@@ -1226,19 +1284,28 @@ export function KeypadInterface({
 
   // Watch for external trigger to advance to next question
   useEffect(() => {
-    if (triggerNextQuestion > 0) {
+    // Only process if trigger has changed to a new value (increment)
+    // This prevents the effect from calling handleNextQuestion multiple times
+    if (triggerNextQuestion > lastProcessedTriggerRef.current) {
+      console.log('[KeypadInterface] Processing triggerNextQuestion:', triggerNextQuestion);
+      lastProcessedTriggerRef.current = triggerNextQuestion;
       handleNextQuestion();
     }
   }, [triggerNextQuestion, handleNextQuestion]);
 
   // Create smart reveal handler that knows whether to reveal answer or fastest team
   const handleReveal = useCallback(() => {
+    console.log('[KeypadInterface] handleReveal called, answerRevealed:', answerRevealed);
     if (!answerRevealed) {
       // Answer not revealed yet - reveal the answer
+      console.log('[KeypadInterface] Calling handleRevealAnswer from handleReveal');
       handleRevealAnswer();
     } else if (!fastestTeamRevealed && getFastestCorrectTeam()) {
       // Answer already revealed, fastest team not revealed yet - reveal fastest team
+      console.log('[KeypadInterface] Calling handleRevealFastestTeam from handleReveal');
       handleRevealFastestTeam();
+    } else {
+      console.log('[KeypadInterface] No action taken in handleReveal - answerRevealed:', answerRevealed, 'fastestTeamRevealed:', fastestTeamRevealed);
     }
   }, [answerRevealed, fastestTeamRevealed, handleRevealAnswer, handleRevealFastestTeam, getFastestCorrectTeam]);
 
@@ -1272,9 +1339,13 @@ export function KeypadInterface({
     setTeamAnswerTimes({});
     setCurrentScreen('config');
     setQuestionType(null);
-    
+
+    // Reset broadcast guard when going home
+    broadcastedQuestionTypeRef.current = null;
+    console.log('[KeypadInterface] Reset broadcast guard when going home');
+
     // No need to reset points - parent component handles score management
-    
+
     // Clear parent component state as well
     if (onTeamAnswerUpdate) {
       onTeamAnswerUpdate({});
@@ -1282,12 +1353,12 @@ export function KeypadInterface({
     if (onTeamResponseTimeUpdate) {
       onTeamResponseTimeUpdate({});
     }
-    
+
     // Clear team answer statuses when going home
     if (onAnswerStatusUpdate) {
       onAnswerStatusUpdate(null, null);
     }
-    
+
     if (onHome) {
       onHome();
     }
@@ -1381,11 +1452,15 @@ export function KeypadInterface({
           if (!timerFinished) {
             return;
           }
+          console.log('[KeypadInterface] Keyboard handler - results screen, answerRevealed:', answerRevealed, 'fastestTeamRevealed:', fastestTeamRevealed);
           if (!answerRevealed) {
+            console.log('[KeypadInterface] Keyboard handler - calling handleRevealAnswer');
             handleRevealAnswer();
           } else if (answerRevealed && !fastestTeamRevealed && getFastestCorrectTeam()) {
+            console.log('[KeypadInterface] Keyboard handler - calling handleRevealFastestTeam');
             handleRevealFastestTeam();
           } else {
+            console.log('[KeypadInterface] Keyboard handler - calling handleNextQuestion');
             handleNextQuestion();
           }
         }

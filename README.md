@@ -13,11 +13,8 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
     Fixes Needed:
 
-  points arent always getting added to a team if they answer correctly - This is in on the spot keypad modes as well as the quiz pack mode.
 
   On quizpack mode, the reveal answer when being triggered isnt showing on player devices the correct / incorrect answer by highlighting in on the player device, it works correctly on the on the spot keypad mode though.
-
-  response time isnt shown in quizpack mode but does work and show in the on the spot keypad mode. so it needs fixing to show the response time in the teams list next tot he team name like it does on the on the spot keypad mode.
 
   Hide question should also act like send question by progressing to the next stage of asking the question and should show the next buttons for start timer and silent timer, rather than just the hide question button toggling the view and needing to then ALSO click send question to proceed to the next stage. So the hide question button works correctly by not displaying the question on the player device or livescreen, it just doesnt progress to the next stage of the question like clicking the "Send Question" button does.
 
