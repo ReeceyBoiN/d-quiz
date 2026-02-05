@@ -1891,10 +1891,24 @@ export function QuizHost() {
   /**
    * Hide question handler - prevents question from being sent to players and external display.
    * Used in quiz pack mode to hide the question while keeping it visible on host screen.
+   * When enabling hide mode in 'ready' state, also progresses to 'sent-question' to show timer buttons.
    */
   const handleHideQuestion = useCallback(() => {
-    setHideQuestionMode(prev => !prev);
-  }, []);
+    // Toggle hide mode and progress flow if needed
+    setHideQuestionMode(prev => {
+      const newHideMode = !prev;
+      // If enabling hide mode and in ready state, progress to sent-question state
+      if (newHideMode && flowState.flow === 'ready') {
+        setFlowState(prevFlow => ({
+          ...prevFlow,
+          flow: 'sent-question',
+          questionSent: false,
+          pictureSent: false,
+        }));
+      }
+      return newHideMode;
+    });
+  }, [flowState.flow]);
 
   /**
    * Start quiz handler - called when "START QUIZ" is clicked in config screen.
