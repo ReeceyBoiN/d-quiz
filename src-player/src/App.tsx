@@ -320,7 +320,10 @@ export default function App() {
         console.log('[Player] Original type:', message.data?.type, '-> Normalized type:', normalizedQuestionData.type);
         console.log('[Player] Question options count:', normalizedQuestionData.options?.length || 0, 'Options:', normalizedQuestionData.options);
 
-        setCurrentQuestion(normalizedQuestionData);
+        setCurrentQuestion((prev) => ({
+          ...normalizedQuestionData,
+          imageUrl: normalizedQuestionData.imageUrl ?? prev?.imageUrl
+        }));
         // Transition to 'question' screen regardless of current screen state
         setCurrentScreen('question');
         break;
@@ -347,6 +350,10 @@ export default function App() {
         setShowTimer(false);
         // Clear any existing timeout and set new delayed lock (1 second grace period for latency)
         clearTimerLockDelay();
+        setCurrentQuestion((prev) => ({
+          ...prev,
+          imageUrl: undefined,  // Clear image when timer ends
+        }));
         timerLockDelayRef.current = setTimeout(() => {
           console.log('[Player] Timer lock delay complete, disabling inputs');
           setTimerEnded(true);
@@ -452,7 +459,7 @@ export default function App() {
         }
         break;
       case 'PICTURE':
-        setCurrentScreen('display');
+        setCurrentScreen('question');
         setShowAnswerFeedback(false);
         setIsAnswerCorrect(undefined);
         if (message.data?.image) {

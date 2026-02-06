@@ -413,6 +413,43 @@ async function boot() {
     }
   });
 
+  // Broadcast picture to player devices
+  router.mount('network/broadcast-picture', async (payload) => {
+    try {
+      log.info('[IPC] network/broadcast-picture called with:', { hasImage: !!payload?.image, imageSize: payload?.image?.length || 0 });
+
+      if (!backend || !backend.broadcastPicture) {
+        log.error('[IPC] Backend not initialized for broadcast-picture');
+        throw new Error('Backend not initialized');
+      }
+
+      const imageDataUrl = payload.image;
+      if (!imageDataUrl) {
+        log.warn('[IPC] No image data provided for broadcast-picture');
+        throw new Error('Image data is required');
+      }
+
+      log.info('[IPC] Broadcasting picture with size:', imageDataUrl.length, 'bytes');
+
+      try {
+        backend.broadcastPicture(imageDataUrl);
+        log.info('[IPC] backend.broadcastPicture completed successfully');
+      } catch (broadcastErr) {
+        log.error('[IPC] backend.broadcastPicture threw error:', broadcastErr.message);
+        if (broadcastErr.stack) {
+          log.error('[IPC] broadcastPicture error stack:', broadcastErr.stack);
+        }
+        throw broadcastErr;
+      }
+
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-picture error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
+    }
+  });
+
   log.info('App boot complete');
 }
 

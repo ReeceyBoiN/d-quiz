@@ -13,7 +13,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
     Fixes Needed:
 
-  pictures when sent to the phone need to be clickable to disapear rather than show above the options, currently when a picture question is loaded up through quizpack mode, on the player device it shows the picture above the answer entry / keypad on the player devices, when in reality, the picture should take up the full screen of the players device main area ontop of the answer option keypad but once the picture is clicked it should disappear to show the answer options below it so people can choose to look at the picture for however long they want before tapping it to bring up their keypad to submit an answer.
+  Picture questions need to be added to livescreen in a decent look alongside the question
 
   Windows buttons like close maximise and minimise / windows borderneeds to be removed
 

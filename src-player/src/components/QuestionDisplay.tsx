@@ -64,6 +64,7 @@ export function QuestionDisplay({
   const [submittedAnswer, setSubmittedAnswer] = useState<string | null>(null);
   const [numberInput, setNumberInput] = useState<string>('0');
   const [numberSubmitted, setNumberSubmitted] = useState(false);
+  const [showImageOverlay, setShowImageOverlay] = useState(true);
 
   // Reset state when question changes
   useEffect(() => {
@@ -73,6 +74,7 @@ export function QuestionDisplay({
     setSubmittedAnswer(null);
     setNumberInput('0');
     setNumberSubmitted(false);
+    setShowImageOverlay(true);
   }, [question]);
 
   // Track when timer ends (from both prop and local timer)
@@ -397,9 +399,18 @@ export function QuestionDisplay({
         </div>
       )}
 
-      <div className="flex-1 flex flex-col items-center justify-center px-2 sm:px-4 md:px-6 lg:px-8 pb-16 sm:pb-20">
+      <div className="flex-1 flex flex-col items-center justify-center px-2 sm:px-4 md:px-6 lg:px-8 pb-16 sm:pb-20 relative">
         {/* Question Text or Type Label Area */}
-        <div className="mb-4 sm:mb-6 md:mb-8 lg:mb-10 w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-2xl">
+        <div
+          className={`mb-4 sm:mb-6 md:mb-8 lg:mb-10 w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-2xl ${
+            question?.imageUrl && !showImageOverlay ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''
+          }`}
+          onClick={() => {
+            if (question?.imageUrl && !showImageOverlay) {
+              setShowImageOverlay(true);
+            }
+          }}
+        >
           {questionText && !isPlaceholderQuestion(questionText) ? (
             // Show actual question text
             <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-white text-center leading-tight">
@@ -415,21 +426,24 @@ export function QuestionDisplay({
           )}
         </div>
 
-        {/* Image if present */}
-        {question?.imageUrl && (
-          <div className="mb-4 sm:mb-6 md:mb-8 lg:mb-10">
+        {/* Full-screen Image Overlay */}
+        {question?.imageUrl && showImageOverlay && (
+          <div
+            className="fixed inset-0 flex items-center justify-center z-40 px-2 sm:px-4 md:px-6 lg:px-8"
+            onClick={() => setShowImageOverlay(false)}
+          >
+            {/* Image container - takes up remaining space */}
             <div
-              className="rounded-md sm:rounded-lg md:rounded-xl shadow-lg bg-slate-700 flex items-center justify-center"
-              style={{
-                width: 'min(100%, 200px)',
-                height: 'auto',
-                aspectRatio: '2 / 3',
+              className="flex items-center justify-center w-full max-w-4xl cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowImageOverlay(false);
               }}
             >
               <img
                 src={question.imageUrl}
                 alt="Question"
-                className="w-full h-full object-contain"
+                className="max-h-[90vh] max-w-full object-contain"
               />
             </div>
           </div>

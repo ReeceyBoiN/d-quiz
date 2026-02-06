@@ -713,7 +713,50 @@ async function startBackend({ port = 4310 } = {}) {
     }
   }
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp };
+  function broadcastPicture(imageDataUrl) {
+    try {
+      log.info(`[broadcastPicture] Broadcasting picture to players`);
+
+      const message = JSON.stringify({
+        type: 'PICTURE',
+        data: { image: imageDataUrl },
+        timestamp: Date.now()
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+      const failedDevices = [];
+
+      networkPlayers.forEach((player, deviceId) => {
+        if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+          try {
+            log.info(`[broadcastPicture] Sending picture to ${deviceId}...`);
+            player.ws.send(message, (err) => {
+              if (err) {
+                log.error(`❌ [broadcastPicture] ws.send callback error for ${deviceId}:`, err.message);
+              } else {
+                log.debug(`[broadcastPicture] Successfully sent picture to ${deviceId}`);
+              }
+            });
+            successCount++;
+          } catch (error) {
+            log.error(`❌ Failed to send picture to ${deviceId}:`, error.message);
+            failCount++;
+            failedDevices.push(deviceId);
+          }
+        }
+      });
+
+      log.info(`🖼️ Broadcast PICTURE to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed (${failedDevices.join(', ')})` : ''));
+    } catch (err) {
+      log.error(`❌ broadcastPicture error:`, err.message);
+      if (err && err.stack) {
+        log.error(`[broadcastPicture] Error stack:`, err.stack);
+      }
+    }
+  }
+
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture };
 }
 
 export { startBackend };

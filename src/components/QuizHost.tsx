@@ -319,6 +319,23 @@ export function QuizHost() {
     }
   };
 
+  // Helper function to broadcast picture to player devices via backend
+  const broadcastPictureToPlayers = async (imageDataUrl: string) => {
+    try {
+      if ((window as any).api?.network?.broadcastPicture) {
+        console.log('[QuizHost] Broadcasting picture to players via IPC:', { imageSize: imageDataUrl.length });
+        await (window as any).api.network.broadcastPicture({
+          image: imageDataUrl
+        });
+        console.log('[QuizHost] Picture broadcasted to players');
+      } else {
+        console.warn('[QuizHost] api.network.broadcastPicture not available');
+      }
+    } catch (err) {
+      console.error('[QuizHost] Error broadcasting picture:', err);
+    }
+  };
+
   // Sidebar width state for status bar positioning
   const [sidebarWidth, setSidebarWidth] = useState(345); // Match the defaultSize width
   
@@ -566,7 +583,6 @@ export function QuizHost() {
             q: 'Waiting for question...',
             options: placeholderOptions,
             type: normalizedType,
-            imageUrl: currentQuestion.imageDataUrl || null,
             isPlaceholder: true,
             goWideEnabled: goWideEnabled,
           });
@@ -631,7 +647,6 @@ export function QuizHost() {
             q: 'Waiting for question...',
             options: placeholderOptions,
             type: normalizedType,
-            imageUrl: currentQuestion.imageDataUrl || null,
             isPlaceholder: true,
             goWideEnabled: goWideEnabled,
           });
@@ -1356,6 +1371,10 @@ export function QuizHost() {
         } else if (hasQuestionImage(currentQuestion)) {
           // Send picture (if available) or go straight to question
           sendPictureToPlayers(currentQuestion.imageDataUrl);
+
+          // Broadcast picture to player devices via backend
+          broadcastPictureToPlayers(currentQuestion.imageDataUrl);
+
           // Also send to external display using proper message format
           if (externalWindow) {
             sendToExternalDisplay(
@@ -1378,7 +1397,6 @@ export function QuizHost() {
             q: currentQuestion.q,
             options: currentQuestion.options || [],
             type: normalizedType,
-            imageUrl: currentQuestion.imageDataUrl || null,
             goWideEnabled: goWideEnabled,
           });
 
@@ -1428,7 +1446,6 @@ export function QuizHost() {
             q: currentQuestion.q,
             options: currentQuestion.options || [],
             type: normalizedType,
-            imageUrl: currentQuestion.imageDataUrl || null,
             goWideEnabled: goWideEnabled,
           });
 

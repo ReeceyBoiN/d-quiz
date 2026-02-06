@@ -59,9 +59,10 @@ contextBridge.exposeInMainWorld('api', {
     approveTeam: (data) => invoke('network/approve-team', data),
     declineTeam: (data) => invoke('network/decline-team', data),
     broadcastDisplayMode: (data) => invoke('network/broadcast-display-mode', data),
+    broadcastFastest: (data) => invoke('network/broadcast-fastest', data),
+    broadcastPicture: (data) => invoke('network/broadcast-picture', data),
     broadcastQuestion: (data) => invoke('network/broadcast-question', data),
     broadcastReveal: (data) => invoke('network/broadcast-reveal', data),
-    broadcastFastest: (data) => invoke('network/broadcast-fastest', data),
     broadcastTimeUp: () => invoke('network/broadcast-timeup'),
   },
 
