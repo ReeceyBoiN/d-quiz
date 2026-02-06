@@ -108,9 +108,11 @@ export function QuestionNavigationBar({
 
         e.preventDefault();
 
-        // Spacebar triggers the appropriate action for the current flow state
-        // The handler (onStartTimer) is context-aware and knows how to interpret each state
-        onStartTimer();
+        // Determine and call the appropriate handler based on current flow state
+        const spacebarHandler = getSpacebarHandler();
+        if (spacebarHandler) {
+          spacebarHandler();
+        }
       }
     };
 
@@ -118,7 +120,7 @@ export function QuestionNavigationBar({
       window.addEventListener('keydown', handleKeyPress);
       return () => window.removeEventListener('keydown', handleKeyPress);
     }
-  }, [isVisible, onStartTimer, isOnTheSpotTimerRunning, isTimerRunning]);
+  }, [isVisible, isOnTheSpotTimerRunning, isTimerRunning, isOnTheSpotsMode, flowState, onStartTimer, onReveal, onRevealFastestTeam, onNextAction]);
 
   // Add arrow key shortcuts for question navigation
   useEffect(() => {
@@ -256,6 +258,41 @@ export function QuestionNavigationBar({
             color: 'bg-blue-600 hover:bg-blue-700',
           };
         }
+      default:
+        return null;
+    }
+  };
+
+  // Determine which handler should be called for spacebar based on current flow state
+  const getSpacebarHandler = (): (() => void) | null => {
+    // Special case: quiz pack mode with 'sent-question' state should trigger Start Timer
+    if (isQuizPackMode && flowState.flow === 'sent-question') {
+      return onStartTimer;
+    }
+
+    // Special case: on-the-spot mode with timer buttons should trigger Start Timer
+    if (isOnTheSpotsMode && !isOnTheSpotTimerRunning && !onTheSpotTimerFinished) {
+      return onStartTimer;
+    }
+
+    const currentButton = isOnTheSpotsMode ? getOnTheSpotFlowButton() : getFlowButton();
+
+    if (!currentButton) {
+      return null;
+    }
+
+    switch (currentButton.label) {
+      case 'Reveal Answer':
+        return onReveal || null;
+      case 'Fastest Team':
+      case 'Fastest Answer':
+        return onRevealFastestTeam || null;
+      case 'Next Question':
+      case 'End Round':
+        return onNextAction || null;
+      case 'Send Picture':
+      case 'Send Question':
+        return onStartTimer;
       default:
         return null;
     }

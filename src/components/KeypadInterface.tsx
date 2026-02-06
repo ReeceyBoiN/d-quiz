@@ -9,6 +9,7 @@ import { Switch } from "./ui/switch";
 import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
+import { playApplauseSound, playFailSound } from "../utils/audioUtils";
 import { sendTimeUpToPlayers } from "../network/wsHost";
 
 interface LoadedQuestion {
@@ -172,6 +173,9 @@ export function KeypadInterface({
 
   // Track the last processed triggerNextQuestion value to prevent duplicate calls
   const lastProcessedTriggerRef = useRef<number>(0);
+
+  // Guard against duplicate reveal calls from simultaneous event handlers
+  const answerRevealInProgressRef = useRef<boolean>(false);
   
   // Get keypad design from settings context
   const { keypadDesign } = useSettings();
@@ -983,6 +987,14 @@ export function KeypadInterface({
   // Add function to handle revealing the correct answer
   const handleRevealAnswer = useCallback(() => {
     console.log('[KeypadInterface] handleRevealAnswer called');
+
+    // Guard against duplicate calls from simultaneous event handlers (spacebar + nav button)
+    if (answerRevealInProgressRef.current) {
+      console.log('[KeypadInterface] handleRevealAnswer already in progress, skipping duplicate call');
+      return;
+    }
+
+    answerRevealInProgressRef.current = true;
     console.log('[KeypadInterface] onAwardPoints callback exists:', !!onAwardPoints);
     console.log('[KeypadInterface] onEvilModePenalty callback exists:', !!onEvilModePenalty);
 
@@ -1017,13 +1029,9 @@ export function KeypadInterface({
         const fastestTeamId = fastestTeam ? fastestTeam.team.id : undefined;
         console.log('[KeypadInterface] Fastest team:', fastestTeamId);
 
-        if (correctTeamIds.length > 0) {
-          console.log('[KeypadInterface] Calling onAwardPoints with:', { correctTeamIds, fastestTeamId });
-          onAwardPoints(correctTeamIds, 'keypad', fastestTeamId, teamAnswerTimes);
-          console.log('[KeypadInterface] onAwardPoints called successfully');
-        } else {
-          console.log('[KeypadInterface] No correct teams found, skipping onAwardPoints');
-        }
+        console.log('[KeypadInterface] Calling onAwardPoints with:', { correctTeamIds, fastestTeamId });
+        onAwardPoints(correctTeamIds, 'keypad', fastestTeamId, teamAnswerTimes, true);
+        console.log('[KeypadInterface] onAwardPoints called successfully');
 
         // Apply Evil Mode penalties if enabled
         if (onEvilModePenalty && (evilModeEnabled || punishmentEnabled)) {
@@ -1096,6 +1104,15 @@ export function KeypadInterface({
         console.error('[KeypadInterface] Error broadcasting reveal:', err);
       }
     }
+
+    // Sound playback is now handled by QuizHost to centralize all audio logic
+
+    // Reset guard after reveal is complete to allow future reveals
+    // 500ms timeout allows state updates to settle before allowing another reveal
+    setTimeout(() => {
+      answerRevealInProgressRef.current = false;
+      console.log('[KeypadInterface] Reset answerRevealInProgressRef after reveal completion');
+    }, 500);
   }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, getFastestCorrectTeam, currentQuestion, onAwardPoints, onEvilModePenalty, evilModeEnabled, punishmentEnabled, teams, teamAnswers, teamAnswerTimes, getCorrectAnswer, questionType, isQuizPackMode, currentLoadedQuestion?.correctIndex, parentTeamAnswers]);
 
   // Add function to handle revealing the fastest team

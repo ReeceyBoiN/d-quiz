@@ -38,6 +38,7 @@ import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage } from "../state/flowState";
 import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
+import { playApplauseSound, playFailSound } from "../utils/audioUtils";
 import { calculateTeamPoints, rankCorrectTeams, shouldAutoDisableGoWide, type ScoringConfig } from "../utils/scoringEngine";
 import { getAnswerText, createHandleComputeAndAwardScores, createHandleApplyEvilModePenalty } from "../utils/quizHostHelpers";
 import { saveGameState, createGameStateSnapshot, type RoundSettings } from "../utils/gameStatePersistence";
@@ -3179,8 +3180,21 @@ export function QuizHost() {
 
   // Create handleComputeAndAwardScores from factory function with useCallback
   const handleComputeAndAwardScores = useCallback(
-    (correctTeamIds: string[], gameMode: 'keypad' | 'buzzin' | 'nearestwins' | 'wheelspinner', fastestTeamId?: string, teamResponseTimes?: { [teamId: string]: number }) => {
-      console.log('[Scoring] handleComputeAndAwardScores called with:', { correctTeamIds, gameMode, fastestTeamId, teamResponseTimes });
+    (correctTeamIds: string[], gameMode: 'keypad' | 'buzzin' | 'nearestwins' | 'wheelspinner', fastestTeamId?: string, teamResponseTimes?: { [teamId: string]: number }, forcePlaySound?: boolean) => {
+      console.log('[Scoring] handleComputeAndAwardScores called with:', { correctTeamIds, gameMode, fastestTeamId, teamResponseTimes, forcePlaySound });
+
+      // Play sound for on-the-spot keypad mode or when forced
+      if (gameMode === 'keypad' || forcePlaySound) {
+        console.log('[Scoring] Playing sound - gameMode:', gameMode, 'forcePlaySound:', forcePlaySound, 'correctTeamIds.length:', correctTeamIds.length);
+        if (correctTeamIds.length > 0) {
+          console.log('[Scoring] Playing applause sound');
+          playApplauseSound().catch(err => console.warn('Failed to play applause:', err));
+        } else {
+          console.log('[Scoring] Playing fail sound');
+          playFailSound().catch(err => console.warn('Failed to play fail sound:', err));
+        }
+      }
+
       const handler = createHandleComputeAndAwardScores(
         quizzes,
         teamAnswers,
@@ -3213,7 +3227,9 @@ export function QuizHost() {
       goWideEnabled,
       evilModeEnabled,
       punishmentEnabled,
-      handleScoreChange
+      handleScoreChange,
+      playApplauseSound,
+      playFailSound
     ]
   );
 

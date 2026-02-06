@@ -16,7 +16,8 @@ const FOLDERS_TO_CREATE = [
   'PopQuiz/Resources/Display Slideshow',
   'PopQuiz/Resources/Sounds',
   'PopQuiz/Resources/Sounds/Countdown',
-  'PopQuiz/Resources/Sounds/Applause'
+  'PopQuiz/Resources/Sounds/Applause',
+  'PopQuiz/Resources/Sounds/Fail Sounds'
 ];
 
 /**
@@ -50,25 +51,41 @@ function getResourcePaths() {
  * Create all required folders
  */
 function createFolderStructure() {
+  log.info('[PathInitializer] ===== START: createFolderStructure() =====');
+
   try {
     const documentsPath = getDocumentsPath();
-    log.info(`[PathInitializer] Creating folder structure in: ${documentsPath}`);
+    log.info(`[PathInitializer] Documents path: ${documentsPath}`);
+    log.info(`[PathInitializer] Total folders to create: ${FOLDERS_TO_CREATE.length}`);
 
-    FOLDERS_TO_CREATE.forEach((folderRelativePath) => {
+    FOLDERS_TO_CREATE.forEach((folderRelativePath, index) => {
       const fullPath = path.join(documentsPath, folderRelativePath);
-      
-      if (!fs.existsSync(fullPath)) {
-        fs.mkdirSync(fullPath, { recursive: true });
-        log.info(`[PathInitializer] Created folder: ${fullPath}`);
-      } else {
-        log.info(`[PathInitializer] Folder already exists: ${fullPath}`);
+      log.info(`[PathInitializer] [${index + 1}/${FOLDERS_TO_CREATE.length}] Processing: ${folderRelativePath}`);
+
+      try {
+        if (!fs.existsSync(fullPath)) {
+          log.info(`[PathInitializer]   → Folder does not exist, creating...`);
+          fs.mkdirSync(fullPath, { recursive: true });
+
+          // Verify creation was successful
+          if (fs.existsSync(fullPath)) {
+            log.info(`[PathInitializer]   ✓ Successfully created: ${fullPath}`);
+          } else {
+            log.error(`[PathInitializer]   ✗ FAILED to create: ${fullPath}`);
+          }
+        } else {
+          log.info(`[PathInitializer]   → Already exists: ${fullPath}`);
+        }
+      } catch (folderError) {
+        log.error(`[PathInitializer]   ✗ Error creating folder ${folderRelativePath}:`, folderError);
       }
     });
 
-    log.info('[PathInitializer] ✅ Folder structure initialized successfully');
+    log.info('[PathInitializer] ===== END: createFolderStructure() - SUCCESS =====');
     return true;
   } catch (error) {
-    log.error('[PathInitializer] ❌ Error creating folder structure:', error);
+    log.error('[PathInitializer] ===== END: createFolderStructure() - ERROR =====');
+    log.error('[PathInitializer] Error creating folder structure:', error);
     return false;
   }
 }
@@ -100,8 +117,11 @@ function copyDirectoryRecursive(source, destination) {
  * This is a one-time migration for existing installations
  */
 function migrateSoundsIfNeeded() {
+  log.info('[PathInitializer] ===== START: migrateSoundsIfNeeded() =====');
+
   try {
     const newSoundsPath = path.join(getPopQuizRootPath(), 'Resources', 'Sounds');
+    const failSoundsPath = path.join(newSoundsPath, 'Fail Sounds');
 
     // Check multiple possible old locations
     const possibleOldLocations = [
@@ -122,8 +142,9 @@ function migrateSoundsIfNeeded() {
     if (foundOldPath) {
       const hasOldCountdown = fs.existsSync(path.join(foundOldPath, 'Countdown'));
       const hasOldApplause = fs.existsSync(path.join(foundOldPath, 'Applause'));
+      const hasOldFailSounds = fs.existsSync(path.join(foundOldPath, 'Fail Sounds'));
 
-      if (hasOldCountdown || hasOldApplause) {
+      if (hasOldCountdown || hasOldApplause || hasOldFailSounds) {
         log.info('[PathInitializer] Found old sounds directory, attempting migration...');
 
         // Copy Countdown sounds
@@ -142,11 +163,39 @@ function migrateSoundsIfNeeded() {
           log.info('[PathInitializer] Migrated Applause sounds');
         }
 
+        // Copy Fail Sounds
+        if (hasOldFailSounds) {
+          const oldFailSoundsPath = path.join(foundOldPath, 'Fail Sounds');
+          const newFailSoundsPath = path.join(newSoundsPath, 'Fail Sounds');
+          copyDirectoryRecursive(oldFailSoundsPath, newFailSoundsPath);
+          log.info('[PathInitializer] Migrated Fail Sounds');
+        }
+
         log.info('[PathInitializer] ✅ Sound migration completed');
       }
     }
+
+    // FALLBACK: Ensure Fail Sounds folder exists as a safety net
+    log.info('[PathInitializer] Running fallback: Ensuring Fail Sounds folder exists...');
+    if (!fs.existsSync(failSoundsPath)) {
+      log.warn('[PathInitializer] Fail Sounds folder missing, creating fallback...');
+      try {
+        fs.mkdirSync(failSoundsPath, { recursive: true });
+        if (fs.existsSync(failSoundsPath)) {
+          log.info(`[PathInitializer] ✓ Fallback creation successful: ${failSoundsPath}`);
+        } else {
+          log.error(`[PathInitializer] ✗ Fallback creation FAILED: ${failSoundsPath}`);
+        }
+      } catch (fallbackError) {
+        log.error('[PathInitializer] ✗ Fallback folder creation error:', fallbackError);
+      }
+    } else {
+      log.info(`[PathInitializer] ✓ Fail Sounds folder already exists: ${failSoundsPath}`);
+    }
+
+    log.info('[PathInitializer] ===== END: migrateSoundsIfNeeded() =====');
   } catch (error) {
-    log.warn('[PathInitializer] Sound migration failed (non-critical):', error);
+    log.warn('[PathInitializer] Sound migration/fallback failed (non-critical):', error);
     // Don't throw - this is not critical
   }
 }

@@ -1,0 +1,1 @@
+Quiz Hosting application with network conectivity for players to connect over the local wifi to communicate with the host app. LOTS of dependencies and moving parts and many functions so all code changes need to inspect other files and dependencies as lots of functions pull from other functions to process many different parts. 
