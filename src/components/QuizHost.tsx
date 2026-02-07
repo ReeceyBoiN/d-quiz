@@ -1378,7 +1378,7 @@ export function QuizHost() {
           // Also send to external display using proper message format
           if (externalWindow) {
             sendToExternalDisplay(
-              { type: 'DISPLAY_UPDATE', mode: 'picture', data: { image: currentQuestion.imageDataUrl } }
+              { type: 'DISPLAY_UPDATE', mode: 'picture', data: { imageDataUrl: currentQuestion.imageDataUrl } }
             );
           }
           setFlowState(prev => ({
@@ -1467,7 +1467,7 @@ export function QuizHost() {
                   totalTime: flowState.totalTime,
                   countdownStyle: countdownStyle,
                   showProgressBar: false,
-                  imageDataUrl: null
+                  imageDataUrl: currentQuestion.imageDataUrl || null
                 },
                 totalTime: flowState.totalTime,
                 countdownStyle: countdownStyle

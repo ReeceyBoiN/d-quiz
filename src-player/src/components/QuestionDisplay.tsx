@@ -429,12 +429,12 @@ export function QuestionDisplay({
         {/* Full-screen Image Overlay */}
         {question?.imageUrl && showImageOverlay && (
           <div
-            className="fixed inset-0 flex items-center justify-center z-40 px-2 sm:px-4 md:px-6 lg:px-8"
+            className="fixed inset-0 flex items-center justify-center z-40"
             onClick={() => setShowImageOverlay(false)}
           >
             {/* Image container - takes up remaining space */}
             <div
-              className="flex items-center justify-center w-full max-w-4xl cursor-pointer"
+              className="flex items-center justify-center w-full h-full cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
                 setShowImageOverlay(false);
@@ -443,7 +443,7 @@ export function QuestionDisplay({
               <img
                 src={question.imageUrl}
                 alt="Question"
-                className="max-h-[90vh] max-w-full object-contain"
+                className="w-full h-full object-contain"
               />
             </div>
           </div>

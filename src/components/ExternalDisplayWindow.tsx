@@ -412,9 +412,9 @@ export function ExternalDisplayWindow() {
         // Calculate responsive padding and font sizes
         const containerPadding = isMobileSize ? '20px' : '40px';
         const gapSize = isMobileSize ? '20px' : '40px';
-        const questionFontSize = isMobileSize ? '28px' : '40px';
-        const headerFontSize = isMobileSize ? '24px' : '36px';
-        const optionFontSize = isMobileSize ? '14px' : '20px';
+        const questionFontSize = isMobileSize ? '40px' : '56px';
+        const headerFontSize = isMobileSize ? '32px' : '48px';
+        const optionFontSize = isMobileSize ? '18px' : '24px';
 
         return (
           <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1f2937', position: 'relative', overflow: 'hidden' }}>
@@ -458,7 +458,7 @@ export function ExternalDisplayWindow() {
                   {displayData.data?.hidden ? (
                     <div style={{ fontSize: isMobileSize ? '64px' : '96px', fontWeight: 'bold', color: '#9ca3af', textAlign: 'center', marginTop: '20px' }}>?</div>
                   ) : (
-                    <h2 style={{ fontSize: questionFontSize, fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.3' }}>
+                    <h2 style={{ fontSize: questionFontSize, fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2' }}>
                       {displayData.data?.text || 'Loading question...'}
                     </h2>
                   )}
@@ -516,8 +516,29 @@ export function ExternalDisplayWindow() {
               )}
             </div>
 
-            {/* Timer at bottom-right - only show while timer is running */}
-            {timeRemaining > 0 && (
+            {/* Progress bar at bottom - show while timer is running */}
+            {showProgressBar && timeRemaining > 0 && (
+              <div style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: '12px',
+                backgroundColor: '#1f2937',
+                overflow: 'hidden',
+                flexShrink: 0
+              }}>
+                <div style={{
+                  height: '100%',
+                  backgroundColor: '#f97316',
+                  width: `${progressPercentage}%`,
+                  transition: 'width 0.1s linear'
+                }} />
+              </div>
+            )}
+
+            {/* Timer at bottom-right - only show while timer is running and NOT using progress-bar style */}
+            {timeRemaining > 0 && (displayData.countdownStyle || displayData.data?.countdownStyle || 'circular') !== 'progress-bar' && (
               <div style={{
                 position: 'absolute',
                 bottom: isMobileSize ? '12px' : '24px',
@@ -582,8 +603,29 @@ export function ExternalDisplayWindow() {
               </div>
             </div>
 
-            {/* Timer at bottom-right - show while timer is active */}
+            {/* Progress bar at bottom - show while timer is active */}
             {isTimerActive && (
+              <div style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: '12px',
+                backgroundColor: '#e5e7eb',
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  height: '100%',
+                  backgroundColor: getProgressBarColor(),
+                  width: `${progressPercentage}%`,
+                  transition: 'width 0.05s linear, background-color 0.3s ease',
+                  boxShadow: `0 0 10px ${getProgressBarColor()}`
+                }} />
+              </div>
+            )}
+
+            {/* Timer at bottom-right - show while timer is active and NOT using progress-bar style */}
+            {isTimerActive && displayData.countdownStyle !== 'progress-bar' && (
               <div style={{
                 position: 'absolute',
                 bottom: window.innerWidth < 1024 ? '12px' : '24px',
