@@ -230,6 +230,9 @@ export function QuestionDisplay({
   const isSequence = questionType === 'sequence';
   const isBuzzIn = questionType === 'buzzin' || (!isMultipleChoice && !isLetters && !isNumbers && !isSequence);
 
+  // Hide answer options when image overlay is visible
+  const hideAnswers = showImageOverlay && question?.imageUrl;
+
   // Log which interface will be rendered
   useEffect(() => {
     if (question) {
@@ -451,7 +454,7 @@ export function QuestionDisplay({
 
         {/* Multiple Choice Options */}
         {isMultipleChoice && (
-          <div className="flex flex-col gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-2xl">
+          <div className={`flex flex-col gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-2xl ${hideAnswers ? 'opacity-0 pointer-events-none' : ''}`}>
             {options.map((option, index) => {
               // Show letter placeholder (A, B, C, D) if waiting for real question
               const displayText = isShowingPlaceholder ? String.fromCharCode(65 + index) : option;
@@ -478,7 +481,7 @@ export function QuestionDisplay({
 
         {/* Letter Options */}
         {isLetters && (
-          <div className="flex flex-col gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-2xl">
+          <div className={`flex flex-col gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-2xl ${hideAnswers ? 'opacity-0 pointer-events-none' : ''}`}>
             {/* Submission Feedback */}
             {submittedAnswer && (
               <div className="mb-2 sm:mb-3 md:mb-4 p-3 sm:p-4 md:p-6 lg:p-8 bg-gradient-to-r from-cyan-500 to-cyan-600 rounded-lg sm:rounded-xl md:rounded-2xl text-center shadow-lg">
@@ -517,7 +520,7 @@ export function QuestionDisplay({
 
         {/* Number Options */}
         {isNumbers && (
-          <div className="w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg">
+          <div className={`w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg ${hideAnswers ? 'opacity-0 pointer-events-none' : ''}`}>
             {/* Submission Feedback */}
             {submittedAnswer && (
               <div className="mb-2 sm:mb-3 md:mb-4 p-3 sm:p-4 md:p-6 lg:p-8 bg-gradient-to-r from-cyan-500 to-cyan-600 rounded-lg sm:rounded-xl md:rounded-2xl text-center shadow-lg">
@@ -600,7 +603,7 @@ export function QuestionDisplay({
 
         {/* Sequence Options - Ordered selection */}
         {isSequence && (
-          <div className="grid grid-cols-2 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg">
+          <div className={`grid grid-cols-2 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg ${hideAnswers ? 'opacity-0 pointer-events-none' : ''}`}>
             {options.map((option, index) => {
               // Show letter placeholder (A, B, C, D) if waiting for real question
               const displayText = isShowingPlaceholder ? String.fromCharCode(65 + index) : option;
@@ -627,17 +630,19 @@ export function QuestionDisplay({
 
         {/* Buzz In Button for question types without options or explicit buzzin type */}
         {isBuzzIn && (
-          <Button
-            onClick={() => handleAnswerSelect('buzzed')}
-            disabled={timerEnded || submitted}
-            className={`px-4 sm:px-8 md:px-12 lg:px-16 py-3 sm:py-4 md:py-6 lg:py-8 text-sm sm:text-lg md:text-2xl lg:text-3xl font-bold rounded-lg sm:rounded-xl md:rounded-xl transition-all transform active:scale-95 ${
-              submitted
-                ? 'bg-green-500 text-white'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
-            }`}
-          >
-            {submitted ? '✓ Answer Submitted' : 'BUZZ IN'}
-          </Button>
+          <div className={`${hideAnswers ? 'opacity-0 pointer-events-none' : ''}`}>
+            <Button
+              onClick={() => handleAnswerSelect('buzzed')}
+              disabled={timerEnded || submitted}
+              className={`px-4 sm:px-8 md:px-12 lg:px-16 py-3 sm:py-4 md:py-6 lg:py-8 text-sm sm:text-lg md:text-2xl lg:text-3xl font-bold rounded-lg sm:rounded-xl md:rounded-xl transition-all transform active:scale-95 ${
+                submitted
+                  ? 'bg-green-500 text-white'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+            >
+              {submitted ? '✓ Answer Submitted' : 'BUZZ IN'}
+            </Button>
+          </div>
         )}
 
         {/* Time remaining display */}
