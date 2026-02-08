@@ -13,7 +13,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
     Fixes Needed:
 
- DONE :  Windows buttons like close maximise and minimise / windows borderneeds to be removed
+  Livescreen needs to be able to be moved and also closed when the livescreen box / button gets un-ticked in the host app.
 
   Numbers questions on quiz packs dont always get marked correctly - some questions people answer correctly but it gets marked incorrect
 
