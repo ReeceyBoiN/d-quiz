@@ -13,8 +13,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
     Fixes Needed:
 
-  Picture questions need to be added to livescreen in a decent look alongside the question
-
   Windows buttons like close maximise and minimise / windows borderneeds to be removed
 
   Numbers questions on quiz packs dont always get marked correctly - some questions people answer correctly but it gets marked incorrect
