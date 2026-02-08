@@ -90,6 +90,27 @@ async function boot() {
 
   // IPC router (renderer ↔ main/modules)
   const router = createIpcRouter(ipcMain);
+  
+  // Window control handlers
+  router.mount('window/minimize', async () => {
+    mainWindow.minimize();
+    return { ok: true };
+  });
+
+  router.mount('window/maximize', async () => {
+    if (mainWindow.isMaximized()) {
+      mainWindow.restore();
+    } else {
+      mainWindow.maximize();
+    }
+    return { ok: true };
+  });
+
+  router.mount('window/close', async () => {
+    mainWindow.close();
+    return { ok: true };
+  });
+
   router.mount('app/open-external-display', async () => {
     createExternalWindow();
     return { ok: true };

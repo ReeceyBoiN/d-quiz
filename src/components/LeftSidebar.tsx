@@ -149,18 +149,21 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
             <button 
               className="w-14 h-7 bg-transparent hover:bg-red-600 transition-colors duration-150 flex items-center justify-center group border-r border-sidebar-border/30"
               title="Close"
+              onClick={() => (window as any).api?.window?.close()}
             >
               <X className="w-4 h-4 text-sidebar-foreground group-hover:text-white transition-colors duration-150" />
             </button>
             <button 
               className="w-14 h-7 bg-transparent hover:bg-blue-500 transition-colors duration-150 flex items-center justify-center group border-r border-sidebar-border/30"
               title="Maximize"
+              onClick={() => (window as any).api?.window?.maximize()}
             >
               <Square className="w-3 h-3 text-sidebar-foreground group-hover:text-white transition-colors duration-150" />
             </button>
             <button 
               className="w-14 h-7 bg-transparent hover:bg-blue-500 transition-colors duration-150 flex items-center justify-center group"
               title="Minimize"
+              onClick={() => (window as any).api?.window?.minimize()}
             >
               <Minus className="w-4 h-4 text-sidebar-foreground group-hover:text-white transition-colors duration-150" />
             </button>

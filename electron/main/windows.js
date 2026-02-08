@@ -16,6 +16,7 @@ function createMainWindow() {
     minHeight: 600,
     show: false,
     backgroundColor: '#ffffff',
+    frame: false,
     title: 'PopQuiz',
     webPreferences: {
       contextIsolation: true,
@@ -50,6 +51,7 @@ function createExternalWindow() {
     width: 1920,
     height: 1080,
     backgroundColor: '#000000',
+    frame: false,
     title: 'External Display',
     webPreferences: {
       contextIsolation: true,

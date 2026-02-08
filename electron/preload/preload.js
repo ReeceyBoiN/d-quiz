@@ -25,6 +25,13 @@ contextBridge.exposeInMainWorld('api', {
   // --- App lifecycle ---
   appReady: () => invoke('app/ready'),
 
+  // --- Window controls ---
+  window: {
+    minimize: () => invoke('window/minimize'),
+    maximize: () => invoke('window/maximize'),
+    close: () => invoke('window/close'),
+  },
+
   // --- Quiz actions ---
   quiz: {
     start: (data) => invoke('quiz/start', data),
