@@ -32,3 +32,4 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
  x enforce demo mode into application to stop hosts from bypassing licence
 
  x activation needs to be assigned to a specific laptop / mac address so users cant log in, activate, then turn off wifi and log into another laptop to download same activation
+ 
