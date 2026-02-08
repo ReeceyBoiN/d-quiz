@@ -63,7 +63,7 @@ export function TopNavigation({
   };
 
   return (
-    <div className="bg-sidebar-accent border-b border-sidebar-border px-4 py-2">
+    <div className="bg-sidebar-accent border-b border-sidebar-border px-4 py-2" style={{ WebkitAppRegion: 'drag' }}>
       <style dangerouslySetInnerHTML={{
         __html: `
           @keyframes flash-warning {
@@ -106,6 +106,7 @@ export function TopNavigation({
                     ? "bg-[#f39c12] text-white hover:bg-[#e67e22] shadow-lg transform scale-105"
                     : "bg-sidebar text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground hover:scale-102 border border-sidebar-border"
                 }`}
+                style={{ WebkitAppRegion: 'no-drag' }}
               >
                 {tab.id === "home" && <Home className="w-4 h-4" />}
                 {tab.id === "user-status" && <User className="w-4 h-4" />}
@@ -120,13 +121,15 @@ export function TopNavigation({
           ))}
           
           {/* Display Mode Toggle */}
-          <DisplayModeToggle 
+          <div style={{ WebkitAppRegion: 'no-drag' }}>
+            <DisplayModeToggle 
             currentMode={displayMode}
             onModeChange={onDisplayModeChange || (() => {})}
             isExternalDisplayOpen={isExternalDisplayOpen}
             onExternalDisplayToggle={onExternalDisplayToggle}
             onDisplaySettings={onDisplaySettings}
           />
+          </div>
           
           {/* Player Devices Section */}
           <div className="flex items-center ml-1">
@@ -135,6 +138,7 @@ export function TopNavigation({
               onClick={onPlayerDevicesSettings}
               className="h-9 px-1 bg-[#3d5166] text-[#ecf0f1] hover:bg-[#4a617a] hover:text-white border border-[#4a5568] rounded-l-md transition-all duration-200 hover:scale-102 flex items-center justify-center border-r-0"
               title="Player Devices Settings"
+              style={{ WebkitAppRegion: 'no-drag' }}
             >
               <Settings className="w-5 h-5" />
             </button>
@@ -157,6 +161,7 @@ export function TopNavigation({
               }}
               className="h-9 w-24 border border-[#4a5568] rounded-r-md transition-all duration-200 flex flex-col items-center justify-center text-[#ecf0f1] bg-[#3d5166] hover:bg-[#4a617a] hover:text-white border-l-0 relative hover:scale-102"
               title={`Player Devices Display Mode: ${playerDevicesDisplayMode} (click to cycle - broadcasts after 2s of inactivity)`}
+              style={{ WebkitAppRegion: 'no-drag' }}
             >
               <div className="text-xs opacity-75 leading-tight">Player</div>
               <div className="flex items-center gap-0.5">
@@ -183,6 +188,7 @@ export function TopNavigation({
                 variant="ghost"
                 size="sm"
                 className="flash-warning text-white text-sm px-2.5 py-1.5 h-auto hover:scale-105 transition-transform duration-200"
+                style={{ WebkitAppRegion: 'no-drag' }}
               >
                 <AlertTriangle className="w-4 h-4 mr-2" />
                 <div className="text-left">
@@ -203,6 +209,7 @@ export function TopNavigation({
                 size="sm"
                 onClick={onSettingsOpen}
                 className="text-sidebar-foreground hover:bg-sidebar hover:text-sidebar-foreground p-1.5 h-7 w-7 transition-all duration-200 hover:scale-110"
+                style={{ WebkitAppRegion: 'no-drag' }}
               >
                 <Settings className="w-4 h-4" />
               </Button>
@@ -220,6 +227,7 @@ export function TopNavigation({
                 size="sm"
                 className="text-sidebar-foreground hover:bg-sidebar hover:text-sidebar-foreground flex items-center gap-1.5 px-2 py-1.5 h-auto transition-all duration-200 hover:scale-105"
                 onClick={handleUserClick}
+                style={{ WebkitAppRegion: 'no-drag' }}
               >
                 <User className="w-4 h-4" />
                 <span className={`text-sm font-medium ${

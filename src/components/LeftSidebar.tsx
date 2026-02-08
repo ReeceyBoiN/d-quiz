@@ -142,7 +142,7 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
   return (
     <div className="w-full h-full bg-sidebar border-r border-sidebar-border flex flex-col">
       {/* Teams header */}
-      <div className="bg-sidebar-accent border-b border-sidebar-border px-2 py-2 flex-shrink-0">
+      <div className="bg-sidebar-accent border-b border-sidebar-border px-2 py-2 flex-shrink-0" style={{ WebkitAppRegion: 'drag' }}>
         <div className="text-sm font-semibold text-sidebar-foreground flex items-center justify-between">
           {/* Window Control Buttons */}
           <div className="flex items-center">
@@ -150,6 +150,7 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
               className="w-14 h-7 bg-transparent hover:bg-red-600 transition-colors duration-150 flex items-center justify-center group border-r border-sidebar-border/30"
               title="Close"
               onClick={() => (window as any).api?.window?.close()}
+              style={{ WebkitAppRegion: 'no-drag' }}
             >
               <X className="w-4 h-4 text-sidebar-foreground group-hover:text-white transition-colors duration-150" />
             </button>
@@ -157,6 +158,7 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
               className="w-14 h-7 bg-transparent hover:bg-blue-500 transition-colors duration-150 flex items-center justify-center group border-r border-sidebar-border/30"
               title="Maximize"
               onClick={() => (window as any).api?.window?.maximize()}
+              style={{ WebkitAppRegion: 'no-drag' }}
             >
               <Square className="w-3 h-3 text-sidebar-foreground group-hover:text-white transition-colors duration-150" />
             </button>
@@ -164,6 +166,7 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
               className="w-14 h-7 bg-transparent hover:bg-blue-500 transition-colors duration-150 flex items-center justify-center group"
               title="Minimize"
               onClick={() => (window as any).api?.window?.minimize()}
+              style={{ WebkitAppRegion: 'no-drag' }}
             >
               <Minus className="w-4 h-4 text-sidebar-foreground group-hover:text-white transition-colors duration-150" />
             </button>
