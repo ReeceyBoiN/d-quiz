@@ -23,6 +23,8 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   If a Team disconnects, The team in the teams list should go grey not just disapear from the teams list, so it indicates that a team has connected, still has points and all that teams info should still be stored incase they re connect, which i think parts of this function are already implimented but the team needs to be greyed out if they are not actively connected to the application.
 
+  Add buzzer folder audio folder for host and selection screen for players upon connecting
+
  x Scaling visually needs adding as its currently too cramped on the screen slightly whole software wide. 
  
  x Needs all visual elements reducing by 10% or so.
@@ -30,3 +32,4 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
  x enforce demo mode into application to stop hosts from bypassing licence
 
  x activation needs to be assigned to a specific laptop / mac address so users cant log in, activate, then turn off wifi and log into another laptop to download same activation
+ 
