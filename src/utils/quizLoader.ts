@@ -88,14 +88,31 @@ function parseQuestion(qEl: Element, roundGame: string) {
   }
 
   if (type === "letters") {
-    if (/^[A-Za-z]$/.test(shortAns)) {
-      const i = letterToIndex(shortAns);
-      if (i !== undefined) {
-        correctIndex = i;
-        if (!answerText) answerText = shortAns.toUpperCase();
+    // Helper to extract the first letter, stripping "The " prefix
+    const extractLetter = (text: string): string | undefined => {
+      if (!text) return undefined;
+      const stripped = text.replace(/^The\s+/i, "").trim();
+      if (stripped) {
+        const firstChar = stripped[0].toUpperCase();
+        if (/^[A-Za-z]$/.test(firstChar)) {
+          return firstChar;
+        }
       }
-    } else if (answerText && /^[A-Za-z]$/.test(answerText)) {
-      const i = letterToIndex(answerText);
+      return undefined;
+    };
+
+    let letter: string | undefined;
+    if (/^[A-Za-z]$/.test(shortAns)) {
+      letter = shortAns.toUpperCase();
+      if (!answerText) answerText = letter;
+    } else if (shortAns) {
+      letter = extractLetter(shortAns);
+    } else if (answerText) {
+      letter = extractLetter(answerText);
+    }
+
+    if (letter) {
+      const i = letterToIndex(letter);
       if (i !== undefined) {
         correctIndex = i;
       }
