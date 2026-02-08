@@ -19,3 +19,4 @@ win:
   icon: build/icon.ico
   artifactName: PopQuiz.exe
 electronVersion: 38.8.0
+

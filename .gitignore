@@ -23,3 +23,5 @@ popquiz-0.1.0-x64.nsis.7z
 builder.config.json
 builder-debug.yml
 PopQuiz.exe
+dist-player/index.html
+builder-effective-config.yaml
