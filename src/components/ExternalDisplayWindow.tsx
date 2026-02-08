@@ -415,6 +415,7 @@ export function ExternalDisplayWindow() {
         const questionFontSize = isMobileSize ? '40px' : '56px';
         const headerFontSize = isMobileSize ? '32px' : '48px';
         const optionFontSize = isMobileSize ? '18px' : '24px';
+        const hasImage = Boolean(displayData.data?.imageDataUrl);
 
         return (
           <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1f2937', position: 'relative', overflow: 'hidden' }}>
@@ -439,12 +440,12 @@ export function ExternalDisplayWindow() {
             )}
 
             {/* Main content area with question on left, image on right (if present) */}
-            <div style={{ flex: 1, display: 'flex', padding: containerPadding, gap: gapSize, alignItems: 'flex-start', justifyContent: 'flex-start', overflow: 'hidden' }}>
+            <div style={{ flex: 1, display: 'flex', padding: containerPadding, gap: gapSize, alignItems: hasImage ? 'stretch' : 'flex-start', justifyContent: 'flex-start', overflow: 'hidden' }}>
               {/* Question and Options on Left - takes up left portion, shrinks if image present */}
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'center',
+                justifyContent: hasImage ? 'center' : 'flex-start',
                 flex: displayData.data?.imageDataUrl ? '0 1 50%' : '1',
                 maxWidth: displayData.data?.imageDataUrl ? '50%' : '100%',
                 overflow: 'auto',
@@ -490,7 +491,7 @@ export function ExternalDisplayWindow() {
               </div>
 
               {/* Image on Right (if present) - constrained to right half of screen */}
-              {displayData.data?.imageDataUrl && (
+              {hasImage && (
                 <div style={{
                   flex: '0 0 calc(50% - 20px)',
                   display: 'flex',
@@ -506,7 +507,7 @@ export function ExternalDisplayWindow() {
                       maxWidth: '100%',
                       maxHeight: '100%',
                       width: 'auto',
-                      height: 'auto',
+                      height: '100%',
                       objectFit: 'contain',
                       borderRadius: '8px',
                       boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
@@ -556,6 +557,58 @@ export function ExternalDisplayWindow() {
                 {renderCountdownTimer(timeRemaining, displayData.countdownStyle || displayData.data?.countdownStyle || 'circular', displayData.data?.totalTime || displayData.totalTime || 30, 120)}
               </div>
             )}
+          </div>
+        );
+      }
+
+      case 'picture': {
+        // Display picture only - image on right, empty space on left
+        // Uses same layout as question-with-timer so image stays in same position when question is revealed
+        const isMobileSize = window.innerWidth < 1024;
+        // Use much tighter padding and gap in picture mode to maximize image size
+        const containerPadding = isMobileSize ? '8px' : '12px';
+        const gapSize = isMobileSize ? '6px' : '12px';
+
+        return (
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1f2937', position: 'relative', overflow: 'hidden' }}>
+            {/* Main content area with empty left and image on right */}
+            <div style={{ flex: 1, display: 'flex', padding: containerPadding, gap: gapSize, alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'hidden' }}>
+              {/* Empty left side (where question text will appear later) */}
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                flex: '0 1 50%',
+                maxWidth: '50%'
+              }}>
+              </div>
+
+              {/* Image on Right */}
+              {displayData.data?.imageDataUrl && (
+                <div style={{
+                  flex: '0 0 calc(50% - 20px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                  overflow: 'hidden'
+                }}>
+                  <img
+                    src={displayData.data.imageDataUrl}
+                    alt="Question"
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      width: 'auto',
+                      height: '100%',
+                      objectFit: 'contain',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+                    }}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         );
       }
