@@ -639,14 +639,31 @@ export default function App() {
 
       if (settings.teamPhoto) {
         rejoinPayload.teamPhoto = settings.teamPhoto;
+        console.log('[App] Auto-rejoin PLAYER_JOIN payload includes teamPhoto: true, Length:', rejoinPayload.teamPhoto.length, 'bytes');
+        console.log('[App] Team photo prefix (first 100 chars):', rejoinPayload.teamPhoto.substring(0, 100));
+      } else {
+        console.log('[App] Auto-rejoin PLAYER_JOIN payload includes teamPhoto: false');
       }
 
+      console.log('[App] Auto-rejoin: Sending PLAYER_JOIN payload with fields:', Object.keys(rejoinPayload).join(', '));
       wsRef.current.send(JSON.stringify(rejoinPayload));
     }
   }, [isConnected, isApproved, teamName, deviceId, playerId, settings, currentScreen]);
 
 
   const handleTeamNameSubmit = (name: string) => {
+    console.log('[App] handleTeamNameSubmit called with name:', name);
+    console.log('[App] Current settings object:', settings);
+    console.log('[App] settings.teamPhoto exists:', !!settings.teamPhoto);
+    console.log('[App] settings.teamPhoto type:', typeof settings.teamPhoto);
+    console.log('[App] settings.teamPhoto length:', settings.teamPhoto?.length);
+    console.log('[App] Full settings state at submission:', JSON.stringify({
+      teamPhoto: settings.teamPhoto ? `<base64 data: ${settings.teamPhoto.length} bytes>` : null,
+      buzzerSound: settings.buzzerSound,
+      theme: settings.theme,
+      keypadColor: settings.keypadColor,
+    }));
+
     setTeamName(name);
     setCurrentScreen('approval');
 
@@ -662,9 +679,17 @@ export default function App() {
       // Include team photo if available
       if (settings.teamPhoto) {
         joinPayload.teamPhoto = settings.teamPhoto;
+        console.log('[App] ✅ PLAYER_JOIN payload includes teamPhoto: true, Length:', joinPayload.teamPhoto.length, 'bytes');
+        console.log('[App] Team photo prefix (first 100 chars):', joinPayload.teamPhoto.substring(0, 100));
+      } else {
+        console.log('[App] ❌ PLAYER_JOIN payload includes teamPhoto: false');
       }
 
+      console.log('[App] Sending PLAYER_JOIN payload with fields:', Object.keys(joinPayload).join(', '));
+      console.log('[App] Full payload:', joinPayload);
       wsRef.current.send(JSON.stringify(joinPayload));
+    } else {
+      console.log('[App] ❌ WebSocket not ready, readyState:', wsRef.current?.readyState);
     }
   };
 
@@ -692,8 +717,16 @@ export default function App() {
     }
   };
 
+  const sendMessage = (message: any) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(message));
+    } else {
+      console.warn('[App] Cannot send message - WebSocket not ready. ReadyState:', wsRef.current?.readyState);
+    }
+  };
+
   return (
-    <NetworkContext.Provider value={{ isConnected, playerId, teamName, playerSettings: settings, goWideEnabled, answerRevealed, correctAnswer, selectedAnswers, showAnswerFeedback, isAnswerCorrect }}>
+    <NetworkContext.Provider value={{ isConnected, playerId, deviceId, teamName, playerSettings: settings, goWideEnabled, answerRevealed, correctAnswer, selectedAnswers, showAnswerFeedback, isAnswerCorrect, sendMessage }}>
       <div className="h-screen w-screen bg-gradient-to-b from-slate-900 to-slate-800 flex flex-col">
         <div className="flex-1 overflow-hidden">
           {!isConnected && currentScreen === 'team-entry' && (

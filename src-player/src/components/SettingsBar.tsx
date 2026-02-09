@@ -14,7 +14,7 @@ const KEYPAD_COLORS: { name: KeypadColor; label: string; bgClass: string }[] = [
 
 export function SettingsBar() {
   const networkContext = useContext(NetworkContext);
-  const { teamName, isConnected } = networkContext || { teamName: '', isConnected: false };
+  const { teamName, isConnected, playerId, deviceId, sendMessage } = networkContext || { teamName: '', isConnected: false, playerId: '', deviceId: '', sendMessage: undefined };
   const {
     settings,
     isLoaded,
@@ -65,24 +65,68 @@ export function SettingsBar() {
 
   // Handle team photo upload
   const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[SettingsBar] handlePhotoUpload called');
     const file = event.target.files?.[0];
-    if (!file) return;
+    console.log('[SettingsBar] File selected:', file?.name, file?.size, file?.type);
+    if (!file) {
+      console.log('[SettingsBar] No file selected, returning');
+      return;
+    }
 
+    console.log('[SettingsBar] File size check:', file.size);
     // Check file size (500MB max)
     if (file.size > 500 * 1024 * 1024) {
-      console.error('[SettingsBar] File size exceeds 500MB limit');
+      console.error('[SettingsBar] File size exceeds 500MB limit:', file.size);
       alert('File size exceeds 500MB limit');
       return;
     }
 
     try {
+      console.log('[SettingsBar] Creating FileReader...');
       const reader = new FileReader();
+
       reader.onload = (e) => {
+        console.log('[SettingsBar] FileReader onload fired');
         const base64 = e.target?.result as string;
+        console.log('[SettingsBar] Base64 data received, length:', base64?.length);
+        console.log('[SettingsBar] Base64 prefix (first 100 chars):', base64?.substring(0, 100));
+        console.log('[SettingsBar] Calling updateTeamPhoto...');
         updateTeamPhoto(base64);
-        console.log('[SettingsBar] Team photo uploaded and saved');
+        console.log('[SettingsBar] ✅ Team photo uploaded and saved');
+        console.log('[SettingsBar] Current settings after upload:', {
+          teamPhoto: settings.teamPhoto ? `<base64 data: ${settings.teamPhoto.length} bytes>` : null,
+          buzzerSound: settings.buzzerSound,
+          theme: settings.theme,
+          keypadColor: settings.keypadColor,
+        });
+
+        // Send TEAM_PHOTO_UPDATE message to host if connected
+        if (isConnected && sendMessage && deviceId && teamName) {
+          console.log('[SettingsBar] Sending TEAM_PHOTO_UPDATE message to host');
+          const updatePayload = {
+            type: 'TEAM_PHOTO_UPDATE',
+            playerId,
+            deviceId,
+            teamName,
+            photoData: base64,
+            timestamp: Date.now(),
+          };
+          console.log('[SettingsBar] TEAM_PHOTO_UPDATE payload prepared, photoData length:', updatePayload.photoData.length, 'bytes');
+          sendMessage(updatePayload);
+          console.log('[SettingsBar] ✅ TEAM_PHOTO_UPDATE message sent');
+        } else {
+          console.warn('[SettingsBar] ⚠️  Cannot send TEAM_PHOTO_UPDATE - isConnected:', isConnected, 'sendMessage:', !!sendMessage, 'deviceId:', !!deviceId, 'teamName:', !!teamName);
+        }
       };
+
+      reader.onerror = (error) => {
+        console.error('[SettingsBar] FileReader error:', error);
+        alert('Error reading file');
+      };
+
+      console.log('[SettingsBar] Calling readAsDataURL...');
       reader.readAsDataURL(file);
+      console.log('[SettingsBar] readAsDataURL called successfully');
     } catch (error) {
       console.error('[SettingsBar] Error uploading photo:', error);
       alert('Error uploading photo');

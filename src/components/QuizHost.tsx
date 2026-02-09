@@ -887,13 +887,46 @@ export function QuizHost() {
       // Fetch player data to get team photo
       let teamPhoto: string | undefined = undefined;
       try {
+        console.log('[QuizHost] 🔍 Fetching all network players via IPC...');
         const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
+
+        console.log('[QuizHost] IPC result status:', result?.ok ? '✅ OK' : '❌ ERROR');
+        console.log('[QuizHost] IPC result has data array:', Array.isArray(result?.data));
+        if (Array.isArray(result?.data)) {
+          console.log('[QuizHost] Total players returned:', result.data.length);
+          result.data.forEach((p: any, idx: number) => {
+            console.log(`[QuizHost] Player ${idx + 1}: deviceId=${p.deviceId}, teamName=${p.teamName}, hasTeamPhoto=${!!p.teamPhoto}`);
+          });
+        }
+
         if (result?.ok && Array.isArray(result.data)) {
           const player = result.data.find((p: any) => p.deviceId === deviceId);
-          if (player?.teamPhoto) {
-            teamPhoto = player.teamPhoto;
-            console.log('✅ Retrieved team photo for:', teamName);
+          console.log('[QuizHost] ✨ Found player for this device:', !!player);
+          if (player) {
+            console.log('[QuizHost] Player details:', {
+              deviceId: player.deviceId,
+              teamName: player.teamName,
+              hasTeamPhoto: !!player.teamPhoto,
+              photoValue: player.teamPhoto ? (player.teamPhoto.substring(0, 50) + '...') : 'null'
+            });
           }
+
+          if (player?.teamPhoto) {
+            // Convert file path to file:// URL if it's a path and not already a data URL
+            const photoPath = player.teamPhoto;
+            if (photoPath.startsWith('file://') || photoPath.startsWith('data:')) {
+              teamPhoto = photoPath;
+            } else {
+              teamPhoto = `file://${photoPath}`;
+            }
+            console.log('✅ Retrieved team photo for:', teamName);
+            console.log('[QuizHost] Original photo path:', photoPath);
+            console.log('[QuizHost] Converted photo URL:', teamPhoto?.substring(0, 50) + '...');
+          } else {
+            console.log('[QuizHost] ⚠️ Player found but has no teamPhoto');
+          }
+        } else {
+          console.log('[QuizHost] ⚠️ IPC result was not successful or no data array');
         }
       } catch (err) {
         console.warn('[QuizHost] Could not fetch team photo:', err);
@@ -909,14 +942,20 @@ export function QuizHost() {
         photoUrl: teamPhoto || undefined,
       };
 
+      console.log('[QuizHost] 📸 Creating newTeam object:');
+      console.log('[QuizHost] - photoUrl present:', !!newTeam.photoUrl);
+      if (newTeam.photoUrl) {
+        console.log('[QuizHost] - photoUrl value (first 50 chars):', newTeam.photoUrl?.substring(0, 50) + '...');
+      }
+
       if (!quizzesRef.current.find(q => q.id === deviceId)) {
         setQuizzes(prev => [...prev, newTeam]);
-        console.log('Added team to quizzes');
+        console.log('✅ Added team to quizzes');
       }
 
       // Approve via IPC (only works in Electron)
       if ((window as any).api?.network?.approveTeam) {
-        console.log('Calling approveTeam IPC...');
+        console.log('[QuizHost] 📤 Calling approveTeam IPC...');
 
         // Prepare display mode data to send to the newly approved player
         const displayData: any = {
@@ -978,15 +1017,28 @@ export function QuizHost() {
 
         displayData.currentGameState = currentGameState;
 
+        console.log('[QuizHost] 📝 About to call approveTeam with:');
+        console.log('[QuizHost] - deviceId:', deviceId);
+        console.log('[QuizHost] - teamName:', teamName);
+        console.log('[QuizHost] - displayData.mode:', displayData.mode);
+        console.log('[QuizHost] - displayData has photo field:', !!displayData.photos);
+        console.log('[QuizHost] - displayData keys:', Object.keys(displayData));
+
         const result = await (window as any).api.network.approveTeam({ deviceId, teamName, displayData });
-        console.log('✅ approveTeam result:', result);
+        console.log('✅ approveTeam IPC result:', result?.ok ? 'SUCCESS' : 'FAILED');
+        if (!result?.ok) {
+          console.error('[QuizHost] ❌ approveTeam failed:', result?.error);
+        }
       } else {
         console.warn('⚠️  api.network.approveTeam not available');
       }
 
       // Remove from pending
-      setPendingTeams(prev => prev.filter(t => t.deviceId !== deviceId));
-      console.log('Removed from pending teams');
+      setPendingTeams(prev => {
+        const filtered = prev.filter(t => t.deviceId !== deviceId);
+        console.log('[QuizHost] ✨ Removed from pending teams. Remaining pending:', filtered.length);
+        return filtered;
+      });
     } catch (err) {
       console.error('❌ Failed to approve team:', err);
     }
@@ -2337,6 +2389,17 @@ export function QuizHost() {
         return;
       }
 
+      // LOGGING: Log the PLAYER_JOIN message details
+      console.log('[QuizHost] 📨 Received PLAYER_JOIN from backend:');
+      console.log('[QuizHost] - deviceId:', deviceId);
+      console.log('[QuizHost] - teamName:', teamName);
+      console.log('[QuizHost] - Message fields:', Object.keys(data));
+      console.log('[QuizHost] - Has teamPhoto field:', !!data.teamPhoto);
+      if (data.teamPhoto) {
+        console.log('[QuizHost] - teamPhoto type:', typeof data.teamPhoto);
+        console.log('[QuizHost] - teamPhoto length:', data.teamPhoto.length);
+      }
+
       // Check if team with this deviceId already exists (reconnection case)
       const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
 
@@ -2384,6 +2447,66 @@ export function QuizHost() {
 
     // Register listener and get unsubscribe function
     const unsubscribe = onNetworkMessage('PLAYER_JOIN', handleNetworkPlayerJoin);
+
+    // Clean up listener on unmount
+    return unsubscribe;
+  }, []); // Empty dependency array - register once on mount
+
+  // Listen for team photo updates
+  useEffect(() => {
+    const handleNetworkTeamPhotoUpdated = (data: any) => {
+      try {
+        console.log('[QuizHost] 📸 TEAM_PHOTO_UPDATED received:', data);
+        const { deviceId, playerId, teamName, photoPath } = data;
+
+        if (!photoPath) {
+          console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: No photoPath in payload');
+          return;
+        }
+
+        // Determine team id to match - prefer deviceId
+        const teamId = deviceId || playerId;
+
+        // Convert photo path to file:// URL if needed
+        const convertedPhotoUrl = (() => {
+          if (!photoPath) return undefined;
+          if (typeof photoPath !== 'string') return undefined;
+          // Accept data URLs or already file:// URLs
+          if (photoPath.startsWith('data:') || photoPath.startsWith('file://')) return photoPath;
+          // Otherwise assume it's a local path and convert to file://
+          return `file://${photoPath}`;
+        })();
+
+        if (!convertedPhotoUrl) {
+          console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: Could not convert photo URL');
+          return;
+        }
+
+        console.log('[QuizHost] 📸 Converted photo URL (first 50 chars):', convertedPhotoUrl.substring(0, 50) + '...');
+
+        // Update quizzes if team exists
+        const existingTeam = quizzesRef.current.find(q => q.id === teamId);
+        if (existingTeam) {
+          console.log('[QuizHost] ✅ Updating photoUrl for team:', existingTeam.name);
+          setQuizzes(prev => {
+            return prev.map(q => {
+              if (q.id === teamId) {
+                console.log('[QuizHost] 📸 Updated photoUrl for team:', q.name);
+                return { ...q, photoUrl: convertedPhotoUrl };
+              }
+              return q;
+            });
+          });
+        } else {
+          console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: Team not found in quizzes for id:', teamId);
+        }
+      } catch (err) {
+        console.error('[QuizHost] ❌ Error handling TEAM_PHOTO_UPDATED:', err);
+      }
+    };
+
+    // Register listener and get unsubscribe function
+    const unsubscribe = onNetworkMessage('TEAM_PHOTO_UPDATED', handleNetworkTeamPhotoUpdated);
 
     // Clean up listener on unmount
     return unsubscribe;
@@ -3596,6 +3719,16 @@ export function QuizHost() {
     setQuizzes([]);
     // Clear saved game state on crash recovery
     await clearGameState().catch(err => console.error('[Crash Recovery] Error clearing game state:', err));
+
+    // Cleanup team photos from disk
+    try {
+      if ((window as any).api?.ipc?.invoke) {
+        const result = await (window as any).api.ipc.invoke('network/cleanup-team-photos');
+        console.log('[QuizHost] Team photos cleanup result:', result);
+      }
+    } catch (err) {
+      console.warn('[QuizHost] Error cleaning up team photos:', err);
+    }
   };
 
   // Handle host location change

@@ -214,6 +214,27 @@ async function boot() {
       throw err;
     }
   });
+
+  router.mount('network/cleanup-team-photos', async () => {
+    try {
+      log.info('[IPC] network/cleanup-team-photos called');
+
+      if (!backend || !backend.cleanupTeamPhotos) {
+        log.error('[IPC] Backend not initialized for network/cleanup-team-photos');
+        throw new Error('Backend not initialized');
+      }
+
+      log.info('[IPC] Calling backend.cleanupTeamPhotos...');
+      const success = backend.cleanupTeamPhotos();
+      log.info('[IPC] backend.cleanupTeamPhotos completed:', { success });
+
+      return { success };
+    } catch (err) {
+      log.error('[IPC] network/cleanup-team-photos error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
+    }
+  });
   
   // Open user's Documents/PopQuiz/Question Packs; create it if missing
   router.mount('app/open-from-file', async () => {

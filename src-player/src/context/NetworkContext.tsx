@@ -4,6 +4,7 @@ import type { PlayerSettings } from '../hooks/usePlayerSettings';
 interface NetworkContextType {
   isConnected: boolean;
   playerId: string;
+  deviceId?: string;
   teamName: string;
   playerSettings?: PlayerSettings;
   goWideEnabled?: boolean;
@@ -13,6 +14,7 @@ interface NetworkContextType {
   selectedAnswers?: any[];
   showAnswerFeedback?: boolean;
   isAnswerCorrect?: boolean;
+  sendMessage?: (message: any) => void;
 }
 
 export const NetworkContext = createContext<NetworkContextType | undefined>(undefined);

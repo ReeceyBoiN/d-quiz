@@ -27,12 +27,21 @@ export function usePlayerSettings() {
   useEffect(() => {
     try {
       const savedSettings = localStorage.getItem(STORAGE_KEY);
+      console.log('[usePlayerSettings] Loading settings from localStorage on mount');
       if (savedSettings) {
         const parsed = JSON.parse(savedSettings);
+        console.log('[usePlayerSettings] Found saved settings:', {
+          teamPhoto: parsed.teamPhoto ? `<base64 data: ${parsed.teamPhoto.length} bytes>` : null,
+          buzzerSound: parsed.buzzerSound,
+          theme: parsed.theme,
+          keypadColor: parsed.keypadColor,
+        });
         setSettings({
           ...DEFAULT_SETTINGS,
           ...parsed,
         });
+      } else {
+        console.log('[usePlayerSettings] No saved settings found, using defaults');
       }
     } catch (error) {
       console.error('[usePlayerSettings] Error loading settings from localStorage:', error);
@@ -43,9 +52,17 @@ export function usePlayerSettings() {
   // Save settings to localStorage whenever they change
   useEffect(() => {
     if (!isLoaded) return;
-    
+
+    console.log('[usePlayerSettings] Saving settings to localStorage:', {
+      teamPhoto: settings.teamPhoto ? `<base64 data: ${settings.teamPhoto.length} bytes>` : null,
+      buzzerSound: settings.buzzerSound,
+      theme: settings.theme,
+      keypadColor: settings.keypadColor,
+    });
+
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      console.log('[usePlayerSettings] ✅ Settings saved successfully');
     } catch (error) {
       console.error('[usePlayerSettings] Error saving settings to localStorage:', error);
     }
@@ -62,6 +79,7 @@ export function usePlayerSettings() {
   }, []);
 
   const updateTeamPhoto = useCallback((photo: string | null) => {
+    console.log('[usePlayerSettings] updateTeamPhoto called with photo:', photo ? `<base64 data: ${photo.length} bytes>` : null);
     updateSetting('teamPhoto', photo);
   }, [updateSetting]);
 

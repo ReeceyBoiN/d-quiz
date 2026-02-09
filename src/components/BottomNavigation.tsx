@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Slider } from "./ui/slider";
-import { Settings, Skull, ArrowLeftRight, Layers, Camera, Pause, RotateCcw, Trash2, EyeOff, Plus, Minus, LayoutGrid, Gamepad2, UserMinus, X, Volume2 } from "lucide-react";
+import { Settings, Skull, ArrowLeftRight, Layers, Camera, Pause, RotateCcw, Trash2, EyeOff, Plus, Minus, LayoutGrid, Gamepad2, UserMinus, X, Volume2, Check } from "lucide-react";
 import { useSettings } from "../utils/SettingsContext";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
+import { onNetworkMessage } from "../network/wsHost";
 import { 
   AlertDialog, 
   AlertDialogAction, 
@@ -494,7 +495,110 @@ export function StatusBar({
   
   // Team photos popup state
   const [showTeamPhotosPopup, setShowTeamPhotosPopup] = useState(false);
-  
+  const [pendingPhotos, setPendingPhotos] = useState<Array<{ deviceId: string; teamName: string; teamPhoto: string }>>([]);
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [photoStatuses, setPhotoStatuses] = useState<{ [deviceId: string]: 'pending' | 'approved' | 'declined' }>({});
+
+  // Fetch pending photos when popup opens
+  useEffect(() => {
+    if (showTeamPhotosPopup) {
+      fetchPendingPhotos();
+    }
+  }, [showTeamPhotosPopup]);
+
+  const fetchPendingPhotos = async () => {
+    setLoadingPhotos(true);
+    try {
+      const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
+      if (result?.ok && Array.isArray(result.data)) {
+        const photosWithImages = result.data.filter(
+          (p: any) => p.teamPhoto && p.status === 'pending'
+        );
+        setPendingPhotos(photosWithImages);
+
+        // Initialize photo statuses
+        const statuses: { [deviceId: string]: 'pending' | 'approved' | 'declined' } = {};
+        photosWithImages.forEach((p: any) => {
+          statuses[p.deviceId] = 'pending';
+        });
+        setPhotoStatuses(statuses);
+      }
+    } catch (err) {
+      console.error('[BottomNavigation] Error fetching pending photos:', err);
+    } finally {
+      setLoadingPhotos(false);
+    }
+  };
+
+  const handleApprovePhoto = async (deviceId: string, teamName: string) => {
+    try {
+      console.log('[BottomNavigation] Approving photo for team:', teamName);
+
+      if ((window as any).api?.network?.approveTeam) {
+        await (window as any).api.network.approveTeam({ deviceId, teamName });
+
+        // Update status
+        setPhotoStatuses(prev => ({
+          ...prev,
+          [deviceId]: 'approved'
+        }));
+
+        // Refresh pending photos after a short delay
+        setTimeout(() => {
+          fetchPendingPhotos();
+        }, 500);
+      }
+    } catch (err) {
+      console.error('[BottomNavigation] Error approving photo:', err);
+    }
+  };
+
+  const handleDeclinePhoto = async (deviceId: string, teamName: string) => {
+    try {
+      console.log('[BottomNavigation] Declining photo for team:', teamName);
+
+      if ((window as any).api?.network?.declineTeam) {
+        await (window as any).api.network.declineTeam({ deviceId, teamName });
+
+        // Update status
+        setPhotoStatuses(prev => ({
+          ...prev,
+          [deviceId]: 'declined'
+        }));
+
+        // Refresh pending photos after a short delay
+        setTimeout(() => {
+          fetchPendingPhotos();
+        }, 500);
+      }
+    } catch (err) {
+      console.error('[BottomNavigation] Error declining photo:', err);
+    }
+  };
+
+  // Listen for team photo updates and refresh the photos list if popup is open
+  useEffect(() => {
+    const handleNetworkTeamPhotoUpdated = (data: any) => {
+      console.log('[BottomNavigation] 📸 TEAM_PHOTO_UPDATED received:', data);
+      // Refresh pending photos if Team Photos popup is open
+      if (showTeamPhotosPopup) {
+        console.log('[BottomNavigation] Team Photos popup is open, refreshing pending photos...');
+        // Small delay to ensure backend has processed the update
+        setTimeout(() => {
+          fetchPendingPhotos();
+        }, 500);
+      } else {
+        console.log('[BottomNavigation] Team Photos popup is closed, skipping refresh');
+      }
+    };
+
+    // Register listener for TEAM_PHOTO_UPDATED messages
+    const unsubscribe = onNetworkMessage('TEAM_PHOTO_UPDATED', handleNetworkTeamPhotoUpdated);
+
+    // Clean up listener on unmount
+    return unsubscribe;
+  }, [showTeamPhotosPopup]); // Re-register when popup state changes
+
   return (
     <div
       className="w-full bg-sidebar-accent border-t border-sidebar-border px-2 py-0 h-[41px] flex items-center justify-center z-40"
@@ -812,13 +916,93 @@ export function StatusBar({
                   </div>
                 </div>
 
-                {/* Content area - ready for team photos functionality */}
-                <div className="flex-1 bg-muted/30 rounded-lg border border-border flex items-center justify-center">
-                  <div className="text-center text-muted-foreground">
-                    <Camera className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg mb-2">Team Photos Coming Soon</p>
-                    <p className="text-sm">This feature will allow you to manage team photos and display them during the quiz.</p>
-                  </div>
+                {/* Content area - team photos list */}
+                <div className="flex-1 bg-muted/30 rounded-lg border border-border overflow-hidden flex flex-col">
+                  {loadingPhotos ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center text-muted-foreground">
+                        <div className="animate-spin inline-block h-8 w-8 border-4 border-foreground border-t-transparent rounded-full mb-4"></div>
+                        <p>Loading team photos...</p>
+                      </div>
+                    </div>
+                  ) : pendingPhotos.length === 0 ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center text-muted-foreground">
+                        <Camera className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg mb-2">No pending photos</p>
+                        <p className="text-sm">Team photos will appear here when teams upload them.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="overflow-y-auto flex-1 p-6">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
+                        {pendingPhotos.map((photo) => (
+                          <div key={photo.deviceId} className="flex flex-col items-center gap-3">
+                            {/* Photo Thumbnail */}
+                            <div className="w-full aspect-square rounded-lg overflow-hidden border-2 border-border bg-background shadow-md hover:shadow-lg transition-shadow">
+                              <img
+                                src={photo.teamPhoto.startsWith('file://') || photo.teamPhoto.startsWith('data:') ? photo.teamPhoto : `file://${photo.teamPhoto}`}
+                                alt={photo.teamName}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+
+                            {/* Team Name */}
+                            <div className="text-center">
+                              <p className="font-semibold text-foreground truncate w-full">{photo.teamName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {photoStatuses[photo.deviceId] === 'approved' ? '✓ Approved' :
+                                 photoStatuses[photo.deviceId] === 'declined' ? '✗ Declined' :
+                                 'Pending'}
+                              </p>
+                            </div>
+
+                            {/* Action Buttons */}
+                            {photoStatuses[photo.deviceId] === 'pending' && (
+                              <div className="flex gap-2 w-full">
+                                <button
+                                  onClick={() => handleApprovePhoto(photo.deviceId, photo.teamName)}
+                                  className="flex-1 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-md font-semibold text-sm transition-colors flex items-center justify-center gap-1"
+                                  title="Approve this photo"
+                                >
+                                  <Check className="h-4 w-4" />
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => handleDeclinePhoto(photo.deviceId, photo.teamName)}
+                                  className="flex-1 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-md font-semibold text-sm transition-colors flex items-center justify-center gap-1"
+                                  title="Decline this photo"
+                                >
+                                  <X className="h-4 w-4" />
+                                  Decline
+                                </button>
+                              </div>
+                            )}
+
+                            {photoStatuses[photo.deviceId] === 'approved' && (
+                              <button
+                                disabled
+                                className="w-full px-3 py-2 bg-green-500/50 text-white rounded-md font-semibold text-sm opacity-75 cursor-not-allowed flex items-center justify-center gap-1"
+                              >
+                                <Check className="h-4 w-4" />
+                                Approved
+                              </button>
+                            )}
+
+                            {photoStatuses[photo.deviceId] === 'declined' && (
+                              <button
+                                disabled
+                                className="w-full px-3 py-2 bg-red-500/50 text-white rounded-md font-semibold text-sm opacity-75 cursor-not-allowed flex items-center justify-center gap-1"
+                              >
+                                <X className="h-4 w-4" />
+                                Declined
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -24,7 +24,8 @@ export type NetworkMessageType =
   | 'END_ROUND'
   | 'ANSWER'  // incoming from players
   | 'PLAYER_JOIN'
-  | 'PLAYER_DISCONNECT';
+  | 'PLAYER_DISCONNECT'
+  | 'TEAM_PHOTO_UPDATED';  // incoming from backend when player updates photo
 
 export interface NetworkPayload {
   type: NetworkMessageType;
