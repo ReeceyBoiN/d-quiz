@@ -252,6 +252,13 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
                       src={team.photoUrl}
                       alt={team.name}
                       className="w-12 h-12 rounded-full object-cover border-2 border-border"
+                      onLoad={() => {
+                        console.log('[BuzzersManagement] ✅ Successfully loaded team photo:', team.photoUrl);
+                      }}
+                      onError={(e) => {
+                        console.error('[BuzzersManagement] ❌ Failed to load team photo:', team.photoUrl);
+                        e.currentTarget.style.display = 'none';
+                      }}
                     />
                   ) : (
                     <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center border-2 border-border">

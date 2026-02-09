@@ -718,10 +718,24 @@ export default function App() {
   };
 
   const sendMessage = (message: any) => {
+    const wsState = wsRef.current?.readyState;
+    const stateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+    const stateName = stateNames[wsState] || 'UNKNOWN';
+
+    console.log(`[App] sendMessage called - WebSocket state: ${wsState} (${stateName}), Message type: ${message.type}`);
+
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('[App] ✅ WebSocket OPEN - Sending message:', message.type);
+      console.log('[App] - bufferedAmount:', wsRef.current.bufferedAmount);
       wsRef.current.send(JSON.stringify(message));
+      console.log('[App] - Message sent successfully');
     } else {
-      console.warn('[App] Cannot send message - WebSocket not ready. ReadyState:', wsRef.current?.readyState);
+      console.warn('[App] ❌ Cannot send message - WebSocket not OPEN');
+      console.warn('[App] - ReadyState:', wsState, `(${stateName})`);
+      console.warn('[App] - wsRef.current exists:', !!wsRef.current);
+      if (wsRef.current) {
+        console.warn('[App] - bufferedAmount:', wsRef.current.bufferedAmount);
+      }
     }
   };
 
@@ -739,7 +753,7 @@ export default function App() {
             </div>
           )}
 
-          {isConnected && currentScreen === 'team-entry' && (
+          {isConnected && playerSettingsLoaded && currentScreen === 'team-entry' && (
             <TeamNameEntry onSubmit={handleTeamNameSubmit} />
           )}
 

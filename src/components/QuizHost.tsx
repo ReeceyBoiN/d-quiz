@@ -31,6 +31,7 @@ import { QuestionNavigationBar } from "./QuestionNavigationBar";
 // CountdownTimer not used in QuizHost - using inline timer in external window
 
 import { StoredImage, projectImageStorage } from "../utils/projectImageStorage";
+import { ensureFileUrl } from "../utils/photoUrlConverter";
 import { useSettings } from "../utils/SettingsContext";
 import { useQuizData } from "../utils/QuizDataContext";
 import { useTimer } from "../hooks/useTimer";
@@ -912,15 +913,9 @@ export function QuizHost() {
           }
 
           if (player?.teamPhoto) {
-            // Convert file path to file:// URL if it's a path and not already a data URL
-            const photoPath = player.teamPhoto;
-            if (photoPath.startsWith('file://') || photoPath.startsWith('data:')) {
-              teamPhoto = photoPath;
-            } else {
-              teamPhoto = `file://${photoPath}`;
-            }
+            teamPhoto = ensureFileUrl(player.teamPhoto);
             console.log('✅ Retrieved team photo for:', teamName);
-            console.log('[QuizHost] Original photo path:', photoPath);
+            console.log('[QuizHost] Original photo path:', player.teamPhoto);
             console.log('[QuizHost] Converted photo URL:', teamPhoto?.substring(0, 50) + '...');
           } else {
             console.log('[QuizHost] ⚠️ Player found but has no teamPhoto');
@@ -2464,17 +2459,64 @@ export function QuizHost() {
           return;
         }
 
-        // Determine team id to match - prefer deviceId
-        const teamId = deviceId || playerId;
+        // Determine team to match - try by deviceId, then playerId, then teamName
+        let existingTeam = quizzesRef.current.find(q => q.id === deviceId);
+        let matchMethod = '';
+
+        if (existingTeam) {
+          matchMethod = 'deviceId';
+          console.log('[QuizHost] 📸 Matched team by deviceId:', deviceId, '→', existingTeam.name);
+        } else if (playerId) {
+          existingTeam = quizzesRef.current.find(q => q.id === playerId);
+          if (existingTeam) {
+            matchMethod = 'playerId';
+            console.log('[QuizHost] 📸 Matched team by playerId:', playerId, '→', existingTeam.name);
+          }
+        }
+
+        if (!existingTeam && teamName) {
+          console.log('[QuizHost] 📸 No ID match found, trying teamName fallback:', teamName);
+          existingTeam = quizzesRef.current.find(q => q.name === teamName);
+          if (existingTeam) {
+            matchMethod = 'teamName';
+            console.log('[QuizHost] 📸 Found team by name:', teamName, 'with ID:', existingTeam.id);
+          } else {
+            // Log available teams for debugging
+            const availableTeams = quizzesRef.current.map(q => ({ id: q.id, name: q.name }));
+            console.warn('[QuizHost] ⚠️  Team matching failed. Received teamName:', teamName, 'but not found in available teams:', availableTeams);
+          }
+        }
 
         // Convert photo path to file:// URL if needed
         const convertedPhotoUrl = (() => {
           if (!photoPath) return undefined;
           if (typeof photoPath !== 'string') return undefined;
-          // Accept data URLs or already file:// URLs
-          if (photoPath.startsWith('data:') || photoPath.startsWith('file://')) return photoPath;
-          // Otherwise assume it's a local path and convert to file://
-          return `file://${photoPath}`;
+
+          // Accept data URLs (no conversion needed)
+          if (photoPath.startsWith('data:')) return photoPath;
+
+          // Accept already-proper file:// URLs (starts with file://)
+          if (photoPath.startsWith('file://')) return photoPath;
+
+          // Accept http(s) URLs as-is
+          if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) return photoPath;
+
+          // Convert local paths to proper file:// URL
+          // Handle Windows backslashes by converting to forward slashes
+          let normalizedPath = photoPath.replace(/\\/g, '/');
+
+          // Add file:// protocol if not already there
+          // Windows paths like C:/Users/... need file:///C:/...
+          if (normalizedPath.includes(':') && !normalizedPath.startsWith('file://')) {
+            // Windows absolute path
+            return `file:///${normalizedPath}`;
+          } else if (normalizedPath.startsWith('/')) {
+            // Unix absolute path
+            return `file://${normalizedPath}`;
+          } else {
+            // Relative path - convert to file URL
+            return `file://${normalizedPath}`;
+          }
         })();
 
         if (!convertedPhotoUrl) {
@@ -2485,12 +2527,11 @@ export function QuizHost() {
         console.log('[QuizHost] 📸 Converted photo URL (first 50 chars):', convertedPhotoUrl.substring(0, 50) + '...');
 
         // Update quizzes if team exists
-        const existingTeam = quizzesRef.current.find(q => q.id === teamId);
         if (existingTeam) {
           console.log('[QuizHost] ✅ Updating photoUrl for team:', existingTeam.name);
           setQuizzes(prev => {
             return prev.map(q => {
-              if (q.id === teamId) {
+              if (q.id === existingTeam.id) {
                 console.log('[QuizHost] 📸 Updated photoUrl for team:', q.name);
                 return { ...q, photoUrl: convertedPhotoUrl };
               }
@@ -2498,7 +2539,7 @@ export function QuizHost() {
             });
           });
         } else {
-          console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: Team not found in quizzes for id:', teamId);
+          console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: Team not found by ID or name. deviceId:', deviceId, 'playerId:', playerId, 'teamName:', teamName);
         }
       } catch (err) {
         console.error('[QuizHost] ❌ Error handling TEAM_PHOTO_UPDATED:', err);
@@ -2621,6 +2662,29 @@ export function QuizHost() {
       if (unsubscribe) unsubscribe();
     };
   }, [quizzes, gameTimerStartTime, flowState.totalTime]); // Re-register listener when quizzes, timer, or question time limit changes - ensures handler has current gameTimerStartTime for accurate response time calculation
+
+  // PHASE 2: Listen for debug error and info messages from server
+  useEffect(() => {
+    const handleDebugError = (data: any) => {
+      console.error('[🔴 SERVER ERROR]', data.source + ':', data.error);
+      console.error('[🔴 SERVER ERROR] Full details:', data);
+    };
+
+    const handleDebugInfo = (data: any) => {
+      console.info('[✅ SERVER INFO]', data.source + ':', data.message);
+      console.info('[✅ SERVER INFO] Full details:', data);
+    };
+
+    // Register listeners for debug messages
+    const unsubscribeError = onNetworkMessage('DEBUG_ERROR', handleDebugError);
+    const unsubscribeInfo = onNetworkMessage('DEBUG_INFO', handleDebugInfo);
+
+    // Clean up listeners on unmount
+    return () => {
+      if (unsubscribeError) unsubscribeError();
+      if (unsubscribeInfo) unsubscribeInfo();
+    };
+  }, []); // Empty dependency array - register once on mount
 
   /**
    * Centralized function to broadcast answer reveal to player devices

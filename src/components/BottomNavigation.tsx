@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Slider } from "./ui/slider";
 import { Settings, Skull, ArrowLeftRight, Layers, Camera, Pause, RotateCcw, Trash2, EyeOff, Plus, Minus, LayoutGrid, Gamepad2, UserMinus, X, Volume2, Check } from "lucide-react";
 import { useSettings } from "../utils/SettingsContext";
+import { ensureFileUrl } from "../utils/photoUrlConverter";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
 import { onNetworkMessage } from "../network/wsHost";
@@ -478,8 +479,11 @@ export function StatusBar({
   isOnTheSpotTimerRunning = false,
   isQuizPackTimerRunning = false,
 }: ExtendedStatusBarProps) {
-  const { 
-    goWideEnabled: settingsGoWide, 
+  // Ref to store the photo refresh timeout ID for cleanup
+  const photoRefreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const {
+    goWideEnabled: settingsGoWide,
     evilModeEnabled: settingsEvilMode,
     updateGoWideEnabled,
     updateEvilModeEnabled,
@@ -579,24 +583,42 @@ export function StatusBar({
   // Listen for team photo updates and refresh the photos list if popup is open
   useEffect(() => {
     const handleNetworkTeamPhotoUpdated = (data: any) => {
-      console.log('[BottomNavigation] 📸 TEAM_PHOTO_UPDATED received:', data);
-      // Refresh pending photos if Team Photos popup is open
-      if (showTeamPhotosPopup) {
-        console.log('[BottomNavigation] Team Photos popup is open, refreshing pending photos...');
-        // Small delay to ensure backend has processed the update
-        setTimeout(() => {
-          fetchPendingPhotos();
-        }, 500);
-      } else {
-        console.log('[BottomNavigation] Team Photos popup is closed, skipping refresh');
+      try {
+        console.log('[BottomNavigation] 📸 TEAM_PHOTO_UPDATED received:', data);
+        // Refresh pending photos if Team Photos popup is open
+        if (showTeamPhotosPopup) {
+          console.log('[BottomNavigation] Team Photos popup is open, refreshing pending photos...');
+          // Clear any pending timeout to avoid duplicate refreshes
+          if (photoRefreshTimeoutRef.current) {
+            clearTimeout(photoRefreshTimeoutRef.current);
+          }
+          // Small delay to ensure backend has processed the update
+          photoRefreshTimeoutRef.current = setTimeout(() => {
+            try {
+              fetchPendingPhotos();
+            } catch (err) {
+              console.error('[BottomNavigation] Error calling fetchPendingPhotos:', err);
+            }
+          }, 500);
+        } else {
+          console.log('[BottomNavigation] Team Photos popup is closed, skipping refresh');
+        }
+      } catch (err) {
+        console.error('[BottomNavigation] Error handling TEAM_PHOTO_UPDATED:', err);
       }
     };
 
     // Register listener for TEAM_PHOTO_UPDATED messages
     const unsubscribe = onNetworkMessage('TEAM_PHOTO_UPDATED', handleNetworkTeamPhotoUpdated);
 
-    // Clean up listener on unmount
-    return unsubscribe;
+    // Clean up listener and timeout on unmount
+    return () => {
+      unsubscribe();
+      if (photoRefreshTimeoutRef.current) {
+        clearTimeout(photoRefreshTimeoutRef.current);
+        photoRefreshTimeoutRef.current = null;
+      }
+    };
   }, [showTeamPhotosPopup]); // Re-register when popup state changes
 
   return (
@@ -941,9 +963,16 @@ export function StatusBar({
                             {/* Photo Thumbnail */}
                             <div className="w-full aspect-square rounded-lg overflow-hidden border-2 border-border bg-background shadow-md hover:shadow-lg transition-shadow">
                               <img
-                                src={photo.teamPhoto.startsWith('file://') || photo.teamPhoto.startsWith('data:') ? photo.teamPhoto : `file://${photo.teamPhoto}`}
+                                src={ensureFileUrl(photo.teamPhoto)}
                                 alt={photo.teamName}
                                 className="w-full h-full object-cover"
+                                onLoad={() => {
+                                  console.log('[BottomNavigation] ✅ Successfully loaded team photo:', photo.teamPhoto);
+                                }}
+                                onError={(e) => {
+                                  console.error('[BottomNavigation] ❌ Failed to load team photo:', photo.teamPhoto);
+                                  e.currentTarget.parentElement!.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-muted text-muted-foreground">Unable to load image</div>';
+                                }}
                               />
                             </div>
 

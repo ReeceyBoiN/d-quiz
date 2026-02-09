@@ -14,6 +14,7 @@ const FOLDERS_TO_CREATE = [
   'PopQuiz/Resources',
   'PopQuiz/Resources/Phone Slideshow',
   'PopQuiz/Resources/Display Slideshow',
+  'PopQuiz/Resources/Team Pictures',
   'PopQuiz/Resources/Sounds',
   'PopQuiz/Resources/Sounds/Countdown',
   'PopQuiz/Resources/Sounds/Applause',
@@ -43,8 +44,16 @@ function getResourcePaths() {
     root,
     phoneSlideshow: path.join(root, 'Resources', 'Phone Slideshow'),
     displaySlideshow: path.join(root, 'Resources', 'Display Slideshow'),
+    teamPictures: path.join(root, 'Resources', 'Team Pictures'),
     sounds: path.join(root, 'Resources', 'Sounds')
   };
+}
+
+/**
+ * Get the Team Pictures directory path (convenience function)
+ */
+function getTeamPicturesPath() {
+  return path.join(getPopQuizRootPath(), 'Resources', 'Team Pictures');
 }
 
 /**
@@ -217,6 +226,7 @@ export {
   getDocumentsPath,
   getPopQuizRootPath,
   getResourcePaths,
+  getTeamPicturesPath,
   createFolderStructure,
   migrateSoundsIfNeeded
 };

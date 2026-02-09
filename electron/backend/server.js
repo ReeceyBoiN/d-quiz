@@ -2,10 +2,13 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import { WebSocketServer } from 'ws';
+import { app } from 'electron';
 import log from 'electron-log';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs';
+import fsp from 'fs/promises';
 import os from 'os';
+import { getTeamPicturesPath } from './pathInitializer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -66,16 +69,23 @@ async function startBackend({ port = 4310 } = {}) {
   const networkPlayers = new Map();
   const recentAnswers = new Map();
 
-  // Helper function to save team photos to disk
-  function saveTeamPhotoToDisk(base64String, deviceId) {
+  // Helper function to save team photos to disk (async version) using writable path from pathInitializer
+  async function saveTeamPhotoToDisk(base64String, deviceId) {
     console.log('[saveTeamPhotoToDisk] Called with deviceId:', deviceId);
 
     try {
-      // PHASE 4: Add base64 validation
+      // Validate ID
+      if (!deviceId || typeof deviceId !== 'string') {
+        log.error('[saveTeamPhotoToDisk] ❌ Invalid deviceId - not a string or is empty');
+        console.error('[saveTeamPhotoToDisk] ❌ Invalid deviceId - not a string or is empty');
+        return { success: false, error: 'Invalid deviceId - not a string or is empty', code: 'INVALID_DEVICE_ID' };
+      }
+
+      // Validate base64 string
       if (!base64String || typeof base64String !== 'string') {
         log.error('[saveTeamPhotoToDisk] ❌ Invalid base64String - not a string or is empty');
         console.error('[saveTeamPhotoToDisk] ❌ Invalid base64String - not a string or is empty');
-        return null;
+        return { success: false, error: 'Invalid base64String - not a string or is empty', code: 'INVALID_BASE64' };
       }
 
       if (!base64String.includes('data:image')) {
@@ -83,40 +93,46 @@ async function startBackend({ port = 4310 } = {}) {
         console.warn('[saveTeamPhotoToDisk] ⚠️ WARNING: base64 string does not include data: prefix');
       }
 
-      // PHASE 3: Fix path issues - use "resources" instead of "resorces"
-      const photosDir = path.join(__dirname, '../../resources/pics/Team Pics');
-      console.log('[saveTeamPhotoToDisk] Attempting to save to directory:', photosDir);
-      log.info(`[saveTeamPhotoToDisk] Attempting to save to directory: ${photosDir}`);
+      // Parse MIME type to determine file extension
+      const mimeMatch = base64String.match(/data:image\/(\w+)/);
+      const mimeType = mimeMatch ? mimeMatch[1] : 'jpg';
+      const extension = mimeType === 'jpeg' ? 'jpg' : mimeType;
 
-      // Create directory if it doesn't exist
-      if (!fs.existsSync(photosDir)) {
-        console.log('[saveTeamPhotoToDisk] Directory does not exist, creating...');
-        log.info(`[saveTeamPhotoToDisk] Directory does not exist, creating...`);
-        try {
-          fs.mkdirSync(photosDir, { recursive: true });
-          console.log('[saveTeamPhotoToDisk] ✅ Successfully created Team Pics directory');
-          log.info(`[saveTeamPhotoToDisk] ✅ Successfully created Team Pics directory: ${photosDir}`);
-        } catch (mkdirErr) {
-          log.error(`[saveTeamPhotoToDisk] ❌ Failed to create directory:`, mkdirErr.message);
-          console.error('[saveTeamPhotoToDisk] ❌ Failed to create directory:', mkdirErr.message);
-          if (mkdirErr.code === 'EACCES') {
-            log.error('[saveTeamPhotoToDisk] Permission denied - check directory permissions');
-          } else if (mkdirErr.code === 'ENOSPC') {
-            log.error('[saveTeamPhotoToDisk] No space left on device');
-          }
-          throw mkdirErr;
+      // Get the writable path from pathInitializer
+      const photosDir = getTeamPicturesPath();
+      console.log('[saveTeamPhotoToDisk] Using Team Pictures path:', photosDir);
+      log.info(`[saveTeamPhotoToDisk] Using Team Pictures path: ${photosDir}`);
+
+      // Create directory with error handling
+      console.log('[saveTeamPhotoToDisk] Creating directory structure...');
+      log.info(`[saveTeamPhotoToDisk] Creating directory: ${photosDir}`);
+
+      try {
+        await fsp.mkdir(photosDir, { recursive: true });
+        console.log('[saveTeamPhotoToDisk] ✅ Directory ready');
+        log.info(`[saveTeamPhotoToDisk] ✅ Directory created/verified: ${photosDir}`);
+      } catch (mkdirErr) {
+        const detailedErr = `[saveTeamPhotoToDisk] ❌ Failed to create directory "${photosDir}": ${mkdirErr.message} (code: ${mkdirErr.code})`;
+        console.error(detailedErr);
+        log.error(detailedErr);
+
+        if (mkdirErr.code === 'EACCES') {
+          log.error('[saveTeamPhotoToDisk] EACCES: Permission denied - check directory permissions');
+        } else if (mkdirErr.code === 'ENOSPC') {
+          log.error('[saveTeamPhotoToDisk] ENOSPC: No space left on device');
+        } else if (mkdirErr.code === 'ENOTDIR') {
+          log.error('[saveTeamPhotoToDisk] ENOTDIR: A component of the path is not a directory.');
         }
-      } else {
-        console.log('[saveTeamPhotoToDisk] Directory already exists');
+        return { success: false, error: mkdirErr.message, code: mkdirErr.code, path: photosDir };
       }
 
-      // Generate filename with timestamp for uniqueness
+      // Generate filename with timestamp for uniqueness, using correct extension
       const timestamp = Date.now();
-      const fileName = `team_${deviceId}_${timestamp}.jpg`;
+      const fileName = `team_${deviceId}_${timestamp}.${extension}`;
       const filePath = path.join(photosDir, fileName);
       console.log('[saveTeamPhotoToDisk] Generated filename:', fileName);
       console.log('[saveTeamPhotoToDisk] Full file path:', filePath);
-      log.info(`[saveTeamPhotoToDisk] Generated filename: ${fileName}`);
+      log.info(`[saveTeamPhotoToDisk] Generated filename: ${fileName} (MIME type: ${mimeType})`);
       log.info(`[saveTeamPhotoToDisk] Full file path: ${filePath}`);
 
       // Convert base64 to buffer
@@ -132,29 +148,47 @@ async function startBackend({ port = 4310 } = {}) {
       } catch (bufferErr) {
         log.error(`[saveTeamPhotoToDisk] ❌ Failed to convert base64 to buffer:`, bufferErr.message);
         console.error('[saveTeamPhotoToDisk] ❌ Failed to convert base64 to buffer:', bufferErr.message);
-        throw bufferErr;
+        return { success: false, error: 'Invalid base64 encoding: ' + bufferErr.message, code: 'INVALID_BASE64' };
       }
 
-      // Write file to disk with detailed error handling
+      // Write file to disk asynchronously
       try {
-        fs.writeFileSync(filePath, buffer);
+        await fsp.writeFile(filePath, buffer);
         console.log('[saveTeamPhotoToDisk] ✅ File written successfully, size:', buffer.length, 'bytes');
         log.info(`[saveTeamPhotoToDisk] ✅ File written successfully to: ${filePath} (${buffer.length} bytes)`);
-        return filePath;
+
+        // Verify file exists
+        try {
+          const stats = await fsp.stat(filePath);
+          console.log('[saveTeamPhotoToDisk] ✅ File verification passed - size on disk:', stats.size, 'bytes');
+          log.info(`[saveTeamPhotoToDisk] ✅ File verified on disk - size: ${stats.size} bytes`);
+        } catch (statErr) {
+          console.warn('[saveTeamPhotoToDisk] ⚠️  File written but verification failed:', statErr.message);
+          log.warn(`[saveTeamPhotoToDisk] ⚠️  File stat check failed: ${statErr.message}`);
+        }
+
+        // Return file:// URL instead of raw path
+        const fileUrl = pathToFileURL(filePath).href;
+        console.log('[saveTeamPhotoToDisk] ✅ Returning file URL:', fileUrl);
+        console.log('[saveTeamPhotoToDisk] File URL type:', typeof fileUrl);
+        console.log('[saveTeamPhotoToDisk] File URL length:', fileUrl.length);
+        return { success: true, filePath: fileUrl };
       } catch (writeErr) {
-        log.error(`[saveTeamPhotoToDisk] ❌ Failed to write file:`, writeErr.message);
-        console.error('[saveTeamPhotoToDisk] ❌ Failed to write file:', writeErr.message);
-        log.error(`[saveTeamPhotoToDisk] Error code:`, writeErr.code);
-        log.error(`[saveTeamPhotoToDisk] File path that failed:`, filePath);
+        const detailedErr = `[saveTeamPhotoToDisk] ❌ Failed to write file: ${writeErr.message} (code: ${writeErr.code})`;
+        console.error(detailedErr);
+        log.error(detailedErr);
+        log.error(`[saveTeamPhotoToDisk] File path that failed: ${filePath}`);
 
         if (writeErr.code === 'EACCES') {
-          log.error('[saveTeamPhotoToDisk] Permission denied - check write permissions');
+          log.error('[saveTeamPhotoToDisk] EACCES: Permission denied - check write permissions on: ' + photosDir);
         } else if (writeErr.code === 'ENOSPC') {
-          log.error('[saveTeamPhotoToDisk] No space left on device');
+          log.error('[saveTeamPhotoToDisk] ENOSPC: No space left on device');
         } else if (writeErr.code === 'EISDIR') {
-          log.error('[saveTeamPhotoToDisk] Path is a directory, not a file');
+          log.error('[saveTeamPhotoToDisk] EISDIR: Path is a directory, not a file');
+        } else if (writeErr.code === 'ENOTDIR') {
+          log.error('[saveTeamPhotoToDisk] ENOTDIR: A component of the path is not a directory.');
         }
-        throw writeErr;
+        return { success: false, error: writeErr.message, code: writeErr.code, path: filePath };
       }
     } catch (err) {
       log.error(`[saveTeamPhotoToDisk] ❌ Failed to save team photo for device ${deviceId}:`, err.message);
@@ -163,17 +197,18 @@ async function startBackend({ port = 4310 } = {}) {
         log.error(`[saveTeamPhotoToDisk] Error stack:`, err.stack);
         console.error('[saveTeamPhotoToDisk] Error stack:', err.stack);
       }
-      return null;
+      return { success: false, error: err.message, code: err.code || 'UNKNOWN_ERROR' };
     }
   }
 
   // Helper function to cleanup team photos
   function cleanupTeamPhotos() {
     try {
-      const photosDir = path.join(__dirname, '../../resources/pics/Team Pics');
+      const photosDir = getTeamPicturesPath();
+      log.info(`[Photo Cleanup] Cleaning up team photos from: ${photosDir}`);
 
       if (!fs.existsSync(photosDir)) {
-        log.info(`[Photo Cleanup] Team Pics directory does not exist, nothing to cleanup`);
+        log.info(`[Photo Cleanup] Team Pictures directory does not exist, nothing to cleanup`);
         return true;
       }
 
@@ -224,7 +259,7 @@ async function startBackend({ port = 4310 } = {}) {
       log.error(`[WS-${connectionId}] ws.readyState at error: ${ws.readyState}, ws.bufferedAmount: ${ws.bufferedAmount}`);
     });
 
-    ws.on('message', (message) => {
+    ws.on('message', async (message) => {
       try {
         let data;
         try {
@@ -234,6 +269,8 @@ async function startBackend({ port = 4310 } = {}) {
           return;
         }
 
+        // DIAGNOSTIC: Log every message received at backend
+        console.log(`[WebSocket] ✅ Message received from client - Type: ${data.type} | Connection: ${connectionId}`);
         log.info(`[WS-${connectionId}] Received: ${data.type}`, data);
 
         if (data.type === 'PLAYER_JOIN') {
@@ -263,13 +300,14 @@ async function startBackend({ port = 4310 } = {}) {
             if (data.teamPhoto) {
               console.log('[PLAYER_JOIN] Team photo found, calling saveTeamPhotoToDisk for device:', deviceId);
               log.info(`[WS-${connectionId}] 📸 Team photo received for ${data.teamName} (size: ${data.teamPhoto.length} bytes), saving to disk...`);
-              photoPath = saveTeamPhotoToDisk(data.teamPhoto, deviceId);
-              console.log('[PLAYER_JOIN] saveTeamPhotoToDisk returned:', photoPath);
-              log.info(`[WS-${connectionId}] [PLAYER_JOIN] saveTeamPhotoToDisk returned: ${photoPath}`);
-              if (!photoPath) {
-                console.warn('[PLAYER_JOIN] ⚠️  Failed to save team photo');
-                log.warn(`[WS-${connectionId}] ⚠️  Failed to save team photo, will continue without it`);
+              const saveResult = await saveTeamPhotoToDisk(data.teamPhoto, deviceId);
+              console.log('[PLAYER_JOIN] saveTeamPhotoToDisk returned:', saveResult);
+              log.info(`[WS-${connectionId}] [PLAYER_JOIN] saveTeamPhotoToDisk returned:`, saveResult);
+              if (!saveResult.success) {
+                console.warn('[PLAYER_JOIN] ⚠️  Failed to save team photo:', saveResult.error);
+                log.warn(`[WS-${connectionId}] ⚠️  Failed to save team photo - ${saveResult.error} (code: ${saveResult.code})`);
               } else {
+                photoPath = saveResult.filePath;
                 console.log('[PLAYER_JOIN] ✅ Team photo saved successfully to:', photoPath);
                 log.info(`[WS-${connectionId}] ✅ Team photo saved successfully to: ${photoPath}`);
               }
@@ -280,16 +318,23 @@ async function startBackend({ port = 4310 } = {}) {
 
             if (existingPlayer?.approvedAt) {
               // Reconnection - device was previously approved, update with new connection
+              console.log('[PLAYER_JOIN] Reconnection detected for device:', deviceId);
+              console.log('[PLAYER_JOIN] - Old teamPhoto:', existingPlayer.teamPhoto ? (existingPlayer.teamPhoto.substring(0, 50) + '...') : 'null');
+              console.log('[PLAYER_JOIN] - New photoPath from payload:', photoPath ? (photoPath.substring(0, 50) + '...') : 'null');
+
               existingPlayer.teamName = data.teamName;
               existingPlayer.ws = ws;
               existingPlayer.playerId = data.playerId;
               if (photoPath) {
                 existingPlayer.teamPhoto = photoPath;
+                console.log('[PLAYER_JOIN] - Updated teamPhoto to:', photoPath.substring(0, 50) + '...');
+              } else if (data.teamPhoto) {
+                console.log('[PLAYER_JOIN] ⚠️ photoPath is null but data.teamPhoto exists (size:', data.teamPhoto.length, 'bytes)');
               }
-              log.info(`[WS-${connectionId}] 🔄 [Reconnection] Device ${deviceId} rejoining as "${data.teamName}", was approved at ${new Date(existingPlayer.approvedAt).toISOString()}`);
+              log.info(`[WS-${connectionId}] 🔄 [Reconnection] Device ${deviceId} rejoining as "${data.teamName}", was approved at ${new Date(existingPlayer.approvedAt).toISOString()}, teamPhoto: ${existingPlayer.teamPhoto || 'null'}`);
             } else {
               // New join - treat as first time
-              networkPlayers.set(deviceId, {
+              const playerEntry = {
                 ws,
                 playerId,
                 teamName: data.teamName,
@@ -297,8 +342,18 @@ async function startBackend({ port = 4310 } = {}) {
                 approvedAt: null,
                 timestamp: Date.now(),
                 teamPhoto: photoPath
+              };
+              console.log('[PLAYER_JOIN] Creating new player entry:', {
+                deviceId,
+                teamName: data.teamName,
+                teamPhoto: photoPath ? (photoPath.substring(0, 50) + '...') : 'null'
               });
-              log.info(`[WS-${connectionId}] ✨ [New Join] Device ${deviceId} joining for first time`);
+              networkPlayers.set(deviceId, playerEntry);
+              log.info(`[WS-${connectionId}] ✨ [New Join] Device ${deviceId} joining for first time, teamPhoto: ${photoPath || 'null'}`);
+
+              // Verify the entry was stored correctly
+              const storedEntry = networkPlayers.get(deviceId);
+              console.log('[PLAYER_JOIN] Verification - stored entry teamPhoto:', storedEntry?.teamPhoto ? (storedEntry.teamPhoto.substring(0, 50) + '...') : 'null');
             }
             log.info(`[WS-${connectionId}] Stored player connection. Total players: ${networkPlayers.size}`);
 
@@ -404,6 +459,7 @@ async function startBackend({ port = 4310 } = {}) {
           }
         } else if (data.type === 'TEAM_PHOTO_UPDATE') {
           try {
+            console.log('[TEAM_PHOTO_UPDATE] 🔥 HANDLER ENTERED - Processing team photo update');
             console.log('[TEAM_PHOTO_UPDATE] Received message with fields:', Object.keys(data));
             log.info(`[WS-${connectionId}] [TEAM_PHOTO_UPDATE] Received message with fields:`, Object.keys(data).join(', '));
 
@@ -426,24 +482,86 @@ async function startBackend({ port = 4310 } = {}) {
             if (data.photoData) {
               console.log('[TEAM_PHOTO_UPDATE] Team photo found, calling saveTeamPhotoToDisk for device:', updateDeviceId);
               log.info(`[WS-${connectionId}] 📸 Team photo update received for ${data.teamName} (size: ${data.photoData.length} bytes), saving to disk...`);
-              photoPath = saveTeamPhotoToDisk(data.photoData, updateDeviceId);
-              console.log('[TEAM_PHOTO_UPDATE] saveTeamPhotoToDisk returned:', photoPath);
-              log.info(`[WS-${connectionId}] [TEAM_PHOTO_UPDATE] saveTeamPhotoToDisk returned: ${photoPath}`);
-              if (!photoPath) {
-                console.warn('[TEAM_PHOTO_UPDATE] ⚠️  Failed to save team photo');
-                log.warn(`[WS-${connectionId}] ⚠️  Failed to save team photo, update will not be sent`);
+              const saveResult = await saveTeamPhotoToDisk(data.photoData, updateDeviceId);
+              console.log('[TEAM_PHOTO_UPDATE] saveTeamPhotoToDisk returned:', saveResult);
+              log.info(`[WS-${connectionId}] [TEAM_PHOTO_UPDATE] saveTeamPhotoToDisk returned:`, saveResult);
+              if (!saveResult.success) {
+                console.warn('[TEAM_PHOTO_UPDATE] ⚠️  Failed to save team photo:', saveResult.error);
+                log.warn(`[WS-${connectionId}] ⚠️  Failed to save team photo - ${saveResult.error} (code: ${saveResult.code})`);
+
+                // PHASE 1: Broadcast detailed error to ALL connected clients (host and players)
+                const errorMessage = JSON.stringify({
+                  type: 'DEBUG_ERROR',
+                  source: 'TEAM_PHOTO_UPDATE',
+                  error: saveResult.error,
+                  errorCode: saveResult.code,
+                  deviceId: updateDeviceId,
+                  teamName: data.teamName,
+                  timestamp: Date.now()
+                });
+
+                console.log('[TEAM_PHOTO_UPDATE] Broadcasting DEBUG_ERROR with details:', { error: saveResult.error, code: saveResult.code });
+                log.info(`[WS-${connectionId}] Broadcasting DEBUG_ERROR message with details to all connected clients`);
+
+                wss.clients.forEach(client => {
+                  if (client.readyState === 1) {
+                    try {
+                      client.send(errorMessage);
+                      log.debug(`[WS-${connectionId}] Sent DEBUG_ERROR to client`);
+                    } catch (sendErr) {
+                      log.error(`[WS-${connectionId}] ❌ Failed to send DEBUG_ERROR:`, sendErr.message);
+                    }
+                  }
+                });
+
                 return;
               } else {
+                photoPath = saveResult.filePath;
                 console.log('[TEAM_PHOTO_UPDATE] ✅ Team photo saved successfully to:', photoPath);
                 log.info(`[WS-${connectionId}] ✅ Team photo saved successfully to: ${photoPath}`);
+
+                // PHASE 3: Broadcast success confirmation to ALL connected clients
+                const successMessage = JSON.stringify({
+                  type: 'DEBUG_INFO',
+                  source: 'TEAM_PHOTO_UPDATE',
+                  message: 'Photo saved successfully',
+                  filePath: photoPath,
+                  deviceId: updateDeviceId,
+                  teamName: data.teamName,
+                  timestamp: Date.now()
+                });
+
+                console.log('[TEAM_PHOTO_UPDATE] Broadcasting DEBUG_INFO success message to all clients');
+                log.info(`[WS-${connectionId}] Broadcasting DEBUG_INFO success message to all connected clients`);
+
+                wss.clients.forEach(client => {
+                  if (client.readyState === 1) {
+                    try {
+                      client.send(successMessage);
+                      log.debug(`[WS-${connectionId}] Sent DEBUG_INFO to client`);
+                    } catch (sendErr) {
+                      log.error(`[WS-${connectionId}] ❌ Failed to send DEBUG_INFO:`, sendErr.message);
+                    }
+                  }
+                });
               }
             }
 
             // Update networkPlayers with new photo path if player exists
             if (existingPlayer) {
+              console.log('[TEAM_PHOTO_UPDATE] Before update - teamPhoto:', existingPlayer.teamPhoto ? (existingPlayer.teamPhoto.substring(0, 50) + '...') : 'null');
               existingPlayer.teamPhoto = photoPath || existingPlayer.teamPhoto;
+              console.log('[TEAM_PHOTO_UPDATE] After update - teamPhoto:', existingPlayer.teamPhoto ? (existingPlayer.teamPhoto.substring(0, 50) + '...') : 'null');
               console.log('[TEAM_PHOTO_UPDATE] Updated networkPlayers entry for device:', updateDeviceId);
-              log.info(`[WS-${connectionId}] ✅ Updated networkPlayers for ${data.teamName}`);
+              log.info(`[WS-${connectionId}] ✅ Updated networkPlayers for ${data.teamName}, teamPhoto is now: ${existingPlayer.teamPhoto || 'null'}`);
+
+              // Verify the update was applied
+              const verifyPlayer = networkPlayers.get(updateDeviceId);
+              if (verifyPlayer?.teamPhoto) {
+                console.log('[TEAM_PHOTO_UPDATE] ✅ Verification passed - photo is stored in networkPlayers');
+              } else {
+                console.warn('[TEAM_PHOTO_UPDATE] ⚠️  Verification failed - teamPhoto not in networkPlayers!');
+              }
             } else {
               console.warn('[TEAM_PHOTO_UPDATE] ⚠️  Player not found in networkPlayers for device:', updateDeviceId);
               log.warn(`[WS-${connectionId}] ⚠️  Player not found in networkPlayers - may be new or disconnected`);
@@ -723,14 +841,24 @@ async function startBackend({ port = 4310 } = {}) {
         log.info(`[getAllNetworkPlayers] ⚠️ Player ${deviceId} has NO teamPhoto`);
       }
 
-      players.push({
+      const playerObj = {
         deviceId,
         playerId: player.playerId,
         teamName: player.teamName,
         status: player.status,
         timestamp: player.timestamp,
         teamPhoto: player.teamPhoto || null
+      };
+
+      // Log the exact object being returned
+      console.log(`[getAllNetworkPlayers] Built object for return:`, {
+        deviceId: playerObj.deviceId,
+        teamName: playerObj.teamName,
+        hasTeamPhoto: !!playerObj.teamPhoto,
+        teamPhotoValue: playerObj.teamPhoto ? (playerObj.teamPhoto.substring(0, 50) + '...') : 'null'
       });
+
+      players.push(playerObj);
     });
 
     console.log('[getAllNetworkPlayers] Returning', players.length, 'players');

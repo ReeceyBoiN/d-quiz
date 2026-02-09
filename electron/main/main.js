@@ -143,9 +143,18 @@ async function boot() {
 
   router.mount('network/all-players', async () => {
     if (!backend || !backend.getAllNetworkPlayers) {
+      log.warn('[IPC] network/all-players: Backend not initialized');
       return [];
     }
-    return backend.getAllNetworkPlayers();
+    const players = backend.getAllNetworkPlayers();
+    log.info('[IPC] network/all-players returning', players.length, 'players');
+    players.forEach((p, idx) => {
+      log.info(`[IPC] Player ${idx}: ${p.deviceId} - ${p.teamName}, hasTeamPhoto: ${!!p.teamPhoto}`);
+      if (p.teamPhoto) {
+        log.info(`[IPC]   teamPhoto value (first 100 chars): ${p.teamPhoto.substring(0, 100)}`);
+      }
+    });
+    return players;
   });
 
   router.mount('network/pending-answers', async () => {

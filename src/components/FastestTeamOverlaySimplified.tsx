@@ -41,6 +41,13 @@ export function FastestTeamOverlaySimplified({
                 boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5)',
                 objectFit: 'cover'
               }}
+              onLoad={() => {
+                console.log('[FastestTeamOverlaySimplified] ✅ Successfully loaded team photo:', teamPhoto);
+              }}
+              onError={(e) => {
+                console.error('[FastestTeamOverlaySimplified] ❌ Failed to load team photo:', teamPhoto);
+                e.currentTarget.style.display = 'none';
+              }}
             />
           </div>
         ) : (

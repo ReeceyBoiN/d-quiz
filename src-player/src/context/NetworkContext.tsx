@@ -1,5 +1,6 @@
 import { createContext } from 'react';
 import type { PlayerSettings } from '../hooks/usePlayerSettings';
+import type { ClientMessage } from '../types/network';
 
 interface NetworkContextType {
   isConnected: boolean;
@@ -14,7 +15,7 @@ interface NetworkContextType {
   selectedAnswers?: any[];
   showAnswerFeedback?: boolean;
   isAnswerCorrect?: boolean;
-  sendMessage?: (message: any) => void;
+  sendMessage?: (message: ClientMessage) => void;
 }
 
 export const NetworkContext = createContext<NetworkContextType | undefined>(undefined);

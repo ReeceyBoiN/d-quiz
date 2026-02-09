@@ -156,10 +156,17 @@ export function FastestTeamDisplay({
               <div className="w-full aspect-square bg-[#f8f9fa] dark:bg-[#2c3e50] rounded-lg border-2 border-border p-4 flex items-center justify-center relative group">
                 {fastestTeam?.team.photoUrl ? (
                   <>
-                    <img 
-                      src={fastestTeam.team.photoUrl} 
+                    <img
+                      src={fastestTeam.team.photoUrl}
                       alt={`${fastestTeam.team.name} photo`}
                       className="w-full h-full object-cover rounded-lg"
+                      onLoad={() => {
+                        console.log('[FastestTeamDisplay] ✅ Successfully loaded team photo:', fastestTeam.team.photoUrl);
+                      }}
+                      onError={(e) => {
+                        console.error('[FastestTeamDisplay] ❌ Failed to load team photo:', fastestTeam.team.photoUrl);
+                        e.currentTarget.parentElement!.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-muted text-muted-foreground">Unable to load image</div>';
+                      }}
                     />
                     {/* Delete Photo Button - appears on hover */}
                     <Button

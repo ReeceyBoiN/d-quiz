@@ -166,3 +166,23 @@ export interface TeamPhotoMessage {
   photoData: string; // Base64 encoded image
   timestamp: number;
 }
+
+export interface PlayerJoinMessage {
+  type: 'PLAYER_JOIN';
+  playerId: string;
+  deviceId: string;
+  teamName: string;
+  teamPhoto?: string; // Base64 encoded image (optional)
+  timestamp?: number;
+}
+
+export interface PlayerAnswerMessage {
+  type: 'PLAYER_ANSWER';
+  playerId: string;
+  deviceId: string;
+  teamName: string;
+  answer: string | number | any;
+  timestamp?: number;
+}
+
+export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage;

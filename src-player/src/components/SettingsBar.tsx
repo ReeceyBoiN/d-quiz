@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useContext } from 'react';
 import { NetworkContext } from '../context/NetworkContext';
 import { usePlayerSettings, type KeypadColor, type Theme } from '../hooks/usePlayerSettings';
-import type { Button as ButtonElement } from 'react';
 
 const KEYPAD_COLORS: { name: KeypadColor; label: string; bgClass: string }[] = [
   { name: 'cyan', label: 'Cyan', bgClass: 'bg-cyan-500' },
@@ -101,8 +100,14 @@ export function SettingsBar() {
         });
 
         // Send TEAM_PHOTO_UPDATE message to host if connected
+        console.log('[SettingsBar] About to send TEAM_PHOTO_UPDATE - Checking conditions...');
+        console.log('[SettingsBar] - isConnected:', isConnected);
+        console.log('[SettingsBar] - sendMessage function exists:', !!sendMessage);
+        console.log('[SettingsBar] - deviceId:', deviceId);
+        console.log('[SettingsBar] - teamName:', teamName);
+
         if (isConnected && sendMessage && deviceId && teamName) {
-          console.log('[SettingsBar] Sending TEAM_PHOTO_UPDATE message to host');
+          console.log('[SettingsBar] 🚀 All conditions met, constructing TEAM_PHOTO_UPDATE payload...');
           const updatePayload = {
             type: 'TEAM_PHOTO_UPDATE',
             playerId,
@@ -111,11 +116,22 @@ export function SettingsBar() {
             photoData: base64,
             timestamp: Date.now(),
           };
-          console.log('[SettingsBar] TEAM_PHOTO_UPDATE payload prepared, photoData length:', updatePayload.photoData.length, 'bytes');
+          console.log('[SettingsBar] Payload constructed successfully');
+          console.log('[SettingsBar] - type:', updatePayload.type);
+          console.log('[SettingsBar] - playerId:', updatePayload.playerId);
+          console.log('[SettingsBar] - deviceId:', updatePayload.deviceId);
+          console.log('[SettingsBar] - teamName:', updatePayload.teamName);
+          console.log('[SettingsBar] - photoData length:', updatePayload.photoData.length, 'bytes');
+          console.log('[SettingsBar] Calling sendMessage function...');
+          console.log('[SettingsBar] NOTE: WebSocket state and bufferedAmount will be logged in sendMessage');
           sendMessage(updatePayload);
-          console.log('[SettingsBar] ✅ TEAM_PHOTO_UPDATE message sent');
+          console.log('[SettingsBar] ✅ TEAM_PHOTO_UPDATE message sent via sendMessage');
         } else {
-          console.warn('[SettingsBar] ⚠️  Cannot send TEAM_PHOTO_UPDATE - isConnected:', isConnected, 'sendMessage:', !!sendMessage, 'deviceId:', !!deviceId, 'teamName:', !!teamName);
+          console.warn('[SettingsBar] ❌ Cannot send TEAM_PHOTO_UPDATE - Missing conditions:');
+          console.warn('[SettingsBar] - isConnected:', isConnected);
+          console.warn('[SettingsBar] - sendMessage:', !!sendMessage);
+          console.warn('[SettingsBar] - deviceId:', !!deviceId);
+          console.warn('[SettingsBar] - teamName:', !!teamName);
         }
       };
 
