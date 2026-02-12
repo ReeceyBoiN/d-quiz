@@ -55,8 +55,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
   in setting, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
 
   in settings, waiting room should have the ability to display waiting room images
-
-  XXX URGENT - Settings window X doesnt close the settings window
   -
   the close button for the settings menu, i think i found the issue, it does close but the hitbox / interactive part is smaller than the visual box for the closing of the window function, so it needs increasing in size the activation of closing the settings window
 
