@@ -2929,19 +2929,31 @@ export function QuizHost() {
       if (currentQuestion) {
         // Determine correct teams based on the question's correct answer
         const correctAnswer = getAnswerText(currentQuestion);
+        const questionType = currentQuestion.type?.toLowerCase() || '';
+
+        // Helper function to compare answers based on question type
+        const isAnswerCorrect = (teamAns: string, correctAns: string): boolean => {
+          // For numbers type, use numeric comparison (like player-side does)
+          if (questionType === 'numbers') {
+            const submittedNum = parseInt(String(teamAns).trim(), 10);
+            const correctNum = parseInt(String(correctAns).trim(), 10);
+            return !isNaN(submittedNum) && !isNaN(correctNum) && submittedNum === correctNum;
+          }
+
+          // For all other types, use string comparison (case-insensitive)
+          return String(teamAns).trim().toLowerCase() === String(correctAns).toLowerCase().trim();
+        };
+
         const correctTeamIds = quizzes
           .filter(team => {
             const teamAnswer = teamAnswers[team.id];
             if (!teamAnswer || String(teamAnswer).trim() === '') return false;
 
             // For go-wide mode (comma-separated answers), check if ANY answer matches
-            const answers = String(teamAnswer)
-              .split(',')
-              .map(a => a.trim().toLowerCase());
-            const correctAnswerLower = String(correctAnswer).toLowerCase().trim();
+            const answers = String(teamAnswer).split(',').map(a => a.trim());
 
             // Check if any of the team's answers matches the correct answer
-            return answers.some(ans => ans === correctAnswerLower);
+            return answers.some(ans => isAnswerCorrect(ans, correctAnswer));
           })
           .map(team => team.id);
 

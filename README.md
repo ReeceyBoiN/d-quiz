@@ -15,7 +15,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   dax - Livescreen needs to be able to be moved and also closed when the livescreen box / button gets un-ticked in the host app.
 
-  reece - Numbers questions on quiz packs dont always get marked correctly - some questions people answer correctly but it gets marked incorrect
+  ?reece - Numbers questions on quiz packs dont always get marked correctly - some questions people answer correctly but it gets marked incorrect
 
   ?dax - Add the filter for questions so "THE LION KING" answer isnt a "T" as we're ignoring the word "THE" So for questions that may get added in the future, if the answer is "The Cat" then it should be the letter C as the correct answer. - In quiz pack mode, some questions will have the answer pre defined or marked in the question information, so that should also be taken into account, however if it is not already marked, the application should have this understanding built in to fall back on.
 
@@ -57,6 +57,8 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
   in settings, waiting room should have the ability to display waiting room images
 
   XXX URGENT - Settings window X doesnt close the settings window
+  -
+  the close button for the settings menu, i think i found the issue, it does close but the hitbox / interactive part is smaller than the visual box for the closing of the window function, so it needs increasing in size the activation of closing the settings window
 
   x Scaling visually needs adding as its currently too cramped on the screen slightly whole software wide. 
  

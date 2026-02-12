@@ -180,7 +180,8 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   const { version, updateResponseTimesEnabled, updateTeamPhotosAutoApprove, updateGameModePoints, updateGameModeTimer, updateCountdownStyle, updateVoiceCountdown, updateKeypadDesign, updateEvilModeEnabled, updatePunishmentEnabled } = useSettings();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
+
   // Audio management state
   const [countdownAudios, setCountdownAudios] = useState<StoredAudio[]>([]);
   const [selectedCountdownAudio, setSelectedCountdownAudio] = useState<string | null>(null);
@@ -428,13 +429,20 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
 
   const handleClose = () => {
     if (hasUnsavedChanges) {
-      if (confirm("You have unsaved changes. Are you sure you want to close?")) {
-        onClose();
-        setHasUnsavedChanges(false);
-      }
+      setShowConfirmClose(true);
     } else {
       onClose();
     }
+  };
+
+  const handleConfirmClose = () => {
+    setShowConfirmClose(false);
+    onClose();
+    setHasUnsavedChanges(false);
+  };
+
+  const handleCancelClose = () => {
+    setShowConfirmClose(false);
   };
 
   // License key validation function
@@ -1459,8 +1467,8 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-card w-full h-full max-w-6xl max-h-[90vh] rounded-lg border border-border flex overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" style={{ WebkitAppRegion: 'no-drag' }}>
+      <div className="bg-card w-full h-full max-w-6xl max-h-[90vh] rounded-lg border border-border flex overflow-hidden relative">
         {/* Sidebar */}
         <div className="w-64 bg-muted border-r border-border">
           <div className="px-6 py-4 border-b border-border min-h-[65px] flex items-center">
@@ -1489,17 +1497,17 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col">
-          <div className="px-6 py-4 border-b border-border flex items-center justify-between min-h-[64px]">
+          <div className="px-6 py-4 border-b border-border flex items-center justify-between min-h-[64px]" style={{ WebkitAppRegion: 'no-drag' }}>
             <h3 className="text-lg font-medium text-foreground capitalize">
               {activeTab.replace("-", " ")}
             </h3>
             <Button
               variant="ghost"
-              size="sm"
+              size="lg"
               onClick={handleClose}
-              className="text-muted-foreground hover:text-foreground"
+              className="close-btn-expanded text-muted-foreground hover:text-foreground pointer-events-auto relative z-10 !p-3"
             >
-              <X className="w-4 h-4" />
+              <X className="w-6 h-6 pointer-events-none" />
             </Button>
           </div>
 
@@ -1751,6 +1759,33 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
             </div>
           </div>
         </div>
+
+        {/* Confirmation Modal for Unsaved Changes */}
+        {showConfirmClose && (
+          <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-[60] rounded-lg">
+            <div className="bg-card border border-border rounded-lg shadow-lg p-6 max-w-sm mx-4">
+              <h3 className="text-lg font-semibold text-foreground mb-2">Unsaved Changes</h3>
+              <p className="text-sm text-muted-foreground mb-6">
+                You have unsaved changes. Do you want to discard them?
+              </p>
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={handleCancelClose}
+                  className="text-foreground"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleConfirmClose}
+                >
+                  Discard Changes
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

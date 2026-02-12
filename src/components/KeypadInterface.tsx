@@ -353,6 +353,19 @@ export function KeypadInterface({
   const prevIsQuizPackModeRef = useRef(isQuizPackMode);
 
   // Calculate actual results based on team answers and correct answer
+  // Helper function to check if an answer is correct based on question type
+  const isAnswerCorrect = useCallback((teamAns: string, correctAns: string): boolean => {
+    // For numbers type, use numeric comparison (like player-side does)
+    if (questionType === 'numbers') {
+      const submittedNum = parseInt(String(teamAns).trim(), 10);
+      const correctNum = parseInt(String(correctAns).trim(), 10);
+      return !isNaN(submittedNum) && !isNaN(correctNum) && submittedNum === correctNum;
+    }
+
+    // For all other types, use string comparison (exact match, case-sensitive as per current behavior)
+    return teamAns === correctAns;
+  }, [questionType]);
+
   // Use parent's teamAnswers (includes network player answers) instead of local state
   const calculateAnswerStats = useCallback(() => {
     const answersToUse = parentTeamAnswers && Object.keys(parentTeamAnswers).length > 0 ? parentTeamAnswers : teamAnswers;
@@ -376,11 +389,7 @@ export function KeypadInterface({
 
       if (!teamAnswer || teamAnswer.trim() === '') {
         noAnswer++;
-      } else if (questionType === 'letters' && teamAnswer === correctAnswer) {
-        correct++;
-      } else if (questionType === 'multiple-choice' && teamAnswer === correctAnswer) {
-        correct++;
-      } else if (questionType === 'numbers' && teamAnswer === correctAnswer) {
+      } else if (isAnswerCorrect(teamAnswer, correctAnswer)) {
         correct++;
       } else {
         wrong++;
@@ -388,7 +397,7 @@ export function KeypadInterface({
     });
 
     return { correct, wrong, noAnswer };
-  }, [parentTeamAnswers, teamAnswers, teams, questionType, getCorrectAnswer]);
+  }, [parentTeamAnswers, teamAnswers, teams, getCorrectAnswer, isAnswerCorrect]);
 
   // Find the fastest team that answered correctly
   const getFastestCorrectTeam = useCallback(() => {
@@ -406,11 +415,7 @@ export function KeypadInterface({
 
     const correctTeams = teams.filter(team => {
       const teamAnswer = answersToUse[team.id];
-      return teamAnswer && (
-        (questionType === 'letters' && teamAnswer === correctAnswer) ||
-        (questionType === 'multiple-choice' && teamAnswer === correctAnswer) ||
-        (questionType === 'numbers' && teamAnswer === correctAnswer)
-      );
+      return teamAnswer && isAnswerCorrect(teamAnswer, correctAnswer);
     });
 
     if (correctTeams.length === 0) {
@@ -433,7 +438,7 @@ export function KeypadInterface({
       team: fastestTeam,
       responseTime: fastestTime
     };
-  }, [teamAnswers, teamAnswerTimes, teams, questionType, getCorrectAnswer, parentTeamAnswers]);
+  }, [teamAnswers, teamAnswerTimes, teams, questionType, getCorrectAnswer, parentTeamAnswers, isAnswerCorrect]);
 
   // Helper function to get the question type label
   const getQuestionTypeLabel = (type: string | null): string => {
