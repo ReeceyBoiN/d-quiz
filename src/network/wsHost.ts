@@ -25,6 +25,8 @@ export type NetworkMessageType =
   | 'ANSWER'  // incoming from players
   | 'PLAYER_JOIN'
   | 'PLAYER_DISCONNECT'
+  | 'PLAYER_AWAY'  // incoming from players when they switch tabs/windows
+  | 'PLAYER_ACTIVE'  // incoming from players when they return to active state
   | 'TEAM_PHOTO_UPDATED';  // incoming from backend when player updates photo
 
 export interface NetworkPayload {
@@ -41,7 +43,7 @@ class HostNetwork {
   private enabled = false;
   private port = 8787;
   private listeners: Map<NetworkMessageType, Array<(data: any) => void>> = new Map();
-  private networkPlayers: Map<string, { teamName: string; timestamp: number }> = new Map();
+  private networkPlayers: Map<string, { teamName: string; timestamp: number; deviceId?: string }> = new Map();
 
   /**
    * Initialize host network (called once on app start).
@@ -50,7 +52,7 @@ class HostNetwork {
   public init(options?: { enabled?: boolean; port?: number }) {
     if (options?.enabled !== undefined) this.enabled = options.enabled;
     if (options?.port) this.port = options.port;
-    
+
     console.log(
       `[HostNetwork] Initialized (port: ${this.port}, enabled: ${this.enabled})`
     );
@@ -211,11 +213,11 @@ class HostNetwork {
   /**
    * Register a player from the network.
    */
-  public registerNetworkPlayer(playerId: string, teamName: string) {
-    this.networkPlayers.set(playerId, { teamName, timestamp: Date.now() });
+  public registerNetworkPlayer(playerId: string, teamName: string, deviceId?: string) {
+    this.networkPlayers.set(playerId, { teamName, timestamp: Date.now(), deviceId });
     this.broadcast({
       type: 'PLAYER_JOIN',
-      data: { playerId, teamName },
+      data: { playerId, teamName, deviceId },
     });
   }
 
@@ -223,10 +225,12 @@ class HostNetwork {
    * Unregister a network player.
    */
   public unregisterNetworkPlayer(playerId: string) {
+    const player = this.networkPlayers.get(playerId);
+    const deviceId = player?.deviceId;
     this.networkPlayers.delete(playerId);
     this.broadcast({
       type: 'PLAYER_DISCONNECT',
-      data: { playerId },
+      data: { playerId, deviceId },
     });
   }
 
@@ -303,8 +307,8 @@ export function sendScoresToDisplay(scores: { teamId: string; teamName: string; 
   hostNetwork.sendScores(scores);
 }
 
-export function registerNetworkPlayer(playerId: string, teamName: string) {
-  hostNetwork.registerNetworkPlayer(playerId, teamName);
+export function registerNetworkPlayer(playerId: string, teamName: string, deviceId?: string) {
+  hostNetwork.registerNetworkPlayer(playerId, teamName, deviceId);
 }
 
 export function unregisterNetworkPlayer(playerId: string) {

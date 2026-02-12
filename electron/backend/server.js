@@ -52,6 +52,32 @@ async function startBackend({ port = 4310 } = {}) {
 
   await loadEndpoints(app);
 
+  // Helper function to get local IP (will be used by /api/host-info endpoint)
+  function getLocalIPAddress() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name] || []) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          return iface.address;
+        }
+      }
+    }
+    return 'localhost';
+  }
+
+  const localIP = getLocalIPAddress();
+
+  // Endpoint to provide host info to player devices
+  app.get('/api/host-info', (req, res) => {
+    const protocol = req.protocol === 'https' ? 'wss' : 'ws';
+    res.json({
+      localIP: localIP,
+      port: port,
+      wsUrl: `${protocol}://${localIP}:${port}/events`,
+      httpUrl: `${req.protocol}://${localIP}:${port}`
+    });
+  });
+
   app.use((req, res) => {
     const indexPath = path.join(playerAppPath, 'index.html');
     if (!fs.existsSync(indexPath)) {
@@ -68,6 +94,13 @@ async function startBackend({ port = 4310 } = {}) {
 
   const networkPlayers = new Map();
   const recentAnswers = new Map();
+
+  // Phase 2: Heartbeat configuration
+  const HEARTBEAT_INTERVAL = 5000; // Send ping every 5 seconds
+  const HEARTBEAT_TIMEOUT = 8000; // Mark as disconnected if no pong for 8 seconds (must be > INTERVAL)
+  const STALE_CHECK_INTERVAL = 2000; // Check for stale connections every 2 seconds
+  let heartbeatIntervalId = null;
+  let staleCheckIntervalId = null;
 
   // Helper function to save team photos to disk (async version) using writable path from pathInitializer
   async function saveTeamPhotoToDisk(base64String, deviceId) {
@@ -259,6 +292,22 @@ async function startBackend({ port = 4310 } = {}) {
       log.error(`[WS-${connectionId}] ws.readyState at error: ${ws.readyState}, ws.bufferedAmount: ${ws.bufferedAmount}`);
     });
 
+    // Phase 2: Handle pong responses for heartbeat tracking
+    ws.on('pong', () => {
+      const now = Date.now();
+      if (deviceId && networkPlayers.has(deviceId)) {
+        const player = networkPlayers.get(deviceId);
+        const previousPongTime = player.lastPongAt;
+        player.lastPongAt = now;
+        const timeSincePreviousPong = previousPongTime ? (now - previousPongTime) : 'first pong';
+        log.info(`[WS-${connectionId}] ❤️ Received pong from ${player.teamName} (device: ${deviceId}) - time since last pong: ${timeSincePreviousPong}ms`);
+      } else if (deviceId) {
+        log.warn(`[WS-${connectionId}] ⚠️ Received pong from device not in networkPlayers: ${deviceId}`);
+      } else {
+        log.debug(`[WS-${connectionId}] Received pong from connection with no deviceId set yet`);
+      }
+    });
+
     ws.on('message', async (message) => {
       try {
         let data;
@@ -295,26 +344,11 @@ async function startBackend({ port = 4310 } = {}) {
 
             const existingPlayer = networkPlayers.get(deviceId);
 
-            // Handle team photo - save to disk if present
+            // Initialize photoPath as null - will be set after async save completes
             let photoPath = null;
-            if (data.teamPhoto) {
-              console.log('[PLAYER_JOIN] Team photo found, calling saveTeamPhotoToDisk for device:', deviceId);
-              log.info(`[WS-${connectionId}] 📸 Team photo received for ${data.teamName} (size: ${data.teamPhoto.length} bytes), saving to disk...`);
-              const saveResult = await saveTeamPhotoToDisk(data.teamPhoto, deviceId);
-              console.log('[PLAYER_JOIN] saveTeamPhotoToDisk returned:', saveResult);
-              log.info(`[WS-${connectionId}] [PLAYER_JOIN] saveTeamPhotoToDisk returned:`, saveResult);
-              if (!saveResult.success) {
-                console.warn('[PLAYER_JOIN] ⚠️  Failed to save team photo:', saveResult.error);
-                log.warn(`[WS-${connectionId}] ⚠️  Failed to save team photo - ${saveResult.error} (code: ${saveResult.code})`);
-              } else {
-                photoPath = saveResult.filePath;
-                console.log('[PLAYER_JOIN] ✅ Team photo saved successfully to:', photoPath);
-                log.info(`[WS-${connectionId}] ✅ Team photo saved successfully to: ${photoPath}`);
-              }
-            } else {
-              console.log('[PLAYER_JOIN] No team photo in payload for device:', deviceId);
-              log.info(`[WS-${connectionId}] [PLAYER_JOIN] No team photo in payload`);
-            }
+
+            // PHASE 1: Enhanced PLAYER_JOIN storage diagnostics
+            const storageStartTime = Date.now();
 
             if (existingPlayer?.approvedAt) {
               // Reconnection - device was previously approved, update with new connection
@@ -325,6 +359,9 @@ async function startBackend({ port = 4310 } = {}) {
               existingPlayer.teamName = data.teamName;
               existingPlayer.ws = ws;
               existingPlayer.playerId = data.playerId;
+              const oldLastPongAt = existingPlayer.lastPongAt;
+              existingPlayer.lastPongAt = Date.now(); // Phase 2: Update heartbeat on reconnection
+              log.info(`[WS-${connectionId}] [RECONNECT] Updated lastPongAt from ${oldLastPongAt} to ${existingPlayer.lastPongAt} for device ${deviceId}`);
               if (photoPath) {
                 existingPlayer.teamPhoto = photoPath;
                 console.log('[PLAYER_JOIN] - Updated teamPhoto to:', photoPath.substring(0, 50) + '...');
@@ -334,26 +371,111 @@ async function startBackend({ port = 4310 } = {}) {
               log.info(`[WS-${connectionId}] 🔄 [Reconnection] Device ${deviceId} rejoining as "${data.teamName}", was approved at ${new Date(existingPlayer.approvedAt).toISOString()}, teamPhoto: ${existingPlayer.teamPhoto || 'null'}`);
             } else {
               // New join - treat as first time
+              // FIX: Create playerEntry with null teamPhoto, store IMMEDIATELY, THEN do async photo save
+              const createdAt = Date.now();
               const playerEntry = {
                 ws,
                 playerId,
                 teamName: data.teamName,
                 status: 'pending',
                 approvedAt: null,
-                timestamp: Date.now(),
-                teamPhoto: photoPath
+                timestamp: createdAt,
+                teamPhoto: null, // Will be set when photo save completes
+                lastPongAt: createdAt // Phase 2: Track heartbeat timestamp on join
               };
+              log.info(`[WS-${connectionId}] [NEW_JOIN] Created player entry with lastPongAt=${createdAt} for device ${deviceId}`);
+
+              // PHASE 1: Detailed entry creation logging
               console.log('[PLAYER_JOIN] Creating new player entry:', {
                 deviceId,
                 teamName: data.teamName,
-                teamPhoto: photoPath ? (photoPath.substring(0, 50) + '...') : 'null'
+                teamPhoto: 'null (will be set after async save)'
               });
-              networkPlayers.set(deviceId, playerEntry);
-              log.info(`[WS-${connectionId}] ✨ [New Join] Device ${deviceId} joining for first time, teamPhoto: ${photoPath || 'null'}`);
+              console.log('[PLAYER_JOIN] Entry object details:');
+              console.log('  - ws.readyState:', ws.readyState);
+              console.log('  - ws._socket exists:', !!ws._socket);
+              console.log('  - playerId:', playerId);
+              console.log('  - status: pending');
 
-              // Verify the entry was stored correctly
+              // FIX: Store in map IMMEDIATELY - this is the critical fix
+              console.log('[PLAYER_JOIN] 🔑 About to store in networkPlayers at deviceId:', `"${deviceId}"`);
+              const beforeStoreSize = networkPlayers.size;
+              networkPlayers.set(deviceId, playerEntry);
+              const afterStoreSize = networkPlayers.size;
+
+              console.log('[PLAYER_JOIN] 🔑 networkPlayers.set() completed');
+              console.log('  - Size before:', beforeStoreSize);
+              console.log('  - Size after:', afterStoreSize);
+              console.log('  - Storage took:', Date.now() - storageStartTime, 'ms');
+
+              log.info(`[WS-${connectionId}] ✨ [New Join] Device ${deviceId} joining for first time, player NOW AVAILABLE for approval`);
+
+              // PHASE 1: Immediate verification that entry was stored correctly
               const storedEntry = networkPlayers.get(deviceId);
-              console.log('[PLAYER_JOIN] Verification - stored entry teamPhoto:', storedEntry?.teamPhoto ? (storedEntry.teamPhoto.substring(0, 50) + '...') : 'null');
+              console.log('[PLAYER_JOIN] 📋 VERIFICATION - Immediate lookup after set():');
+              console.log('  - Entry found:', !!storedEntry);
+              if (storedEntry) {
+                console.log('  - teamName matches:', storedEntry.teamName === data.teamName);
+                console.log('  - ws matches:', storedEntry.ws === ws);
+                console.log('  - ws.readyState:', storedEntry.ws?.readyState);
+                console.log('  - status:', storedEntry.status);
+                console.log('  - teamPhoto:', storedEntry.teamPhoto ? (storedEntry.teamPhoto.substring(0, 50) + '...') : 'null (will update after photo save)');
+              } else {
+                console.error('[PLAYER_JOIN] ❌ CRITICAL: Entry was NOT found immediately after set()!');
+                log.error(`[WS-${connectionId}] ❌ CRITICAL: Entry stored but not found in verification - deviceId: "${deviceId}"`);
+              }
+
+              // PHASE 1: Verify all entries in the map
+              console.log('[PLAYER_JOIN] 📊 All entries in networkPlayers after storage:');
+              const allEntries = [];
+              networkPlayers.forEach((player, key) => {
+                allEntries.push({
+                  key: `"${key}"`,
+                  teamName: player.teamName,
+                  wsReadyState: player.ws?.readyState,
+                  hasWs: !!player.ws
+                });
+              });
+              console.log('  - Total entries:', allEntries.length);
+              allEntries.forEach((entry, idx) => {
+                console.log(`  [${idx}] deviceId: ${entry.key}, teamName: ${entry.teamName}, ws.readyState: ${entry.wsReadyState}`);
+              });
+
+              // FIX: Now do async photo save in background WITHOUT blocking
+              // The player is already in networkPlayers and can be approved while photo is saving
+              if (data.teamPhoto) {
+                console.log('[PLAYER_JOIN] 📸 Starting async photo save for device:', deviceId);
+                log.info(`[WS-${connectionId}] 📸 Team photo received for ${data.teamName} (size: ${data.teamPhoto.length} bytes), saving to disk in background...`);
+
+                // Non-blocking: don't await this, let it run in the background
+                saveTeamPhotoToDisk(data.teamPhoto, deviceId)
+                  .then((saveResult) => {
+                    console.log('[PLAYER_JOIN] Photo save completed for device:', deviceId);
+                    log.info(`[WS-${connectionId}] [PLAYER_JOIN] Photo save completed:`, saveResult);
+                    if (!saveResult.success) {
+                      console.warn('[PLAYER_JOIN] ⚠️  Failed to save team photo:', saveResult.error);
+                      log.warn(`[WS-${connectionId}] ⚠️  Failed to save team photo - ${saveResult.error} (code: ${saveResult.code})`);
+                    } else {
+                      // Update the stored entry with the photo path
+                      const storedPlayer = networkPlayers.get(deviceId);
+                      if (storedPlayer) {
+                        storedPlayer.teamPhoto = saveResult.filePath;
+                        console.log('[PLAYER_JOIN] ✅ Updated stored entry with photo path:', saveResult.filePath);
+                        log.info(`[WS-${connectionId}] ✅ Team photo saved and stored: ${saveResult.filePath}`);
+                      } else {
+                        console.warn('[PLAYER_JOIN] ⚠️ Player entry not found when trying to update photo path');
+                        log.warn(`[WS-${connectionId}] ⚠️ Player entry not found when trying to update photo path for device: ${deviceId}`);
+                      }
+                    }
+                  })
+                  .catch((err) => {
+                    console.error('[PLAYER_JOIN] ❌ Photo save error:', err.message);
+                    log.error(`[WS-${connectionId}] ❌ Photo save error:`, err.message);
+                  });
+              } else {
+                console.log('[PLAYER_JOIN] No team photo in payload for device:', deviceId);
+                log.info(`[WS-${connectionId}] [PLAYER_JOIN] No team photo in payload`);
+              }
             }
             log.info(`[WS-${connectionId}] Stored player connection. Total players: ${networkPlayers.size}`);
 
@@ -455,6 +577,80 @@ async function startBackend({ port = 4310 } = {}) {
             log.error(`[WS-${connectionId}] ❌ Error processing PLAYER_ANSWER:`, playerAnswerErr.message);
             if (playerAnswerErr.stack) {
               log.error(`[WS-${connectionId}] PLAYER_ANSWER error stack:`, playerAnswerErr.stack);
+            }
+          }
+        } else if (data.type === 'PLAYER_AWAY') {
+          // Handle player away state (tab switch, window blur, etc)
+          try {
+            log.info(`[WS-${connectionId}] 🚶 Player away: ${data.teamName} (device: ${data.deviceId}, reason: ${data.reason})`);
+
+            try {
+              const awayClients = Array.from(wss.clients).filter(c => c.readyState === 1 && c !== ws);
+              log.info(`[WS-${connectionId}] Broadcasting PLAYER_AWAY to ${awayClients.length} clients`);
+
+              const awayMessage = JSON.stringify({
+                type: 'PLAYER_AWAY',
+                playerId: data.playerId,
+                deviceId: data.deviceId,
+                teamName: data.teamName,
+                reason: data.reason,
+                timestamp: data.timestamp
+              });
+
+              awayClients.forEach((client, idx) => {
+                try {
+                  client.send(awayMessage);
+                } catch (sendErr) {
+                  log.error(`[WS-${connectionId}] ❌ Failed to broadcast PLAYER_AWAY to client ${idx}:`, sendErr.message);
+                }
+              });
+            } catch (broadcastErr) {
+              log.error(`[WS-${connectionId}] ❌ Error broadcasting PLAYER_AWAY:`, broadcastErr.message);
+              if (broadcastErr.stack) {
+                log.error(`[WS-${connectionId}] Broadcast error stack:`, broadcastErr.stack);
+              }
+            }
+          } catch (playerAwayErr) {
+            log.error(`[WS-${connectionId}] ❌ Error processing PLAYER_AWAY:`, playerAwayErr.message);
+            if (playerAwayErr.stack) {
+              log.error(`[WS-${connectionId}] PLAYER_AWAY error stack:`, playerAwayErr.stack);
+            }
+          }
+        } else if (data.type === 'PLAYER_ACTIVE') {
+          // Handle player active state (returned from tab/window away)
+          try {
+            log.info(`[WS-${connectionId}] ✅ Player active: ${data.teamName} (device: ${data.deviceId}, reason: ${data.reason})`);
+
+            try {
+              const activeClients = Array.from(wss.clients).filter(c => c.readyState === 1 && c !== ws);
+              log.info(`[WS-${connectionId}] Broadcasting PLAYER_ACTIVE to ${activeClients.length} clients`);
+
+              const activeMessage = JSON.stringify({
+                type: 'PLAYER_ACTIVE',
+                playerId: data.playerId,
+                deviceId: data.deviceId,
+                teamName: data.teamName,
+                reason: data.reason,
+                timestamp: data.timestamp
+              });
+
+              activeClients.forEach((client, idx) => {
+                try {
+                  client.send(activeMessage);
+                } catch (sendErr) {
+                  log.error(`[WS-${connectionId}] ❌ Failed to broadcast PLAYER_ACTIVE to client ${idx}:`, sendErr.message);
+                }
+              });
+            } catch (broadcastErr) {
+              log.error(`[WS-${connectionId}] ❌ Error broadcasting PLAYER_ACTIVE:`, broadcastErr.message);
+              if (broadcastErr.stack) {
+                log.error(`[WS-${connectionId}] Broadcast error stack:`, broadcastErr.stack);
+              }
+            }
+          } catch (playerActiveErr) {
+            log.error(`[WS-${connectionId}] ❌ Error processing PLAYER_ACTIVE:`, playerActiveErr.message);
+            if (playerActiveErr.stack) {
+              log.error(`[WS-${connectionId}] PLAYER_ACTIVE error stack:`, playerActiveErr.stack);
             }
           }
         } else if (data.type === 'TEAM_PHOTO_UPDATE') {
@@ -631,6 +827,64 @@ async function startBackend({ port = 4310 } = {}) {
         if (playerId) {
           log.info(`[WS-${connectionId}] Close event for playerId: ${playerId}`);
         }
+
+        // Phase 1: Broadcast PLAYER_DISCONNECT when player disconnects
+        // Try to find player by deviceId, or fallback to playerId lookup
+        let player = null;
+        let foundDeviceId = deviceId;
+
+        if (deviceId && networkPlayers.has(deviceId)) {
+          player = networkPlayers.get(deviceId);
+        } else if (deviceId) {
+          // deviceId exists but player not found - log for debugging
+          log.warn(`[WS-${connectionId}] ⚠️ Close handler: deviceId "${deviceId}" not found in networkPlayers`);
+        }
+
+        // If player found, broadcast disconnect and clean up
+        if (player) {
+          log.info(`[WS-${connectionId}] 🔌 Player disconnected: ${player.teamName} (device: ${foundDeviceId})`);
+
+          try {
+            // Broadcast PLAYER_DISCONNECT to all other connected clients (host app)
+            const disconnectMessage = JSON.stringify({
+              type: 'PLAYER_DISCONNECT',
+              data: {
+                deviceId: foundDeviceId,
+                playerId: playerId || player.playerId,
+                teamName: player.teamName
+              },
+              timestamp: Date.now()
+            });
+
+            const otherClients = Array.from(wss.clients).filter(client => client.readyState === 1 && client !== ws);
+            log.info(`[WS-${connectionId}] Broadcasting PLAYER_DISCONNECT to ${otherClients.length} clients`);
+
+            otherClients.forEach((client, idx) => {
+              try {
+                client.send(disconnectMessage);
+                log.info(`[WS-${connectionId}] Successfully sent PLAYER_DISCONNECT to client ${idx + 1}/${otherClients.length}`);
+              } catch (sendErr) {
+                log.error(`[WS-${connectionId}] ❌ Failed to broadcast PLAYER_DISCONNECT to client ${idx}:`, sendErr.message);
+              }
+            });
+
+            if (otherClients.length === 0) {
+              log.warn(`[WS-${connectionId}] ⚠️ No other clients connected to receive PLAYER_DISCONNECT message`);
+            }
+
+            // Keep player data in networkPlayers for reconnection, but update the ws reference to null
+            player.ws = null;
+            log.info(`[WS-${connectionId}] ✅ Kept player data in networkPlayers for potential reconnection. Player status: ${player.status}`);
+          } catch (broadcastErr) {
+            log.error(`[WS-${connectionId}] ❌ Error broadcasting PLAYER_DISCONNECT:`, broadcastErr.message);
+            if (broadcastErr.stack) {
+              log.error(`[WS-${connectionId}] Broadcast error stack:`, broadcastErr.stack);
+            }
+          }
+        } else if (!deviceId) {
+          // No deviceId and no player found - likely early disconnect before PLAYER_JOIN
+          log.debug(`[WS-${connectionId}] Close without PLAYER_JOIN - no player data to broadcast`);
+        }
       } catch (closeErr) {
         log.error(`[WS-${connectionId}] Error in close handler:`, closeErr.message);
       }
@@ -647,6 +901,90 @@ async function startBackend({ port = 4310 } = {}) {
       const address = server.address();
       log.info(`Server address info:`, address);
       log.info(`Process ID: ${process.pid}`);
+
+      // Phase 2: Start heartbeat mechanism
+      log.info(`[Heartbeat] Starting heartbeat mechanism - sending ping every ${HEARTBEAT_INTERVAL}ms, timeout after ${HEARTBEAT_TIMEOUT}ms`);
+
+      // Heartbeat sender - send ping to all connected players
+      heartbeatIntervalId = setInterval(() => {
+        let sentCount = 0;
+        let failCount = 0;
+
+        networkPlayers.forEach((player, deviceId) => {
+          if (player.ws && player.ws.readyState === 1) {
+            try {
+              player.ws.ping();
+              sentCount++;
+              log.debug(`[Heartbeat] Sent ping to ${player.teamName} (device: ${deviceId})`);
+            } catch (err) {
+              log.warn(`[Heartbeat] Failed to send ping to ${deviceId}:`, err.message);
+              failCount++;
+            }
+          }
+        });
+
+        if (sentCount > 0 || failCount > 0) {
+          log.debug(`[Heartbeat] Sent ${sentCount} pings` + (failCount > 0 ? `, ${failCount} failed` : ''));
+        }
+      }, HEARTBEAT_INTERVAL);
+
+      // Stale connection checker - detect players who haven't ponged recently
+      staleCheckIntervalId = setInterval(() => {
+        const now = Date.now();
+        const staleDevices = [];
+        let checkedCount = 0;
+
+        networkPlayers.forEach((player, deviceId) => {
+          if (player.ws && player.ws.readyState === 1) {
+            checkedCount++;
+            const lastPongTime = player.lastPongAt || now;
+            const timeSinceLastPong = now - lastPongTime;
+            const timeSinceApproval = player.approvedAt ? (now - player.approvedAt) : -1;
+
+            // Log all active connections for diagnosis
+            log.debug(
+              `[Heartbeat] Player status: ${player.teamName} (device: ${deviceId}) - ` +
+              `lastPong: ${timeSinceLastPong}ms ago, ` +
+              `approved: ${timeSinceApproval >= 0 ? timeSinceApproval + 'ms ago' : 'not approved'}, ` +
+              `ws.readyState: ${player.ws.readyState} (1=open)`
+            );
+
+            if (timeSinceLastPong > HEARTBEAT_TIMEOUT) {
+              log.warn(
+                `[Heartbeat] ⚠️ STALE CONNECTION DETECTED: ${player.teamName} (device: ${deviceId}) - ` +
+                `no pong for ${timeSinceLastPong}ms (timeout: ${HEARTBEAT_TIMEOUT}ms), ` +
+                `approved: ${player.approvedAt ? 'yes' : 'no'}`
+              );
+              staleDevices.push({ deviceId, player });
+            }
+          }
+        });
+
+        if (checkedCount > 0) {
+          log.debug(`[Heartbeat] Stale-check cycle: checked ${checkedCount} players, found ${staleDevices.length} stale`);
+        }
+
+        // Close stale connections - the close handler will broadcast PLAYER_DISCONNECT
+        staleDevices.forEach(({ deviceId, player }) => {
+          try {
+            log.info(`[Heartbeat] 🔌 Disconnecting stale player: ${player.teamName} (device: ${deviceId}) - no pong for ${Date.now() - (player.lastPongAt || Date.now())}ms`);
+
+            // Close the WebSocket connection to trigger the close handler
+            // The close handler will broadcast PLAYER_DISCONNECT and clean up the player reference
+            if (player.ws && player.ws.readyState === 1) {
+              player.ws.close(1000, 'Heartbeat timeout');
+              log.info(`[Heartbeat] ✅ Close triggered for stale player: ${player.teamName} (device: ${deviceId})`);
+            } else {
+              log.warn(`[Heartbeat] ⚠️ Stale player WebSocket not available or already closed: ${player.teamName} (device: ${deviceId})`);
+            }
+          } catch (err) {
+            log.error(`[Heartbeat] Error handling stale connection for ${deviceId}:`, err.message);
+          }
+        });
+      }, STALE_CHECK_INTERVAL);
+
+      log.info(`[Heartbeat] ✅ Heartbeat mechanism started successfully`);
+
       res();
     });
     server.listen(port, '0.0.0.0', (err) => {
@@ -657,106 +995,282 @@ async function startBackend({ port = 4310 } = {}) {
     });
   });
 
-  function getLocalIPAddress() {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-      for (const iface of interfaces[name] || []) {
-        if (iface.family === 'IPv4' && !iface.internal) {
-          return iface.address;
-        }
-      }
-    }
-    return 'localhost';
-  }
-
-  const localIP = getLocalIPAddress();
   log.info(`Host can access player app at: http://${localIP}:${port}`);
 
   // ...existing helper functions (approveTeam, declineTeam, etc.)...
-  function approveTeam(deviceId, teamName, displayData = {}) {
-    try {
-      console.log('[approveTeam] ✅ Called:', { deviceId, teamName });
-      log.info(`✅ approveTeam called: ${teamName} (${deviceId})`);
+  // PHASE 4: Retry configuration for approval with exponential backoff
+  const APPROVAL_RETRY_CONFIG = {
+    maxRetries: 5,
+    initialDelayMs: 100,
+    maxDelayMs: 1600,
+    backoffMultiplier: 2
+  };
 
+  // PHASE 5: Convert approveTeam to Promise-based to properly handle retries
+  // This fixes the race condition where retries were scheduled but their results were never reported
+  async function approveTeam(deviceId, teamName, displayData = {}, retryCount = 0) {
+    try {
+      // PHASE 1: ENHANCED DIAGNOSTICS - Log exact function entry
+      const callTimestamp = Date.now();
+      console.log('[approveTeam] ✅ Called:', { deviceId, teamName, timestamp: new Date(callTimestamp).toISOString() });
+      log.info(`✅ approveTeam called: ${teamName} (${deviceId}) at ${new Date(callTimestamp).toISOString()}`);
+
+      // PHASE 1: Detailed deviceId inspection
+      console.log('[approveTeam] 🔍 deviceId Inspection:');
+      console.log('  - Value:', `"${deviceId}"`);
+      console.log('  - Length:', deviceId.length);
+      console.log('  - Type:', typeof deviceId);
+      console.log('  - Char codes:', Array.from(deviceId).map((c, i) => `[${i}]=${c.charCodeAt(0)}`).join(', '));
+      console.log('  - Has leading/trailing spaces:', deviceId !== deviceId.trim() ? 'YES' : 'NO');
+      console.log('  - Trimmed version:', `"${deviceId.trim()}"`);
+
+      // PHASE 1: Inspect networkPlayers map structure
+      console.log('[approveTeam] 📍 networkPlayers Map Inspection:');
+      console.log('  - Total size:', networkPlayers.size);
+      console.log('  - All keys (exact values):');
+      Array.from(networkPlayers.keys()).forEach((key, idx) => {
+        console.log(`    [${idx}] "${key}" (length: ${key.length}, trimmed: "${key.trim()}")`);
+      });
+
+      // PHASE 1: Try exact match
       const player = networkPlayers.get(deviceId);
 
-      // LOGGING: Log what we found in networkPlayers
-      console.log('[approveTeam] Looking for player in networkPlayers');
-      console.log('[approveTeam] Total players in map:', networkPlayers.size);
-      console.log('[approveTeam] Player found:', !!player);
-      if (player) {
-        console.log('[approveTeam] Player details:');
-        console.log('  - teamName:', player.teamName);
-        console.log('  - status:', player.status);
-        console.log('  - Has teamPhoto:', !!player.teamPhoto);
-        if (player.teamPhoto) {
-          console.log('  - teamPhoto value (first 100 chars):', player.teamPhoto.substring(0, 100) + '...');
+      // PHASE 1: Try trimmed match if exact fails
+      let playerTrimmed = null;
+      if (!player && deviceId !== deviceId.trim()) {
+        console.log('[approveTeam] ⚠️  Exact match failed, trying trimmed deviceId...');
+        playerTrimmed = networkPlayers.get(deviceId.trim());
+        if (playerTrimmed) {
+          console.log('[approveTeam] ✅ Found player with TRIMMED deviceId!');
         }
       }
 
-      if (!player) {
+      // PHASE 1: Try case-insensitive match
+      let playerCaseInsensitive = null;
+      if (!player && !playerTrimmed) {
+        console.log('[approveTeam] ⚠️  Still no match, trying case-insensitive search...');
+        for (const [key, value] of networkPlayers) {
+          if (key.toLowerCase() === deviceId.toLowerCase()) {
+            playerCaseInsensitive = value;
+            console.log(`[approveTeam] ✅ Found player with CASE-INSENSITIVE match: "${key}"`);
+            break;
+          }
+        }
+      }
+
+      const finalPlayer = player || playerTrimmed || playerCaseInsensitive;
+
+      // PHASE 1: Log discovery results
+      console.log('[approveTeam] 🔎 Player Lookup Results:');
+      console.log('  - Exact match found:', !!player);
+      console.log('  - Trimmed match found:', !!playerTrimmed);
+      console.log('  - Case-insensitive match found:', !!playerCaseInsensitive);
+      console.log('  - Final player found:', !!finalPlayer);
+
+      if (finalPlayer) {
+        console.log('[approveTeam] Player details:');
+        console.log('  - teamName:', finalPlayer.teamName);
+        console.log('  - status:', finalPlayer.status);
+        console.log('  - approvedAt:', finalPlayer.approvedAt ? new Date(finalPlayer.approvedAt).toISOString() : 'null');
+        console.log('  - Has ws:', !!finalPlayer.ws);
+        console.log('  - ws readyState:', finalPlayer.ws?.readyState || 'N/A');
+        console.log('  - Has teamPhoto:', !!finalPlayer.teamPhoto);
+        if (finalPlayer.teamPhoto) {
+          console.log('  - teamPhoto value (first 100 chars):', finalPlayer.teamPhoto.substring(0, 100) + '...');
+        }
+      }
+
+      if (!finalPlayer) {
         log.error(`❌ Player not found in networkPlayers: ${deviceId}`);
-        log.info(`Available players: ${Array.from(networkPlayers.keys()).join(', ')}`);
-        console.error('[approveTeam] ❌ Player not found in networkPlayers');
-        return;
+        log.info(`Available players (${networkPlayers.size}): ${Array.from(networkPlayers.keys()).join(', ')}`);
+        console.error('[approveTeam] ❌ Player not found in networkPlayers even after trimmed/case-insensitive search');
+
+        // PHASE 5: Retry logic if player not found (likely race condition)
+        if (retryCount < APPROVAL_RETRY_CONFIG.maxRetries) {
+          const delayMs = Math.min(
+            APPROVAL_RETRY_CONFIG.initialDelayMs * Math.pow(APPROVAL_RETRY_CONFIG.backoffMultiplier, retryCount),
+            APPROVAL_RETRY_CONFIG.maxDelayMs
+          );
+          console.log(`[approveTeam] ⏱️  Retrying approval (attempt ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries}) after ${delayMs}ms delay...`);
+          log.info(`[approveTeam] ⏱️  Scheduling retry ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries} after ${delayMs}ms - player not in map yet`);
+
+          // PHASE 5: Wait for retry to complete before returning
+          await new Promise(res => setTimeout(res, delayMs));
+          console.log(`[approveTeam] 🔄 Executing retry ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries} for ${deviceId}`);
+          const retryResult = await approveTeam(deviceId, teamName, displayData, retryCount + 1);
+          return retryResult;
+        } else {
+          log.error(`❌ approveTeam failed after ${APPROVAL_RETRY_CONFIG.maxRetries} retry attempts - player still not found: ${deviceId}`);
+          return false;
+        }
       }
 
-      if (!player.ws) {
-        log.error(`❌ Player has no WebSocket connection: ${deviceId}`);
-        console.error('[approveTeam] ❌ Player has no WebSocket connection');
-        return;
+      // Use the matched player for rest of function
+      const matchedDeviceId = deviceId === deviceId.trim() ? deviceId : (player ? deviceId : (playerTrimmed ? deviceId.trim() : deviceId.toLowerCase()));
+
+      if (!finalPlayer.ws) {
+        log.error(`❌ Player has no WebSocket connection: ${matchedDeviceId}`);
+        console.error('[approveTeam] ❌ Player has no WebSocket connection, ws is null/undefined');
+        console.log('[approveTeam] Player object structure:', {
+          teamName: finalPlayer.teamName,
+          status: finalPlayer.status,
+          timestamp: finalPlayer.timestamp,
+          wsExists: !!finalPlayer.ws,
+          wsType: typeof finalPlayer.ws
+        });
+
+        // PHASE 5: Retry logic if ws not yet assigned (race condition)
+        if (retryCount < APPROVAL_RETRY_CONFIG.maxRetries) {
+          const delayMs = Math.min(
+            APPROVAL_RETRY_CONFIG.initialDelayMs * Math.pow(APPROVAL_RETRY_CONFIG.backoffMultiplier, retryCount),
+            APPROVAL_RETRY_CONFIG.maxDelayMs
+          );
+          console.log(`[approveTeam] ⏱️  Retrying approval (attempt ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries}) after ${delayMs}ms delay - ws not yet assigned...`);
+          log.info(`[approveTeam] ⏱️  Scheduling retry ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries} after ${delayMs}ms - ws not assigned yet`);
+
+          // PHASE 5: Wait for retry to complete before returning
+          await new Promise(res => setTimeout(res, delayMs));
+          console.log(`[approveTeam] 🔄 Executing retry ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries} for ${matchedDeviceId} - checking ws`);
+          const retryResult = await approveTeam(deviceId, teamName, displayData, retryCount + 1);
+          return retryResult;
+        } else {
+          log.error(`❌ approveTeam failed after ${APPROVAL_RETRY_CONFIG.maxRetries} retry attempts - ws still null: ${matchedDeviceId}`);
+          return false;
+        }
       }
 
-      const ws = player.ws;
+      const ws = finalPlayer.ws;
+
+      // PHASE 1: Comprehensive WebSocket state inspection
+      console.log('[approveTeam] 🔌 WebSocket State Inspection:');
+      console.log('  - readyState:', ws.readyState, `(${['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][ws.readyState]})`);
+      console.log('  - bufferedAmount:', ws.bufferedAmount);
+      console.log('  - url:', ws.url || 'N/A');
+      console.log('  - protocol:', ws.protocol || 'N/A');
+      console.log('  - extensions:', ws.extensions || 'N/A');
+      console.log('  - Has _socket:', !!ws._socket);
+      if (ws._socket) {
+        console.log('    - _socket.readable:', ws._socket.readable);
+        console.log('    - _socket.writable:', ws._socket.writable);
+        console.log('    - _socket.remoteAddress:', ws._socket.remoteAddress);
+        console.log('    - _socket.destroyed:', ws._socket.destroyed);
+      }
+      console.log('  - Event listeners:', Object.keys(ws._events || {}));
+
       log.info(`[approveTeam] WebSocket state before sending: ${ws.readyState} (0=connecting, 1=open, 2=closing, 3=closed)`);
 
       if (ws.readyState !== 1) {
-        log.error(`❌ Player WebSocket not open. State: ${ws.readyState} (0=connecting, 1=open, 2=closing, 3=closed): ${deviceId}`);
-        return;
+        log.error(`❌ Player WebSocket not open. State: ${ws.readyState} (0=connecting, 1=open, 2=closing, 3=closed): ${matchedDeviceId}`);
+        console.error('[approveTeam] ❌ WebSocket is not open. readyState:', ws.readyState);
+        log.error(`[approveTeam] 📋 WebSocket details at failure:`, {
+          readyState: ws.readyState,
+          bufferedAmount: ws.bufferedAmount,
+          hasSocket: !!ws._socket,
+          socketReadable: ws._socket?.readable,
+          socketWritable: ws._socket?.writable,
+          socketDestroyed: ws._socket?.destroyed
+        });
+
+        // PHASE 5: Retry logic if WebSocket not yet open (still connecting)
+        if (ws.readyState === 0 && retryCount < APPROVAL_RETRY_CONFIG.maxRetries) {
+          // WebSocket is connecting, retry after delay
+          const delayMs = Math.min(
+            APPROVAL_RETRY_CONFIG.initialDelayMs * Math.pow(APPROVAL_RETRY_CONFIG.backoffMultiplier, retryCount),
+            APPROVAL_RETRY_CONFIG.maxDelayMs
+          );
+          console.log(`[approveTeam] ⏱️  Retrying approval (attempt ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries}) after ${delayMs}ms delay - ws still connecting...`);
+          log.info(`[approveTeam] ⏱️  Scheduling retry ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries} after ${delayMs}ms - ws readyState: ${ws.readyState} (connecting)`);
+
+          // PHASE 5: Wait for retry to complete before returning
+          await new Promise(res => setTimeout(res, delayMs));
+          console.log(`[approveTeam] 🔄 Executing retry ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries} for ${matchedDeviceId} - checking ws.readyState`);
+          const retryResult = await approveTeam(deviceId, teamName, displayData, retryCount + 1);
+          return retryResult;
+        } else if (ws.readyState === 0) {
+          log.error(`❌ approveTeam failed after ${APPROVAL_RETRY_CONFIG.maxRetries} retry attempts - ws still connecting: ${matchedDeviceId}`);
+        }
+        return false;
       }
 
-      player.status = 'approved';
-      player.approvedAt = Date.now();
-      log.info(`[approveTeam] Set player status to approved for ${deviceId}, approvedAt: ${new Date(player.approvedAt).toISOString()}`);
+      finalPlayer.status = 'approved';
+      finalPlayer.approvedAt = Date.now();
+      finalPlayer.lastPongAt = Date.now(); // CRITICAL FIX: Reset heartbeat timer when approved to prevent false timeouts
+      log.info(`[approveTeam] Set player status to approved for ${matchedDeviceId}, approvedAt: ${new Date(finalPlayer.approvedAt).toISOString()}, lastPongAt reset to ${finalPlayer.lastPongAt}`);
+
+      // PHASE 1: Log displayData being sent
+      console.log('[approveTeam] 📦 displayData Inspection:');
+      console.log('  - Keys:', Object.keys(displayData));
+      console.log('  - mode:', displayData.mode);
+      console.log('  - Size estimate:', JSON.stringify(displayData).length, 'bytes');
 
       let message;
+      const messageTimestamp = Date.now();
       try {
         message = JSON.stringify({
           type: 'TEAM_APPROVED',
-          data: { teamName, deviceId, displayData },
-          timestamp: Date.now()
+          data: { teamName, deviceId: matchedDeviceId, displayData },
+          timestamp: messageTimestamp
         });
-        log.info(`[approveTeam] Message serialized successfully, size: ${message.length} bytes`);
+        log.info(`[approveTeam] Message serialized successfully, size: ${message.length} bytes at ${new Date(messageTimestamp).toISOString()}`);
+        console.log('[approveTeam] ✅ Message serialized, size:', message.length, 'bytes');
       } catch (serializeErr) {
         log.error(`❌ Failed to serialize TEAM_APPROVED message:`, serializeErr.message);
         log.error(`[approveTeam] displayData that failed to serialize:`, JSON.stringify(displayData).substring(0, 200));
+        console.error('[approveTeam] ❌ Serialization error:', serializeErr.message);
         throw serializeErr;
       }
 
       try {
-        log.info(`[approveTeam] Attempting to send TEAM_APPROVED to ${deviceId}...`);
+        log.info(`[approveTeam] Attempting to send TEAM_APPROVED to ${matchedDeviceId}...`);
         log.info(`[approveTeam] Before ws.send - ws.readyState: ${ws.readyState}, ws.bufferedAmount: ${ws.bufferedAmount}`);
+        console.log('[approveTeam] ✅ ABOUT TO CALL ws.send() for device:', matchedDeviceId);
+        console.log('[approveTeam] Message size:', message.length, 'bytes');
+        console.log('[approveTeam] Message type: TEAM_APPROVED');
+        console.log('[approveTeam] ws.readyState before send:', ws.readyState);
+        console.log('[approveTeam] ws.bufferedAmount before send:', ws.bufferedAmount);
 
-        ws.send(message, (err) => {
-          if (err) {
-            log.error(`❌ [approveTeam] ws.send callback error for ${deviceId}:`, err.message);
-            log.error(`[approveTeam] Error code:`, err.code);
-            log.error(`[approveTeam] Error name:`, err.name);
-            if (err.stack) {
-              log.error(`[approveTeam] ws.send callback error stack:`, err.stack);
+        // PHASE 5: Wrap ws.send in a Promise to properly wait for callback
+        const sendStartTime = Date.now();
+        return new Promise((resolveCallback, rejectCallback) => {
+          const sendTimeoutId = setTimeout(() => {
+            console.warn('[approveTeam] ⚠️  WARNING: ws.send() callback did not complete within 5 seconds');
+            log.warn(`[approveTeam] WARNING: ws.send() callback timeout for ${matchedDeviceId}`);
+            // Still consider it a success if message was buffered
+            clearTimeout(sendTimeoutId);
+            resolveCallback(true);
+          }, 5000);
+
+          ws.send(message, (err) => {
+            clearTimeout(sendTimeoutId);
+            const sendEndTime = Date.now();
+            const sendDuration = sendEndTime - sendStartTime;
+            if (err) {
+              log.error(`❌ [approveTeam] ws.send callback error for ${matchedDeviceId} (duration: ${sendDuration}ms):`, err.message);
+              log.error(`[approveTeam] Error code:`, err.code);
+              log.error(`[approveTeam] Error name:`, err.name);
+              if (err.stack) {
+                log.error(`[approveTeam] ws.send callback error stack:`, err.stack);
+              }
+              console.error('[approveTeam] ❌ ws.send callback reported error:', err.message, `(duration: ${sendDuration}ms)`);
+              rejectCallback(new Error(`ws.send failed: ${err.message}`));
+            } else {
+              log.debug(`[approveTeam] ws.send callback success for ${matchedDeviceId} (duration: ${sendDuration}ms)`);
+              console.log('[approveTeam] ✅ ws.send callback - no error reported', `(duration: ${sendDuration}ms)`);
+              console.log('[approveTeam] ✅ ws.send() callback completed');
+              log.info(`[approveTeam] After ws.send call - ws.bufferedAmount: ${ws.bufferedAmount}`);
+              console.log('[approveTeam] ws.bufferedAmount after send:', ws.bufferedAmount);
+              console.log('[approveTeam] Total time from call start to return:', Date.now() - callTimestamp, 'ms');
+              log.info(`✅ TEAM_APPROVED sent to: ${teamName} (${matchedDeviceId}) - total time: ${Date.now() - callTimestamp}ms`);
+              resolveCallback(true);
             }
-          } else {
-            log.debug(`[approveTeam] ws.send callback success for ${deviceId}`);
-          }
+          });
         });
-
-        log.info(`[approveTeam] After ws.send call - ws.bufferedAmount: ${ws.bufferedAmount}`);
-        log.info(`✅ TEAM_APPROVED sent to: ${teamName} (${deviceId})`);
       } catch (sendErr) {
-        log.error(`❌ Failed to send TEAM_APPROVED to ${deviceId}:`, sendErr.message);
+        log.error(`❌ Failed to send TEAM_APPROVED to ${matchedDeviceId}:`, sendErr.message);
         if (sendErr.stack) {
           log.error(`[approveTeam] Send error stack:`, sendErr.stack);
         }
+        console.error('[approveTeam] ❌ Exception during send:', sendErr.message);
         throw sendErr;
       }
     } catch (err) {
@@ -764,6 +1278,8 @@ async function startBackend({ port = 4310 } = {}) {
       if (err && err.stack) {
         log.error(`[approveTeam] Error stack:`, err.stack);
       }
+      console.error('[approveTeam] ❌ Fatal error:', err.message);
+      return false;
     }
   }
 
@@ -775,17 +1291,17 @@ async function startBackend({ port = 4310 } = {}) {
       if (!player) {
         log.error(`❌ Player not found in networkPlayers: ${deviceId}`);
         log.info(`Available players: ${Array.from(networkPlayers.keys()).join(', ')}`);
-        return;
+        return false;
       }
 
       if (!player.ws) {
         log.error(`❌ Player has no WebSocket connection: ${deviceId}`);
-        return;
+        return false;
       }
 
       if (player.ws.readyState !== 1) {
         log.error(`❌ Player WebSocket not open. State: ${player.ws.readyState}: ${deviceId}`);
-        return;
+        return false;
       }
 
       player.status = 'declined';
@@ -799,12 +1315,15 @@ async function startBackend({ port = 4310 } = {}) {
       try {
         player.ws.send(message);
         log.info(`✅ TEAM_DECLINED sent to: ${teamName} (${deviceId})`);
+        return true;
       } catch (sendErr) {
         log.error(`❌ Failed to send TEAM_DECLINED to ${deviceId}:`, sendErr.message);
         log.error(`Send error stack:`, sendErr.stack);
+        return false;
       }
     } catch (err) {
       log.error(`❌ declineTeam error:`, err.message, err.stack);
+      return false;
     }
   }
 
@@ -1196,7 +1715,22 @@ async function startBackend({ port = 4310 } = {}) {
     }
   }
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos };
+  // Phase 2: Cleanup function for heartbeat intervals
+  const stopHeartbeat = () => {
+    log.info('[Heartbeat] Stopping heartbeat mechanism');
+    if (heartbeatIntervalId) {
+      clearInterval(heartbeatIntervalId);
+      heartbeatIntervalId = null;
+      log.info('[Heartbeat] ✅ Heartbeat sender stopped');
+    }
+    if (staleCheckIntervalId) {
+      clearInterval(staleCheckIntervalId);
+      staleCheckIntervalId = null;
+      log.info('[Heartbeat] ✅ Stale connection checker stopped');
+    }
+  };
+
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos, stopHeartbeat };
 }
 
 export { startBackend };

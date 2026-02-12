@@ -57,8 +57,19 @@ export default function App() {
   const displayModeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fastestTeamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timerLockDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Track 1-second delay before locking inputs
+  const approvalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Track approval screen transition timer
   const submittedAnswerRef = useRef<any>(null); // Store answer in ref for immediate access, bypassing async state updates
   const timerStartTimeRef = useRef<number | null>(null); // Store timer start time from host for accurate response time calculation
+
+  // Visibility and focus detection refs (declared at top level to comply with React hooks rules)
+  const visibilityStateRef = useRef<{ isVisible: boolean; isFocused: boolean }>({
+    isVisible: !document.hidden,
+    isFocused: document.hasFocus(),
+  });
+  const lastSentStateRef = useRef<{ away: boolean; timestamp: number } | null>(null);
+  const messageQueueRef = useRef<Array<{ away: boolean; reason: string }>>([]);
+  const visibilityDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const focusDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { settings, isLoaded: playerSettingsLoaded } = usePlayerSettings();
 
@@ -92,6 +103,16 @@ export default function App() {
       if (timerLockDelayRef.current) {
         clearTimeout(timerLockDelayRef.current);
         timerLockDelayRef.current = null;
+      }
+    };
+  }, []);
+
+  // Cleanup approval timer on component unmount
+  useEffect(() => {
+    return () => {
+      if (approvalTimerRef.current) {
+        clearTimeout(approvalTimerRef.current);
+        approvalTimerRef.current = null;
       }
     };
   }, []);
@@ -187,11 +208,22 @@ export default function App() {
   }, []);
 
   const handleMessage = useCallback((message: HostMessage) => {
+    console.log('[handleMessage] Callback executed');
+    console.log('[handleMessage] - Current teamName:', teamName);
+    console.log('[handleMessage] - Current isApproved:', isApproved);
     switch (message.type) {
       case 'TEAM_APPROVED':
         try {
-          console.log('[Player] Team approved, displayData:', message.data?.displayData);
+          console.log('[Player] 🎉🎉🎉 TEAM_APPROVED HANDLER ENTERED 🎉🎉🎉');
+          console.log('[Player] - Current teamName state:', teamName);
+          console.log('[Player] - Current isApproved state:', isApproved);
+          console.log('[Player] - Message object:', JSON.stringify(message).substring(0, 200));
+          console.log('[Player] - message.data:', message.data);
+          console.log('[Player] - displayData:', message.data?.displayData);
+
+          console.log('[Player] 🔄 About to call setIsApproved(true)');
           setIsApproved(true);
+          console.log('[Player] ✅ setIsApproved(true) called successfully (state update queued)');
           // Cache team name for recovery on page refresh
           if (teamName) {
             localStorage.setItem('popquiz_last_team_name', teamName);
@@ -200,11 +232,14 @@ export default function App() {
 
           // Check if there's a current game state (late joiner sync)
           const displayData = message.data?.displayData;
+          console.log('[Player] 📊 displayData received:', displayData ? 'YES' : 'NO');
           const currentGameState = displayData?.currentGameState;
+          console.log('[Player] 🎮 currentGameState received:', currentGameState ? 'YES' : 'NO');
+          console.log('[Player] ❓ currentQuestion in currentGameState:', currentGameState?.currentQuestion ? 'YES' : 'NO');
 
           if (currentGameState?.currentQuestion) {
             // Late joiner - show current question immediately
-            console.log('[Player] Late joiner: Showing current question');
+            console.log('[Player] 🚀 Late joiner: Showing current question immediately');
 
             const questionData = {
               ...currentGameState.currentQuestion,
@@ -228,8 +263,10 @@ export default function App() {
             }
           } else {
             // Normal approval flow - show approval screen
-            console.log('[Player] Normal approval: Showing approval screen');
+            console.log('[Player] ✅ Normal approval flow: Showing approval screen for team:', teamName);
+            console.log('[Player] 🔄 About to call setCurrentScreen("approval")');
             setCurrentScreen('approval');
+            console.log('[Player] ✅ setCurrentScreen("approval") called (state update queued)');
 
             // Extract display mode data from the approval message
             if (displayData) {
@@ -258,22 +295,36 @@ export default function App() {
               console.log('[Player] No displayData in TEAM_APPROVED, using defaults');
             }
 
-            const approvalTimer = setTimeout(() => {
+            // Clear any existing approval timer
+            if (approvalTimerRef.current) {
+              clearTimeout(approvalTimerRef.current);
+              console.log('[Player] 🧹 Cleared existing approval timer');
+            }
+
+            // Set new approval screen transition timer
+            console.log('[Player] ⏱️  Setting 2-second timer to transition from approval screen to display');
+            approvalTimerRef.current = setTimeout(() => {
               try {
-                console.log('[Player] Approval screen delay complete, transitioning to display');
+                console.log('[Player] ✅ 2-second approval timer FIRED - transitioning to display screen');
+                console.log('[Player] 🔄 About to call setCurrentScreen("display")');
                 setCurrentScreen('display');
+                console.log('[Player] ✅ setCurrentScreen("display") called (state update queued)');
+                approvalTimerRef.current = null;
               } catch (screenErr) {
                 console.error('❌ [Player] Error during approval screen transition:', screenErr);
               }
             }, 2000);
 
-            return () => clearTimeout(approvalTimer);
+            console.log('[Player] ✅ 2-second timer scheduled successfully for approval screen transition');
           }
         } catch (approvalErr) {
-          console.error('❌ [Player] Error in TEAM_APPROVED handler:', approvalErr);
+          console.error('❌ [Player] ERROR in TEAM_APPROVED handler:', approvalErr);
+          console.error('[Player] Error type:', approvalErr instanceof Error ? 'Error object' : typeof approvalErr);
           if (approvalErr instanceof Error) {
+            console.error('[Player] Error message:', approvalErr.message);
             console.error('[Player] Error stack:', approvalErr.stack);
           }
+          throw approvalErr;
         }
         break;
       case 'APPROVAL_PENDING':
@@ -607,7 +658,7 @@ export default function App() {
         // Score updates are handled on display side, just log here
         break;
     }
-  }, []);
+  }, [teamName, currentQuestion, currentScreen, submittedAnswer, displayMode, clearTimerLockDelay]);
 
   const { isConnected, error } = useNetworkConnection({
     playerId,
@@ -649,6 +700,177 @@ export default function App() {
       wsRef.current.send(JSON.stringify(rejoinPayload));
     }
   }, [isConnected, isApproved, teamName, deviceId, playerId, settings, currentScreen]);
+
+  // Player visibility/focus detection - detect when player switches tabs, minimizes window, etc
+  useEffect(() => {
+    if (!isConnected || !isApproved || !teamName) {
+      console.log('[Player] Visibility detection not active - isConnected:', isConnected, 'isApproved:', isApproved, 'teamName:', teamName);
+      return;
+    }
+
+    // Using refs declared at component level to comply with React hooks rules
+    const MESSAGE_COALESCE_INTERVAL = 500; // Minimum 500ms between same-state messages
+
+    const sendVisibilityMessage = (away: boolean, reason: string, isRetry: boolean = false) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.log('[Player] Cannot send visibility message - WebSocket not open, queuing message');
+        // Add to queue if not already there
+        if (!messageQueueRef.current.some(m => m.away === away)) {
+          messageQueueRef.current.push({ away, reason });
+          console.log('[Player] Message queued. Queue size:', messageQueueRef.current.length);
+        }
+        return;
+      }
+
+      // Check if we should send based on state coalescing
+      const now = Date.now();
+      const lastSent = lastSentStateRef.current;
+
+      // Skip if we're trying to send the same state and not enough time has passed
+      if (
+        !isRetry &&
+        lastSent &&
+        lastSent.away === away &&
+        (now - lastSent.timestamp) < MESSAGE_COALESCE_INTERVAL
+      ) {
+        console.log('[Player] Skipping duplicate message - same state sent', (now - lastSent.timestamp), 'ms ago');
+        return;
+      }
+
+      const messageType = away ? 'PLAYER_AWAY' : 'PLAYER_ACTIVE';
+      const message = {
+        type: messageType,
+        deviceId,
+        playerId,
+        teamName,
+        reason,
+        timestamp: now,
+      };
+
+      try {
+        wsRef.current!.send(JSON.stringify(message));
+        console.log(`[Player] 📡 Sending ${messageType}: ${reason} (${isRetry ? 'RETRY' : 'INITIAL'})`);
+
+        // Update last sent state
+        lastSentStateRef.current = { away, timestamp: now };
+
+        // Clear queue on successful send
+        if (isRetry && messageQueueRef.current.length > 0) {
+          messageQueueRef.current = [];
+          console.log('[Player] Queue cleared after successful retry');
+        }
+      } catch (err) {
+        console.error('[Player] Error sending visibility message:', err);
+        // Add to queue on error
+        if (!messageQueueRef.current.some(m => m.away === away)) {
+          messageQueueRef.current.push({ away, reason });
+          console.log('[Player] Message queued due to send error. Queue size:', messageQueueRef.current.length);
+        }
+      }
+    };
+
+    // Process any queued messages (called on reconnect or when WS opens)
+    const processMessageQueue = () => {
+      if (messageQueueRef.current.length === 0) return;
+
+      console.log('[Player] Processing queued visibility messages, count:', messageQueueRef.current.length);
+      const queue = [...messageQueueRef.current];
+      messageQueueRef.current = [];
+
+      // Send the most recent state from the queue
+      const lastMessage = queue[queue.length - 1];
+      if (lastMessage) {
+        sendVisibilityMessage(lastMessage.away, lastMessage.reason, true);
+      }
+    };
+
+    // Handle visibility change (tab hidden/visible)
+    const handleVisibilityChange = () => {
+      const isVisible = !document.hidden;
+      visibilityStateRef.current.isVisible = isVisible;
+
+      const reason = isVisible ? 'tab_visible' : 'tab_hidden';
+      console.log(`[Player Visibility] Tab ${isVisible ? 'VISIBLE' : 'HIDDEN'} | Event: visibilitychange | Timestamp: ${Date.now()}`);
+
+      // Clear any pending visibility debounce timer
+      if (visibilityDebounceTimerRef.current) {
+        clearTimeout(visibilityDebounceTimerRef.current);
+      }
+
+      // Debounce visibility changes (100ms to coalesce rapid visibility changes)
+      visibilityDebounceTimerRef.current = setTimeout(() => {
+        // Send message based on visibility AND focus state
+        // Player is away if tab is hidden OR window is not focused
+        const isAway = !isVisible || !visibilityStateRef.current.isFocused;
+        sendVisibilityMessage(isAway, reason);
+      }, 100);
+    };
+
+    // Handle focus events with debouncing
+    const handleFocus = () => {
+      visibilityStateRef.current.isFocused = true;
+
+      // Clear any pending focus debounce timer
+      if (focusDebounceTimerRef.current) {
+        clearTimeout(focusDebounceTimerRef.current);
+      }
+
+      console.log(`[Player Visibility] Window FOCUSED | Event: focus | Timestamp: ${Date.now()}`);
+
+      // Debounce: wait 100ms to ensure focus is stable
+      focusDebounceTimerRef.current = setTimeout(() => {
+        // Only send PLAYER_ACTIVE if tab is also visible
+        if (visibilityStateRef.current.isVisible) {
+          console.log('[Player Visibility] Focus debounce complete - sending PLAYER_ACTIVE');
+          sendVisibilityMessage(false, 'focus_gained');
+        }
+      }, 100);
+    };
+
+    const handleBlur = () => {
+      visibilityStateRef.current.isFocused = false;
+
+      // Clear any pending focus debounce timer
+      if (focusDebounceTimerRef.current) {
+        clearTimeout(focusDebounceTimerRef.current);
+      }
+
+      console.log(`[Player Visibility] Window BLURRED | Event: blur | Timestamp: ${Date.now()}`);
+
+      // Debounce: wait 100ms to handle rapid focus/blur events
+      focusDebounceTimerRef.current = setTimeout(() => {
+        console.log('[Player Visibility] Blur debounce complete - sending PLAYER_AWAY');
+        sendVisibilityMessage(true, 'focus_lost');
+      }, 100);
+    };
+
+    // Attach event listeners
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+
+    console.log('[Player] Visibility/focus detection activated');
+
+    // Attempt to process any queued messages (in case we're reconnecting)
+    processMessageQueue();
+
+    // Cleanup function
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+
+      // Clear any pending debounce timers
+      if (visibilityDebounceTimerRef.current) {
+        clearTimeout(visibilityDebounceTimerRef.current);
+      }
+      if (focusDebounceTimerRef.current) {
+        clearTimeout(focusDebounceTimerRef.current);
+      }
+
+      console.log('[Player] Visibility/focus detection deactivated');
+    };
+  }, [isConnected, isApproved, teamName, deviceId, playerId]);
 
 
   const handleTeamNameSubmit = (name: string) => {

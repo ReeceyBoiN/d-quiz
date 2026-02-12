@@ -185,4 +185,22 @@ export interface PlayerAnswerMessage {
   timestamp?: number;
 }
 
-export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage;
+export interface PlayerAwayMessage {
+  type: 'PLAYER_AWAY';
+  playerId: string;
+  deviceId: string;
+  teamName: string;
+  reason: string;
+  timestamp: number;
+}
+
+export interface PlayerActiveMessage {
+  type: 'PLAYER_ACTIVE';
+  playerId: string;
+  deviceId: string;
+  teamName: string;
+  reason: string;
+  timestamp: number;
+}
+
+export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage | PlayerAwayMessage | PlayerActiveMessage;

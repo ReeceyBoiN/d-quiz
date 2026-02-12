@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import type { HostMessage } from '../types/network';
 
 interface UseNetworkConnectionProps {
@@ -18,6 +18,19 @@ export function useNetworkConnection({
   const [error, setError] = useState<string | null>(null);
   const [ws, setWs] = useState<WebSocket | null>(null);
 
+  // CRITICAL FIX: Use refs to store callbacks instead of including them in useEffect dependencies
+  // This prevents the WebSocket from reconnecting when callbacks change
+  const onMessageRef = useRef(onMessage);
+  const onConnectRef = useRef(onConnect);
+  const onDisconnectRef = useRef(onDisconnect);
+
+  // Update refs whenever callbacks change (without causing effect rerun)
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+    onConnectRef.current = onConnect;
+    onDisconnectRef.current = onDisconnect;
+  }, [onMessage, onConnect, onDisconnect]);
+
   useEffect(() => {
     let wsInstance: WebSocket | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
@@ -32,7 +45,7 @@ export function useNetworkConnection({
       return delayMs;
     };
 
-    const connect = () => {
+    const connect = async () => {
       if (!isMounted || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
           console.log('🛑 Max connection attempts reached. Cannot connect to host.');
@@ -42,13 +55,37 @@ export function useNetworkConnection({
       }
 
       try {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        // Step 1: Try to get host info from the backend API
+        let wsUrl: string | null = null;
+        const httpProtocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
 
-        // Get backend URL from environment variable or construct from current window location
-        // If hostname is empty (Electron file:// protocol), default to localhost
-        let backendHost = import.meta.env.VITE_BACKEND_HOST || window.location.hostname || 'localhost';
-        const backendPort = import.meta.env.VITE_BACKEND_PORT || 4310;
-        const wsUrl = `${protocol}//${backendHost}:${backendPort}/events`;
+        // Determine current host for API call
+        let currentHost = window.location.hostname || 'localhost';
+        const apiUrl = `${httpProtocol}//${currentHost}:4310/api/host-info`;
+
+        console.log(`[Player Connection Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS}] Fetching host info from: ${apiUrl}`);
+
+        try {
+          const response = await fetch(apiUrl, { signal: AbortSignal.timeout(5000) });
+          if (response.ok) {
+            const hostInfo = await response.json();
+            wsUrl = hostInfo.wsUrl;
+            console.log(`✅ [Player] Got host info from server - Using WebSocket URL: ${wsUrl}`);
+          } else {
+            console.warn(`⚠️  [Player] Host info endpoint returned status ${response.status}`);
+          }
+        } catch (fetchErr) {
+          console.warn(`⚠️  [Player] Failed to fetch host info:`, fetchErr instanceof Error ? fetchErr.message : String(fetchErr));
+        }
+
+        // Step 2: Fallback to environment variables or window location if API call failed
+        if (!wsUrl) {
+          console.log('[Player] Falling back to environment variables or window location');
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          let backendHost = import.meta.env.VITE_BACKEND_HOST || window.location.hostname || 'localhost';
+          const backendPort = import.meta.env.VITE_BACKEND_PORT || 4310;
+          wsUrl = `${protocol}//${backendHost}:${backendPort}/events`;
+        }
 
         console.log(`[Player Connection Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS}] Connecting to: ${wsUrl}`);
         wsInstance = new WebSocket(wsUrl);
@@ -69,7 +106,7 @@ export function useNetworkConnection({
           setError(null);
           setWs(wsInstance);
           reconnectAttempts = 0; // Reset on successful connection
-          onConnect?.(wsInstance!);
+          onConnectRef.current?.(wsInstance!);
         };
 
         wsInstance.onmessage = (event) => {
@@ -85,7 +122,23 @@ export function useNetworkConnection({
             }
 
             console.log('[Player] Successfully parsed message type:', message.type);
-            onMessage?.(message);
+
+            // Special logging for critical message types
+            if (message.type === 'TEAM_APPROVED') {
+              console.log('🎉 [Player] 🎉 🎉 🎉 TEAM_APPROVED RECEIVED! 🎉 🎉 🎉');
+              console.log('[Player] TEAM_APPROVED full message:', JSON.stringify(message).substring(0, 300) + '...');
+              console.log('[Player] TEAM_APPROVED has displayData:', !!message.data?.displayData);
+              console.log('[Player] About to call onMessage callback with TEAM_APPROVED');
+            }
+
+            try {
+              console.log('[Player] [wsInstance.onmessage] Calling onMessage with message type:', message.type);
+              onMessageRef.current?.(message);
+              console.log('[Player] [wsInstance.onmessage] onMessage callback completed successfully for type:', message.type);
+            } catch (callbackErr) {
+              console.error('[Player] ❌ Error calling onMessage callback:', callbackErr);
+              throw callbackErr;
+            }
           } catch (err) {
             console.error('❌ [Player] Error in onMessage handler:', err);
             if (err instanceof Error) {
@@ -118,7 +171,7 @@ export function useNetworkConnection({
             console.warn('[Player] ⚠️  Connection closed abnormally (code 1005) - possible server error');
           }
           setIsConnected(false);
-          onDisconnect?.();
+          onDisconnectRef.current?.();
 
           if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttempts++;
@@ -162,7 +215,7 @@ export function useNetworkConnection({
         wsInstance.close();
       }
     };
-  }, [onConnect, onMessage, onDisconnect]);
+  }, []);
 
   return { isConnected, error, ws };
 }

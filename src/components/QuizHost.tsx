@@ -251,9 +251,8 @@ export function QuizHost() {
   const sortTimeoutRef = useRef<NodeJS.Timeout>();
   const lastUpdateRef = useRef<number>(0);
   const quizzesRef = useRef(quizzes);
-  
 
-  
+
   // Display management state
   const [displayMode, setDisplayMode] = useState<"basic" | "slideshow" | "scores" | "leaderboard-intro" | "leaderboard-reveal" | "timer" | "correctAnswer">("basic");
   const [userSelectedDisplayMode, setUserSelectedDisplayMode] = useState<"basic" | "slideshow" | "scores">("basic"); // Remember user's preference
@@ -481,6 +480,19 @@ export function QuizHost() {
   const [gameTimerTotalTime, setGameTimerTotalTime] = useState(0);
   const [gameTimerStartTime, setGameTimerStartTime] = useState<number | null>(null);
   const [currentQuestionTimerId, setCurrentQuestionTimerId] = useState<number | null>(null); // Track which question the timer is for
+
+  // Create refs to access current values without re-registering listeners
+  const gameTimerStartTimeRef = useRef<number | null>(null);
+  const flowStateTotalTimeRef = useRef<number>(0);
+
+  // Sync refs with state changes to avoid listener re-registration
+  useEffect(() => {
+    gameTimerStartTimeRef.current = gameTimerStartTime;
+  }, [gameTimerStartTime]);
+
+  useEffect(() => {
+    flowStateTotalTimeRef.current = flowState.totalTime;
+  }, [flowState.totalTime]);
 
   // Debug effect to log gameTimerRunning state changes
   useEffect(() => {
@@ -883,48 +895,91 @@ export function QuizHost() {
   // Handler to approve a pending team
   const handleApproveTeam = async (deviceId: string, teamName: string) => {
     try {
-      console.log('📋 handleApproveTeam called for:', { deviceId, teamName });
+      // PHASE 1: Enhanced host-side diagnostics
+      const approvalStartTime = Date.now();
+      console.log('📋 handleApproveTeam called for:', { deviceId, teamName, timestamp: new Date(approvalStartTime).toISOString() });
+
+      // PHASE 1: Inspect deviceId for encoding issues
+      console.log('[QuizHost] 🔍 deviceId Inspection:');
+      console.log('  - Value:', `"${deviceId}"`);
+      console.log('  - Length:', deviceId.length);
+      console.log('  - Type:', typeof deviceId);
+      console.log('  - Has leading/trailing spaces:', deviceId !== deviceId.trim() ? 'YES' : 'NO');
+      console.log('  - Trimmed version:', `"${deviceId.trim()}"`);
 
       // Fetch player data to get team photo
       let teamPhoto: string | undefined = undefined;
       try {
         console.log('[QuizHost] 🔍 Fetching all network players via IPC...');
+        const fetchStartTime = Date.now();
         const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
+        const fetchEndTime = Date.now();
 
-        console.log('[QuizHost] IPC result status:', result?.ok ? '✅ OK' : '❌ ERROR');
-        console.log('[QuizHost] IPC result has data array:', Array.isArray(result?.data));
+        console.log('[QuizHost] IPC call completed in:', fetchEndTime - fetchStartTime, 'ms');
+        console.log('[QuizHost] IPC result:', {
+          ok: result?.ok,
+          hasData: !!result?.data,
+          isArray: Array.isArray(result?.data),
+          dataLength: Array.isArray(result?.data) ? result.data.length : 'N/A',
+          error: result?.error || 'none'
+        });
+
         if (Array.isArray(result?.data)) {
           console.log('[QuizHost] Total players returned:', result.data.length);
           result.data.forEach((p: any, idx: number) => {
-            console.log(`[QuizHost] Player ${idx + 1}: deviceId=${p.deviceId}, teamName=${p.teamName}, hasTeamPhoto=${!!p.teamPhoto}`);
+            console.log(`[QuizHost] Player ${idx + 1}:`, {
+              deviceId: p.deviceId,
+              deviceIdLength: p.deviceId?.length,
+              teamName: p.teamName,
+              hasTeamPhoto: !!p.teamPhoto,
+              deviceIdMatches: p.deviceId === deviceId ? 'EXACT' : (p.deviceId?.trim() === deviceId?.trim() ? 'TRIMMED' : 'NO')
+            });
           });
         }
 
         if (result?.ok && Array.isArray(result.data)) {
           const player = result.data.find((p: any) => p.deviceId === deviceId);
-          console.log('[QuizHost] ✨ Found player for this device:', !!player);
-          if (player) {
+          console.log('[QuizHost] ✨ Exact match found:', !!player);
+
+          // Try trimmed match if exact fails
+          let finalPlayer = player;
+          if (!finalPlayer) {
+            const trimmedPlayer = result.data.find((p: any) => p.deviceId?.trim() === deviceId?.trim());
+            if (trimmedPlayer) {
+              console.log('[QuizHost] ✨ TRIMMED match found:', trimmedPlayer.deviceId);
+              finalPlayer = trimmedPlayer;
+            }
+          }
+
+          if (finalPlayer) {
             console.log('[QuizHost] Player details:', {
-              deviceId: player.deviceId,
-              teamName: player.teamName,
-              hasTeamPhoto: !!player.teamPhoto,
-              photoValue: player.teamPhoto ? (player.teamPhoto.substring(0, 50) + '...') : 'null'
+              deviceId: finalPlayer.deviceId,
+              teamName: finalPlayer.teamName,
+              hasTeamPhoto: !!finalPlayer.teamPhoto,
+              photoValue: finalPlayer.teamPhoto ? (finalPlayer.teamPhoto.substring(0, 50) + '...') : 'null',
+              status: finalPlayer.status
             });
           }
 
-          if (player?.teamPhoto) {
-            teamPhoto = ensureFileUrl(player.teamPhoto);
+          if (finalPlayer?.teamPhoto) {
+            teamPhoto = ensureFileUrl(finalPlayer.teamPhoto);
             console.log('✅ Retrieved team photo for:', teamName);
-            console.log('[QuizHost] Original photo path:', player.teamPhoto);
+            console.log('[QuizHost] Original photo path:', finalPlayer.teamPhoto);
             console.log('[QuizHost] Converted photo URL:', teamPhoto?.substring(0, 50) + '...');
           } else {
             console.log('[QuizHost] ⚠️ Player found but has no teamPhoto');
           }
         } else {
           console.log('[QuizHost] ⚠️ IPC result was not successful or no data array');
+          console.log('[QuizHost] Result details:', { ok: result?.ok, error: result?.error, hasData: !!result?.data });
         }
       } catch (err) {
         console.warn('[QuizHost] Could not fetch team photo:', err);
+        console.log('[QuizHost] Error type:', err instanceof Error ? err.constructor.name : typeof err);
+        if (err instanceof Error) {
+          console.log('[QuizHost] Error message:', err.message);
+          console.log('[QuizHost] Error stack:', err.stack);
+        }
       }
 
       // Add team to quizzes list
@@ -1013,19 +1068,45 @@ export function QuizHost() {
         displayData.currentGameState = currentGameState;
 
         console.log('[QuizHost] 📝 About to call approveTeam with:');
-        console.log('[QuizHost] - deviceId:', deviceId);
+        console.log('[QuizHost] - deviceId:', `"${deviceId}"`, `(length: ${deviceId.length})`);
         console.log('[QuizHost] - teamName:', teamName);
         console.log('[QuizHost] - displayData.mode:', displayData.mode);
         console.log('[QuizHost] - displayData has photo field:', !!displayData.photos);
         console.log('[QuizHost] - displayData keys:', Object.keys(displayData));
+        console.log('[QuizHost] - displayData size estimate:', JSON.stringify(displayData).length, 'bytes');
 
+        const ipcCallStartTime = Date.now();
         const result = await (window as any).api.network.approveTeam({ deviceId, teamName, displayData });
-        console.log('✅ approveTeam IPC result:', result?.ok ? 'SUCCESS' : 'FAILED');
+        const ipcCallEndTime = Date.now();
+
+        // PHASE 1: Log exact IPC result
+        console.log('[QuizHost] 📊 IPC Call Results:');
+        console.log('  - Call duration:', ipcCallEndTime - ipcCallStartTime, 'ms');
+        console.log('  - Result status:', result?.ok ? '✅ SUCCESS' : '❌ FAILED');
+        console.log('  - Result object:', {
+          ok: result?.ok,
+          error: result?.error || 'none',
+          message: result?.message || 'none',
+          hasOtherFields: Object.keys(result || {}).filter(k => k !== 'ok' && k !== 'error' && k !== 'message').length
+        });
+
         if (!result?.ok) {
-          console.error('[QuizHost] ❌ approveTeam failed:', result?.error);
+          console.error('[QuizHost] ❌ approveTeam failed:');
+          console.error('  - Error:', result?.error);
+          console.error('  - Message:', result?.message);
+          console.error('  - IPC call took:', ipcCallEndTime - ipcCallStartTime, 'ms');
+          console.error('  - Total approval flow so far:', ipcCallEndTime - approvalStartTime, 'ms');
+        } else {
+          console.log('[QuizHost] ✅ approveTeam succeeded after', ipcCallEndTime - approvalStartTime, 'ms total');
         }
       } else {
         console.warn('⚠️  api.network.approveTeam not available');
+        console.log('[QuizHost] API object structure:', {
+          hasApi: !!(window as any).api,
+          hasNetwork: !!(window as any).api?.network,
+          approveTeamType: typeof (window as any).api?.network?.approveTeam,
+          apiKeys: Object.keys((window as any).api || {})
+        });
       }
 
       // Remove from pending
@@ -2430,8 +2511,15 @@ export function QuizHost() {
           });
 
           // Auto-approve the team
-          setTimeout(() => handleApproveTeam(deviceId, teamName), 0);
-          console.log(`✨ New network player auto-approved: ${teamName} (${deviceId})`);
+          // PHASE 3 FIX: Increase setTimeout from 0 to 150ms to prevent race condition
+          // The backend needs time to fully process PLAYER_JOIN and store the player in networkPlayers
+          // before we attempt approval. This ensures synchronization between client and server.
+          console.log(`[QuizHost] ⏱️ Scheduling auto-approval for: ${teamName} (${deviceId}) - will delay by 150ms to ensure backend is ready`);
+          setTimeout(() => {
+            console.log(`[QuizHost] ✨ Executing delayed auto-approval for: ${teamName} (${deviceId})`);
+            handleApproveTeam(deviceId, teamName);
+          }, 150);
+          console.log(`✨ New network player scheduled for auto-approval: ${teamName} (${deviceId})`);
         } else {
           // Quiz in progress - require manual approval
           console.log('⏸️ New team requires manual approval (quiz in progress):', { deviceId, teamName });
@@ -2442,6 +2530,124 @@ export function QuizHost() {
 
     // Register listener and get unsubscribe function
     const unsubscribe = onNetworkMessage('PLAYER_JOIN', handleNetworkPlayerJoin);
+
+    // Clean up listener on unmount
+    return unsubscribe;
+  }, []); // Empty dependency array - register once on mount
+
+  // Listen for network player disconnections
+  useEffect(() => {
+    const handleNetworkPlayerDisconnect = (data: any) => {
+      const { deviceId, playerId } = data;
+
+      if (!deviceId) {
+        console.warn('PLAYER_DISCONNECT missing deviceId');
+        return;
+      }
+
+      // LOGGING: Log the PLAYER_DISCONNECT message details
+      console.log('[QuizHost] 📨 Received PLAYER_DISCONNECT from backend:');
+      console.log('[QuizHost] - deviceId:', deviceId);
+      console.log('[QuizHost] - playerId:', playerId);
+
+      // Check if team with this deviceId exists
+      const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
+
+      if (existingTeam) {
+        // Mark team as disconnected, but preserve all data (name, score, etc)
+        setQuizzes(prev => prev.map(q =>
+          q.id === deviceId
+            ? { ...q, disconnected: true }
+            : q
+        ));
+        console.log(`📡 Network player disconnected: ${existingTeam.name} (${deviceId}) - data preserved, score: ${existingTeam.score}`);
+      } else {
+        console.log(`⚠️ PLAYER_DISCONNECT received for unknown team: ${deviceId}`);
+      }
+    };
+
+    // Register listener and get unsubscribe function
+    const unsubscribe = onNetworkMessage('PLAYER_DISCONNECT', handleNetworkPlayerDisconnect);
+
+    // Clean up listener on unmount
+    return unsubscribe;
+  }, []); // Empty dependency array - register once on mount
+
+  // Listen for player away state (tab switch, window blur, etc)
+  useEffect(() => {
+    const handleNetworkPlayerAway = (data: any) => {
+      const { deviceId, playerId, teamName, reason } = data;
+
+      if (!deviceId) {
+        console.warn('[QuizHost] ⚠️  PLAYER_AWAY missing deviceId');
+        return;
+      }
+
+      // LOGGING: Log the PLAYER_AWAY message details
+      console.log('[QuizHost] 📡 Received PLAYER_AWAY from backend:');
+      console.log('[QuizHost] - deviceId:', deviceId);
+      console.log('[QuizHost] - playerId:', playerId);
+      console.log('[QuizHost] - teamName:', teamName);
+      console.log('[QuizHost] - reason:', reason);
+
+      // Check if team with this deviceId exists
+      const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
+
+      if (existingTeam) {
+        // Mark team as disconnected (will appear grey), but preserve all data
+        setQuizzes(prev => prev.map(q =>
+          q.id === deviceId
+            ? { ...q, disconnected: true }
+            : q
+        ));
+        console.log(`[QuizHost] 🚶 Player away: ${existingTeam.name} (${deviceId}) - reason: ${reason} - data preserved, score: ${existingTeam.score}`);
+      } else {
+        console.log(`[QuizHost] ⚠️  PLAYER_AWAY received for unknown team: ${deviceId}`);
+      }
+    };
+
+    // Register listener and get unsubscribe function
+    const unsubscribe = onNetworkMessage('PLAYER_AWAY', handleNetworkPlayerAway);
+
+    // Clean up listener on unmount
+    return unsubscribe;
+  }, []); // Empty dependency array - register once on mount
+
+  // Listen for player active state (returned from tab/window away)
+  useEffect(() => {
+    const handleNetworkPlayerActive = (data: any) => {
+      const { deviceId, playerId, teamName, reason } = data;
+
+      if (!deviceId) {
+        console.warn('[QuizHost] ⚠️  PLAYER_ACTIVE missing deviceId');
+        return;
+      }
+
+      // LOGGING: Log the PLAYER_ACTIVE message details
+      console.log('[QuizHost] 📡 Received PLAYER_ACTIVE from backend:');
+      console.log('[QuizHost] - deviceId:', deviceId);
+      console.log('[QuizHost] - playerId:', playerId);
+      console.log('[QuizHost] - teamName:', teamName);
+      console.log('[QuizHost] - reason:', reason);
+
+      // Check if team with this deviceId exists
+      const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
+
+      if (existingTeam) {
+        // Mark team as active (remove grey appearance), restore normal state
+        setQuizzes(prev => prev.map(q =>
+          q.id === deviceId
+            ? { ...q, disconnected: false }
+            : q
+        ));
+        console.log(`[QuizHost] ✅ Player active: ${existingTeam.name} (${deviceId}) - reason: ${reason} - data preserved, score: ${existingTeam.score}`);
+      } else {
+        console.log(`[QuizHost] ⚠️  PLAYER_ACTIVE received for unknown team: ${deviceId}`);
+      }
+    };
+
+    // Register listener and get unsubscribe function
+    const unsubscribe = onNetworkMessage('PLAYER_ACTIVE', handleNetworkPlayerActive);
 
     // Clean up listener on unmount
     return unsubscribe;
@@ -2567,10 +2773,11 @@ export function QuizHost() {
       }
 
       // Find the quiz using deviceId (primary), playerId (fallback 1), or teamName (last resort)
+      // Use refs to access current quiz data without re-registering listener
       const matchingQuiz =
-        quizzes.find(q => q.id === deviceId) ||
-        quizzes.find(q => q.id === playerId) ||
-        quizzes.find(q => q.name === teamName);
+        quizzesRef.current.find(q => q.id === deviceId) ||
+        quizzesRef.current.find(q => q.id === playerId) ||
+        quizzesRef.current.find(q => q.name === teamName);
       const teamId = matchingQuiz?.id || deviceId; // Fallback to deviceId
 
       if (matchingQuiz) {
@@ -2607,21 +2814,23 @@ export function QuizHost() {
 
       // Compute response time from when timer started to when the player submitted their answer
       // timestamp is when the player submitted on their device
+      // Use refs to access current values without re-registering listener
       let responseTime: number | undefined = undefined;
-      if (gameTimerStartTime !== null && gameTimerStartTime !== undefined && timestamp) {
+      if (gameTimerStartTimeRef.current !== null && gameTimerStartTimeRef.current !== undefined && timestamp) {
         // Correct calculation: answer submission time - timer start time
-        responseTime = timestamp - gameTimerStartTime;
-      } else if (gameTimerStartTime !== null && gameTimerStartTime !== undefined) {
+        responseTime = timestamp - gameTimerStartTimeRef.current;
+      } else if (gameTimerStartTimeRef.current !== null && gameTimerStartTimeRef.current !== undefined) {
         // Fallback: current time - timer start time (if timestamp is missing)
-        responseTime = Date.now() - gameTimerStartTime;
+        responseTime = Date.now() - gameTimerStartTimeRef.current;
       } else {
         // No timer started yet - don't calculate response time
         console.log('[QuizHost] PLAYER_ANSWER: No timer started for team', teamId, '- gameTimerStartTime is null');
       }
 
       // Validate response time against the current question's time limit
+      // Use ref to access current flowState.totalTime without re-registering listener
       if (responseTime !== undefined) {
-        const validatedResponseTime = validateResponseTime(responseTime, flowState.totalTime);
+        const validatedResponseTime = validateResponseTime(responseTime, flowStateTotalTimeRef.current);
 
         if (validatedResponseTime !== undefined) {
           setTeamResponseTimes(prev => {
@@ -2661,7 +2870,7 @@ export function QuizHost() {
       clearInterval(pollInterval);
       if (unsubscribe) unsubscribe();
     };
-  }, [quizzes, gameTimerStartTime, flowState.totalTime]); // Re-register listener when quizzes, timer, or question time limit changes - ensures handler has current gameTimerStartTime for accurate response time calculation
+  }, []); // Keep listener registered indefinitely - it accesses current values through refs to avoid re-registration race conditions
 
   // PHASE 2: Listen for debug error and info messages from server
   useEffect(() => {

@@ -22,15 +22,47 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
   reece - When a Teams Pic is sent from a teams phone, its not getting assigned to the team or coming through to host app. The team that uploads a picture should have that set as that teams picture until the quiz game has been fully reset with the "Empty Lobby".
   + + + + + Some folders are being created not in the main root folder, currently they are in (C:\Users\windows1\Documents\PopQuiz) which i think i want to move the whole root directory to that filepath anyways so filepath fix is on the to do list. - Guessing at the end as during builds it may cause an issue? Dax can you advise??
 
-  reece - If a Team disconnects, The team in the teams list should go grey not just disapear from the teams list, so it indicates that a team has connected, still has points and all that teams info should still be stored incase they re connect, which i think parts of this function are already implimented but the team needs to be greyed out if they are not actively connected to the application.
-
   reece - Add buzzer folder audio folder for host and selection screen for players upon connecting
 
- x Scaling visually needs adding as its currently too cramped on the screen slightly whole software wide. 
+  buzzers tab needs to have an ability to open a folder / filepath incase they want to change it.
+
+  the Team photos on the bottom navigation bar needs to highlight orange if there is currently a team waiting for a team photo to be approved
+
+  change teams layout button on bottom navigation bar changes the size of the navigation bar when toggled. - Visually the boxes and placement and if text changes it shouldnt change location of boxes buttons and interface, unless its font size, that should increase everything all round really.
+
+  host controller button on bottom navigation bar should go green if the host has connected with that 4 diget code as their team name, that code is dynamic and private and lets the host connect and control the software from a mobile device whilst so they can start timers submit questions etc from a player web portal device if they have that 4 diget code as a team name
+
+  Instructions graphics need making, how to play, how to connect, how to answer, how to edit team name, add a team pic, letters questions etc etc
+
+  Buzz in mode needs just making in general hahaha
+
+  wheel spinner external display no worky + wheel in wheel spinner is not scaled for GUI
+
+  Wheel spinner needs function for host to create a custom wheel and have it saved
+
+  team grid needs to be smaller when viewing the teams info when clicking on a team from the teams list
+
+  clicking on the no wifi connected button should provide troubleshooting steps and tools
+
+  no wifi button is currently just for visual effect and not connected to anything on the backend
+
+  if the host closes the application, if there is an external display window currently open it should close it, same if the huost unticks the external display box on the top navigation as currently it keeps the external display window open
+
+  in settings, external screen settings should have individual controlls to increase / decreas the size of the text 
+
+  in setting, external screen, could do with removing the countdown timer style. easier to base the UI with a fixed timer countdown so kill all the other timer designs
+
+  in setting, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
+
+  in settings, waiting room should have the ability to display waiting room images
+
+  XXX URGENT - Settings window X doesnt close the settings window
+
+  x Scaling visually needs adding as its currently too cramped on the screen slightly whole software wide. 
  
- x Needs all visual elements reducing by 10% or so.
+  x Needs all visual elements reducing by 10% or so.
 
- x enforce demo mode into application to stop hosts from bypassing licence
+  x enforce demo mode into application to stop hosts from bypassing licence
 
- x activation needs to be assigned to a specific laptop / mac address so users cant log in, activate, then turn off wifi and log into another laptop to download same activation
+  x activation needs to be assigned to a specific laptop / mac address so users cant log in, activate, then turn off wifi and log into another laptop to download same activation
  

@@ -185,8 +185,15 @@ async function boot() {
         log.info('[IPC] displayData.scores sample:', displayData.scores.slice(0, 1));
       }
       log.info('[IPC] Calling backend.approveTeam...');
+      let approveSuccess = false;
       try {
-        backend.approveTeam(deviceId, teamName, displayData);
+        // PHASE 5: Await the new async approveTeam function
+        approveSuccess = await backend.approveTeam(deviceId, teamName, displayData);
+        log.info('[IPC] backend.approveTeam returned:', approveSuccess);
+        if (!approveSuccess) {
+          log.error('[IPC] ❌ backend.approveTeam returned false - message may not have been sent');
+          throw new Error('Failed to send TEAM_APPROVED message to player. Check player WebSocket connection state.');
+        }
         log.info('[IPC] backend.approveTeam completed successfully');
       } catch (approveErr) {
         log.error('[IPC] backend.approveTeam threw error:', approveErr.message);
@@ -214,7 +221,12 @@ async function boot() {
       }
       const { deviceId, teamName } = payload;
       log.info('[IPC] Calling backend.declineTeam...');
-      backend.declineTeam(deviceId, teamName);
+      const declineSuccess = backend.declineTeam(deviceId, teamName);
+      log.info('[IPC] backend.declineTeam returned:', declineSuccess);
+      if (!declineSuccess) {
+        log.error('[IPC] ❌ backend.declineTeam returned false - message may not have been sent');
+        throw new Error('Failed to send TEAM_DECLINED message to player. Check player WebSocket connection state.');
+      }
       log.info('[IPC] backend.declineTeam completed successfully');
       return { declined: true };
     } catch (err) {
