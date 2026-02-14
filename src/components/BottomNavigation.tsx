@@ -62,11 +62,24 @@ interface StatusBarProps {
   // Timer state
   isOnTheSpotTimerRunning?: boolean; // Disable scoring controls when on-the-spot timer is running
   isQuizPackTimerRunning?: boolean; // Disable scoring controls when quiz pack timer is running
+  // Bottom Navigation popup states from parent
+  bottomNavPopupStates?: {
+    teamPhotos: boolean;
+    clearScores: boolean;
+    emptyLobby: boolean;
+  };
+  onBottomNavPopupToggle?: (popupName: string, isOpen: boolean) => void;
 }
 
 interface ExtendedStatusBarProps extends StatusBarProps {
   leftSidebarWidth?: number;
   showQuizPackDisplay?: boolean;
+  bottomNavPopupStates?: {
+    teamPhotos: boolean;
+    clearScores: boolean;
+    emptyLobby: boolean;
+  };
+  onBottomNavPopupToggle?: (popupName: string, isOpen: boolean) => void;
 }
 
 interface GameModeConfigPanelProps {
@@ -478,6 +491,8 @@ export function StatusBar({
   onOpenBuzzersManagement,
   isOnTheSpotTimerRunning = false,
   isQuizPackTimerRunning = false,
+  bottomNavPopupStates = { teamPhotos: false, clearScores: false, emptyLobby: false },
+  onBottomNavPopupToggle,
 }: ExtendedStatusBarProps) {
   // Ref to store the photo refresh timeout ID for cleanup
   const photoRefreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -490,15 +505,16 @@ export function StatusBar({
     teamPhotosAutoApprove,
     updateTeamPhotosAutoApprove
   } = useSettings();
-  
-  // Clear scores confirmation dialog state
-  const [showClearScoresDialog, setShowClearScoresDialog] = useState(false);
-  
-  // Empty lobby confirmation dialog state
-  const [showEmptyLobbyDialog, setShowEmptyLobbyDialog] = useState(false);
-  
-  // Team photos popup state
-  const [showTeamPhotosPopup, setShowTeamPhotosPopup] = useState(false);
+
+  // Use popup states from parent props if provided
+  const showClearScoresDialog = bottomNavPopupStates.clearScores;
+  const setShowClearScoresDialog = (value: boolean) => onBottomNavPopupToggle?.('clearScores', value);
+
+  const showEmptyLobbyDialog = bottomNavPopupStates.emptyLobby;
+  const setShowEmptyLobbyDialog = (value: boolean) => onBottomNavPopupToggle?.('emptyLobby', value);
+
+  const showTeamPhotosPopup = bottomNavPopupStates.teamPhotos;
+  const setShowTeamPhotosPopup = (value: boolean) => onBottomNavPopupToggle?.('teamPhotos', value);
   const [pendingPhotos, setPendingPhotos] = useState<Array<{ deviceId: string; teamName: string; teamPhoto: string }>>([]);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [photoStatuses, setPhotoStatuses] = useState<{ [deviceId: string]: 'pending' | 'approved' | 'declined' }>({});

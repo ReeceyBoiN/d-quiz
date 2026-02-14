@@ -455,6 +455,13 @@ export function QuizHost() {
   // Buzzers management state
   const [showBuzzersManagement, setShowBuzzersManagement] = useState(false);
 
+  // Bottom Navigation popup states - consolidated for auto-close on navigation
+  const [bottomNavPopupStates, setBottomNavPopupStates] = useState({
+    teamPhotos: false,
+    clearScores: false,
+    emptyLobby: false,
+  });
+
   // Hide question state - when true, don't send question to players/external display
   const [hideQuestionMode, setHideQuestionMode] = useState(false);
 
@@ -1211,6 +1218,21 @@ export function QuizHost() {
     // Reset game timer start time
     setGameTimerStartTime(null);
   };
+
+  // Helper function to close all UI overlays (TeamWindow and BottomNavigation popups)
+  // This is called when navigating to a different tab or opening new UI elements
+  // NOTE: Does NOT close game modes - those are preserved in background
+  const handleCloseAllOverlays = useCallback(() => {
+    // Close team window modal
+    setSelectedTeamForWindow(null);
+
+    // Close all BottomNavigation popups
+    setBottomNavPopupStates({
+      teamPhotos: false,
+      clearScores: false,
+      emptyLobby: false,
+    });
+  }, []);
 
   // Play explosion sound effect using Web Audio API
   const playExplosionSound = () => {
@@ -2215,6 +2237,8 @@ export function QuizHost() {
 
   // Handle buzzers management open
   const handleOpenBuzzersManagement = () => {
+    // Close all UI overlays before opening buzzers management
+    handleCloseAllOverlays();
     setShowBuzzersManagement(true);
     setActiveTab("teams"); // Switch to teams tab
   };
@@ -2242,10 +2266,10 @@ export function QuizHost() {
 
   // Handle tab changes with keypad interface consideration
   const handleTabChange = (tab: "teams" | "livescreen" | "handset" | "leaderboard" | "leaderboard-reveal" | "home" | "user-status") => {
-    // If team window is open and user clicks home, close team window
-    if (selectedTeamForWindow && tab === "home") {
-      setSelectedTeamForWindow(null);
-    }
+    // Close all UI overlays (TeamWindow and BottomNav popups) when switching tabs
+    // This ensures new content appears on top and old modals don't linger behind
+    handleCloseAllOverlays();
+
     // If keypad interface is open and user clicks home, close keypad interface
     if (showKeypadInterface && tab === "home") {
       setShowKeypadInterface(false);
@@ -3964,9 +3988,15 @@ export function QuizHost() {
     setSelectedTeamForWindow(teamId);
   };
 
-  // Handle closing team window
+  // Handle closing team window and all associated popups
   const handleCloseTeamWindow = () => {
     setSelectedTeamForWindow(null);
+    // Also close any open BottomNavigation popups when closing team window
+    setBottomNavPopupStates({
+      teamPhotos: false,
+      clearScores: false,
+      emptyLobby: false,
+    });
   };
 
   // Handle team location change
@@ -4714,6 +4744,19 @@ export function QuizHost() {
             onOpenBuzzersManagement={handleOpenBuzzersManagement}
             hostControllerEnabled={hostControllerEnabled}
             onToggleHostController={handleToggleHostController}
+            // Bottom navigation popup states
+            bottomNavPopupStates={bottomNavPopupStates}
+            onBottomNavPopupToggle={(popupName, isOpen) => {
+              // Close all overlays first if opening a popup
+              if (isOpen) {
+                handleCloseAllOverlays();
+              }
+              // Then update the specific popup state
+              setBottomNavPopupStates(prev => ({
+                ...prev,
+                [popupName as keyof typeof bottomNavPopupStates]: isOpen
+              }));
+            }}
           />
         </div>
       </div>
