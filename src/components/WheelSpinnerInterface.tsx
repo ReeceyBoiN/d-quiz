@@ -17,7 +17,7 @@ interface Quiz {
 }
 
 interface WheelSpinnerInterfaceProps {
-  quizzes: Quiz[];
+  teams: Quiz[];
   onBack: () => void;
   onHome: () => void;
   onAwardPoints?: (correctTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner", fastestTeamId?: string) => void; // Award points callback
@@ -44,7 +44,7 @@ const COLORS = [
   '#ff5722', '#8e44ad', '#795548', '#ff9800', '#4caf50'
 ];
 
-export function WheelSpinnerInterface({ quizzes = [], onBack, onHome, onAwardPoints, externalWindow, onExternalDisplayUpdate }: WheelSpinnerInterfaceProps) {
+export function WheelSpinnerInterface({ teams = [], onBack, onHome, onAwardPoints, externalWindow, onExternalDisplayUpdate }: WheelSpinnerInterfaceProps) {
   const [contentType, setContentType] = useState<WheelContentType>('teams');
   const [wheelItems, setWheelItems] = useState<WheelItem[]>([]);
   const [customPointValues, setCustomPointValues] = useState<number[]>([50, 100, 150, 200, 250, 300, 350, 400, 450, 500]);
@@ -64,9 +64,9 @@ export function WheelSpinnerInterface({ quizzes = [], onBack, onHome, onAwardPoi
   // Generate wheel items based on content type
   useEffect(() => {
     let items: WheelItem[] = [];
-    
+
     if (contentType === 'teams') {
-      items = quizzes
+      items = teams
         .filter(quiz => !removedItems.has(quiz.id))
         .map((quiz, index) => ({
           id: quiz.id,
@@ -90,10 +90,10 @@ export function WheelSpinnerInterface({ quizzes = [], onBack, onHome, onAwardPoi
           color: COLORS[index % COLORS.length]
         }));
     }
-    
+
     setWheelItems(items);
     setWinner(null);
-  }, [contentType, quizzes, customPointValues, customWheelItems, removedItems]);
+  }, [contentType, teams, customPointValues, customWheelItems, removedItems]);
 
   // Update external display when wheel spinner is active
   useEffect(() => {
@@ -126,13 +126,14 @@ export function WheelSpinnerInterface({ quizzes = [], onBack, onHome, onAwardPoi
   }, []);
 
   // Cleanup effect when component unmounts - return external display to basic mode
+  // Empty dependencies: cleanup only runs on unmount, not on prop changes
   useEffect(() => {
     return () => {
       if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
         onExternalDisplayUpdate('basic');
       }
     };
-  }, [externalWindow, onExternalDisplayUpdate]);
+  }, []);
 
   // Spacebar shortcut for spinning the wheel
   useEffect(() => {
@@ -347,7 +348,7 @@ export function WheelSpinnerInterface({ quizzes = [], onBack, onHome, onAwardPoi
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="teams">
-                    Teams ({quizzes.length} teams)
+                    Teams ({teams.length} teams)
                   </SelectItem>
                   <SelectItem value="random-points">
                     Random Points ({customPointValues.length} slices)
@@ -490,24 +491,24 @@ export function WheelSpinnerInterface({ quizzes = [], onBack, onHome, onAwardPoi
           </div>
 
           {/* Main Wheel Display */}
-          <div className="flex-1 flex flex-col items-center justify-center overflow-hidden min-h-0 gap-6">
-            <div className="relative flex-shrink-0">
+          <div className="flex-1 flex flex-col items-center justify-center overflow-visible min-h-0 gap-6">
+            <div className="relative flex-shrink-0 flex items-center justify-center px-6" style={{ width: '100%', maxWidth: '600px', aspectRatio: '1' }}>
               {/* Pointer - moved to right side */}
               <div className="absolute top-1/2 right-0 transform translate-x-3 -translate-y-1/2 z-10">
                 <div className="w-0 h-0 border-t-9 border-b-9 border-r-15 border-t-transparent border-b-transparent border-r-[#f39c12] drop-shadow-lg"></div>
               </div>
-              
+
               {/* Wheel SVG */}
               <div
                 ref={wheelRef}
-                className="transition-transform ease-out"
+                className="transition-transform ease-out w-full h-full"
                 style={{
                   transform: `rotate(${rotation}deg)`,
                   transitionDuration: isSpinning ? `${spinDuration}ms` : '0ms',
                   transitionTimingFunction: 'cubic-bezier(0.17, 0.67, 0.12, 0.99)'
                 }}
               >
-                <svg width="400" height="400" className="drop-shadow-xl">
+                <svg viewBox="0 0 400 400" width="100%" height="100%" className="drop-shadow-xl">
                   <circle
                     cx="200"
                     cy="200"

@@ -42,7 +42,7 @@ import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio"
 import { playApplauseSound, playFailSound } from "../utils/audioUtils";
 import { calculateTeamPoints, rankCorrectTeams, shouldAutoDisableGoWide, type ScoringConfig } from "../utils/scoringEngine";
 import { getAnswerText, createHandleComputeAndAwardScores, createHandleApplyEvilModePenalty } from "../utils/quizHostHelpers";
-import { saveGameState, createGameStateSnapshot, type RoundSettings } from "../utils/gameStatePersistence";
+import { saveGameState, loadGameState, clearGameState, createGameStateSnapshot, type RoundSettings } from "../utils/gameStatePersistence";
 import { Resizable } from "re-resizable";
 import { Button } from "./ui/button";
 import { ChevronRight } from "lucide-react";
@@ -492,6 +492,11 @@ export function QuizHost() {
   const gameTimerStartTimeRef = useRef<number | null>(null);
   const flowStateTotalTimeRef = useRef<number>(0);
 
+  // Crash recovery and auto-save refs
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const periodicSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const hasLoadedInitialStateRef = useRef(false);
+
   // Sync refs with state changes to avoid listener re-registration
   useEffect(() => {
     gameTimerStartTimeRef.current = gameTimerStartTime;
@@ -525,6 +530,118 @@ export function QuizHost() {
     // Trim whitespace and remove .mp3 extension if present
     return buzzerSound.trim().replace(/\.mp3$/i, '') + '.mp3';
   };
+
+  // Debounced auto-save function - called after team roster changes
+  const debouncedSaveGameState = useCallback(() => {
+    // Clear any existing timeout
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Set new timeout to save after 2 seconds of inactivity
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Create snapshot of current team data and settings
+        const roundSettings: RoundSettings = {
+          pointsValue: currentRoundPoints ?? defaultPoints,
+          speedBonusValue: currentRoundSpeedBonus ?? defaultSpeedBonus,
+          evilModeEnabled,
+          punishmentModeEnabled: punishmentEnabled,
+          staggeredEnabled,
+          goWideEnabled,
+        };
+
+        const snapshot = createGameStateSnapshot(
+          quizzes,
+          roundSettings,
+          [],
+          0
+        );
+
+        await saveGameState(snapshot);
+        console.log('[Crash Recovery] Auto-save completed - teams:', quizzes.length);
+      } catch (err) {
+        console.error('[Crash Recovery] Error during auto-save:', err);
+      }
+    }, 2000); // 2 second debounce on team changes
+  }, [quizzes, currentRoundPoints, defaultPoints, currentRoundSpeedBonus, defaultSpeedBonus, evilModeEnabled, punishmentEnabled, staggeredEnabled, goWideEnabled]);
+
+  // Auto-load on component mount
+  useEffect(() => {
+    if (hasLoadedInitialStateRef.current) return; // Only load once
+    hasLoadedInitialStateRef.current = true;
+
+    const loadSavedState = async () => {
+      try {
+        const savedState = await loadGameState();
+        if (savedState && savedState.teams && savedState.teams.length > 0) {
+          // Restore teams from saved state
+          const restoredTeams = savedState.teams.map(team => ({
+            id: team.id,
+            name: team.name,
+            type: 'test' as const,
+            score: team.score,
+            photoUrl: team.photoUrl,
+            buzzerSound: team.buzzSound,
+            backgroundColor: team.backgroundColor,
+          }));
+
+          // Set restored teams
+          setQuizzes(restoredTeams);
+
+          // Restore round settings
+          if (savedState.roundSettings) {
+            setCurrentRoundPoints(savedState.roundSettings.pointsValue);
+            setCurrentRoundSpeedBonus(savedState.roundSettings.speedBonusValue);
+          }
+
+          console.log('[Crash Recovery] Session restored with', restoredTeams.length, 'teams');
+        }
+      } catch (err) {
+        console.error('[Crash Recovery] Error loading saved state:', err);
+      }
+    };
+
+    loadSavedState();
+  }, []);
+
+  // Periodic auto-save every 30 seconds
+  useEffect(() => {
+    // Start periodic save interval
+    periodicSaveIntervalRef.current = setInterval(async () => {
+      if (quizzes.length > 0) {
+        try {
+          const roundSettings: RoundSettings = {
+            pointsValue: currentRoundPoints ?? defaultPoints,
+            speedBonusValue: currentRoundSpeedBonus ?? defaultSpeedBonus,
+            evilModeEnabled,
+            punishmentModeEnabled: punishmentEnabled,
+            staggeredEnabled,
+            goWideEnabled,
+          };
+
+          const snapshot = createGameStateSnapshot(
+            quizzes,
+            roundSettings,
+            [],
+            0
+          );
+
+          await saveGameState(snapshot);
+          console.log('[Crash Recovery] Periodic auto-save completed - teams:', quizzes.length);
+        } catch (err) {
+          console.error('[Crash Recovery] Error during periodic auto-save:', err);
+        }
+      }
+    }, 30000); // Every 30 seconds
+
+    // Cleanup on unmount
+    return () => {
+      if (periodicSaveIntervalRef.current) {
+        clearInterval(periodicSaveIntervalRef.current);
+      }
+    };
+  }, [quizzes, currentRoundPoints, defaultPoints, currentRoundSpeedBonus, defaultSpeedBonus, evilModeEnabled, punishmentEnabled, staggeredEnabled, goWideEnabled]);
 
   // Sync fastestTeamData with updated team data when quizzes change
   useEffect(() => {
@@ -764,6 +881,27 @@ export function QuizHost() {
       timerIsMountedRef.current = false;
     };
   }, []);
+
+  // Close external display when host window closes (browser popout scenario)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Only show confirmation if there are teams (i.e., quiz in progress or lobby has teams)
+      if (quizzes.length > 0) {
+        e.preventDefault();
+        // Most modern browsers ignore custom messages and show a generic dialog
+        e.returnValue = '';
+        return '';
+      }
+      // Close external display even without confirmation if no teams
+      closeExternalDisplay();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [quizzes.length]);
 
   // Handle network player joins
   useEffect(() => {
@@ -1044,6 +1182,8 @@ export function QuizHost() {
 
         setQuizzes(prev => [...prev, newTeam]);
         console.log('✅ Added team to quizzes');
+        // Trigger debounced auto-save for crash recovery
+        debouncedSaveGameState();
       }
 
       // Approve via IPC (only works in Electron)
@@ -2547,6 +2687,8 @@ export function QuizHost() {
             : q
         ));
         console.log(`🔄 Network player reconnected: ${teamName} (${deviceId}) - score preserved: ${existingTeam.score}`);
+        // Trigger debounced auto-save for crash recovery
+        debouncedSaveGameState();
       } else {
         // New team - check if quiz is in progress (any team has points)
         const hasStartedQuiz = quizzesRef.current.some(q => (q.score || 0) > 0);
@@ -2569,6 +2711,8 @@ export function QuizHost() {
             // Sort by score after adding
             return updated.sort((a, b) => (b.score || 0) - (a.score || 0));
           });
+          // Trigger debounced auto-save for crash recovery
+          debouncedSaveGameState();
 
           // Auto-approve the team
           // PHASE 3 FIX: Increase setTimeout from 0 to 150ms to prevent race condition
@@ -2621,6 +2765,8 @@ export function QuizHost() {
             : q
         ));
         console.log(`📡 Network player disconnected: ${existingTeam.name} (${deviceId}) - data preserved, score: ${existingTeam.score}`);
+        // Trigger debounced auto-save for crash recovery
+        debouncedSaveGameState();
       } else {
         console.log(`⚠️ PLAYER_DISCONNECT received for unknown team: ${deviceId}`);
       }
@@ -2701,6 +2847,8 @@ export function QuizHost() {
             : q
         ));
         console.log(`[QuizHost] ✅ Player active: ${existingTeam.name} (${deviceId}) - reason: ${reason} - data preserved, score: ${existingTeam.score}`);
+        // Trigger debounced auto-save for crash recovery
+        debouncedSaveGameState();
       } else {
         console.log(`[QuizHost] ⚠️  PLAYER_ACTIVE received for unknown team: ${deviceId}`);
       }
@@ -2804,6 +2952,8 @@ export function QuizHost() {
               return q;
             });
           });
+          // Trigger debounced auto-save for crash recovery
+          debouncedSaveGameState();
         } else {
           console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: Team not found by ID or name. deviceId:', deviceId, 'playerId:', playerId, 'teamName:', teamName);
         }
@@ -3717,11 +3867,13 @@ export function QuizHost() {
           return sortedTeams;
         });
         setPendingSort(false);
+        // Trigger debounced auto-save for crash recovery
+        debouncedSaveGameState();
       }, 500);
-      
+
       return newQuizzes;
     });
-  }, [teamLayoutMode, scoresHidden, scoresPaused]);
+  }, [teamLayoutMode, scoresHidden, scoresPaused, debouncedSaveGameState]);
 
   // Create handleComputeAndAwardScores from factory function with useCallback
   const handleComputeAndAwardScores = useCallback(
@@ -3877,20 +4029,24 @@ export function QuizHost() {
   }, [teamLayoutMode, scoresHidden, scoresPaused]);
 
   const handleNameChange = (teamId: string, newName: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
         quiz.id === teamId ? { ...quiz, name: newName } : quiz
       )
     );
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Delete team functionality
   const handleDeleteTeam = (teamId: string, teamName: string, score: number) => {
     // If team has no points (score is 0), delete immediately
     if (score === 0) {
-      setQuizzes(prevQuizzes => 
+      setQuizzes(prevQuizzes =>
         prevQuizzes.filter(quiz => quiz.id !== teamId)
       );
+      // Trigger debounced auto-save for crash recovery
+      debouncedSaveGameState();
     } else {
       // If team has points, show confirmation dialog
       setTeamToDelete({ id: teamId, name: teamName, score });
@@ -3900,9 +4056,11 @@ export function QuizHost() {
 
   const confirmDeleteTeam = () => {
     if (teamToDelete) {
-      setQuizzes(prevQuizzes => 
+      setQuizzes(prevQuizzes =>
         prevQuizzes.filter(quiz => quiz.id !== teamToDelete.id)
       );
+      // Trigger debounced auto-save for crash recovery
+      debouncedSaveGameState();
       setTeamToDelete(null);
       setShowDeleteConfirm(false);
     }
@@ -4018,93 +4176,111 @@ export function QuizHost() {
         quiz.id === teamId ? { ...quiz, buzzerSound: normalizedBuzzerSound } : quiz
       )
     );
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Handle background color change
   const handleBackgroundColorChange = (teamId: string, backgroundColor: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
         quiz.id === teamId ? { ...quiz, backgroundColor } : quiz
       )
     );
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Handle photo upload
   const handlePhotoUpload = (teamId: string, photoUrl: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
         quiz.id === teamId ? { ...quiz, photoUrl } : quiz
       )
     );
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Handle kick team
   const handleKickTeam = (teamId: string) => {
     setQuizzes(prevQuizzes => prevQuizzes.filter(quiz => quiz.id !== teamId));
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Handle disconnect team
   const handleDisconnectTeam = (teamId: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId 
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
+        quiz.id === teamId
           ? { ...quiz, disconnected: true }
           : quiz
       )
     );
     console.log(`Team ${teamId} has been disconnected`);
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Handle reconnect team
   const handleReconnectTeam = (teamId: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId 
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
+        quiz.id === teamId
           ? { ...quiz, disconnected: false }
           : quiz
       )
     );
     console.log(`Team ${teamId} has been reconnected`);
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Handle block team
   const handleBlockTeam = (teamId: string, blocked: boolean) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId 
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
+        quiz.id === teamId
           ? { ...quiz, blocked }
           : quiz
       )
     );
     console.log(`Team ${teamId} has been ${blocked ? 'blocked' : 'unblocked'}`);
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Handle scramble team keypad
   const handleScrambleKeypad = (teamId: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId 
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
+        quiz.id === teamId
           ? { ...quiz, scrambled: !quiz.scrambled }
           : quiz
       )
     );
     console.log(`Team ${teamId}'s keypad has been ${quizzes.find(q => q.id === teamId)?.scrambled ? 'unscrambled' : 'scrambled'}`);
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Handle global scramble keypad
   const handleGlobalScrambleKeypad = () => {
     const totalTeams = quizzes.length;
     const scrambledTeams = quizzes.filter(team => team.scrambled).length;
-    
+
     // If more than half are scrambled, unscramble all
     // If half or less are scrambled, scramble all
     const shouldScrambleAll = scrambledTeams <= totalTeams / 2;
-    
-    setQuizzes(prevQuizzes => 
+
+    setQuizzes(prevQuizzes =>
       prevQuizzes.map(quiz => ({ ...quiz, scrambled: shouldScrambleAll }))
     );
-    
+
     console.log(`${shouldScrambleAll ? 'Scrambled' : 'Unscrambled'} all team keypads`);
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Handle pause scores toggle
@@ -4123,9 +4299,11 @@ export function QuizHost() {
 
   // Clear all team scores
   const handleClearScores = () => {
-    setQuizzes(prevQuizzes => 
+    setQuizzes(prevQuizzes =>
       prevQuizzes.map(quiz => ({ ...quiz, score: 0 }))
     );
+    // Trigger debounced auto-save for crash recovery
+    debouncedSaveGameState();
   };
 
   // Empty lobby - delete all teams and clear crash recovery

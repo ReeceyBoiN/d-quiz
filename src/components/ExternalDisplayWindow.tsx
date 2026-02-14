@@ -810,6 +810,134 @@ export function ExternalDisplayWindow() {
           />
         );
 
+      case 'wheel-spinner': {
+        const wheelData = displayData.wheelSpinnerData || {};
+        const wheelItems = wheelData.wheelItems || [];
+        const isSpinning = wheelData.isSpinning || false;
+        const rotation = wheelData.rotation || 0;
+        const winner = wheelData.winner || null;
+        const spinDuration = wheelData.spinDuration || 0;
+
+        const renderWheelSegments = () => {
+          if (wheelItems.length === 0) return null;
+
+          const itemAngle = 360 / wheelItems.length;
+
+          return wheelItems.map((item: any, index: number) => {
+            const startAngle = index * itemAngle;
+            const endAngle = (index + 1) * itemAngle;
+            const midAngle = (startAngle + endAngle) / 2;
+
+            const radius = 200;
+            const centerX = 200;
+            const centerY = 200;
+
+            const x1 = centerX + Math.cos((startAngle - 90) * Math.PI / 180) * radius;
+            const y1 = centerY + Math.sin((startAngle - 90) * Math.PI / 180) * radius;
+            const x2 = centerX + Math.cos((endAngle - 90) * Math.PI / 180) * radius;
+            const y2 = centerY + Math.sin((endAngle - 90) * Math.PI / 180) * radius;
+
+            const largeArcFlag = itemAngle > 180 ? 1 : 0;
+
+            const pathData = [
+              `M ${centerX} ${centerY}`,
+              `L ${x1} ${y1}`,
+              `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+              'Z'
+            ].join(' ');
+
+            const textRadius = radius * 0.85;
+            const textX = centerX + Math.cos((midAngle - 90) * Math.PI / 180) * textRadius;
+            const textY = centerY + Math.sin((midAngle - 90) * Math.PI / 180) * textRadius;
+
+            return (
+              <g key={item.id}>
+                <path
+                  d={pathData}
+                  fill={item.color}
+                  stroke="#2c3e50"
+                  strokeWidth="2"
+                />
+                <text
+                  x={textX}
+                  y={textY}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="white"
+                  fontSize="14"
+                  fontWeight="bold"
+                  transform={`rotate(${midAngle - 90}, ${textX}, ${textY})`}
+                >
+                  {item.label}
+                </text>
+              </g>
+            );
+          });
+        };
+
+        return (
+          <div style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1f2937', position: 'relative', overflow: 'hidden' }}>
+            {/* Pointer - right side */}
+            <div style={{ position: 'absolute', top: '50%', right: 0, transform: 'translate(12px, -50%)', zIndex: 20 }}>
+              <div style={{ width: 0, height: 0, borderTop: '36px solid transparent', borderBottom: '36px solid transparent', borderRight: '60px solid #f39c12', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' }}></div>
+            </div>
+
+            {/* Wheel Container */}
+            <div style={{ position: 'relative', width: '90vmin', height: '90vmin', maxWidth: '800px', maxHeight: '800px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {/* Rotating Wheel */}
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  transform: `rotate(${rotation}deg)`,
+                  transitionDuration: isSpinning ? `${spinDuration}ms` : '0ms',
+                  transitionTimingFunction: 'cubic-bezier(0.17, 0.67, 0.12, 0.99)',
+                }}
+              >
+                <svg viewBox="0 0 400 400" width="100%" height="100%" style={{ filter: 'drop-shadow(0 10px 25px rgba(0,0,0,0.5))' }}>
+                  {/* Outer circle */}
+                  <circle cx="200" cy="200" r="200" fill="#2c3e50" stroke="#4a5568" strokeWidth="4" />
+
+                  {/* Wheel segments */}
+                  {renderWheelSegments()}
+
+                  {/* Center circle */}
+                  <circle cx="200" cy="200" r="28" fill="#34495e" stroke="#4a5568" strokeWidth="3" />
+                  <text x="200" y="200" textAnchor="middle" dominantBaseline="middle" fill="#ecf0f1" fontSize="14" fontWeight="bold">
+                    SPIN
+                  </text>
+                </svg>
+              </div>
+            </div>
+
+            {/* Winner Overlay - full screen */}
+            {winner && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 30,
+                animation: 'scaleInAnimation 0.5s ease-out'
+              }}>
+                <div style={{ textAlign: 'center', color: 'white' }}>
+                  <div style={{ fontSize: 'clamp(4rem, 15vw, 12rem)', marginBottom: '20px', animation: 'bounce 1s infinite' }}>🎉</div>
+                  <h2 style={{ fontSize: 'clamp(3rem, 10vw, 8rem)', fontWeight: 'bold', margin: '0 0 20px 0', color: '#f39c12' }}>
+                    WINNER!
+                  </h2>
+                  <div style={{ fontSize: 'clamp(2rem, 8vw, 6rem)', fontWeight: 'bold', color: 'white', textShadow: '0 4px 20px rgba(243, 156, 18, 0.5)' }}>
+                    {winner}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
       case 'scores':
         return (
           <div style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px' }}>

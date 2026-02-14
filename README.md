@@ -29,17 +29,13 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   Buzz in mode needs just making in general hahaha
 
-  wheel spinner external display no worky + wheel in wheel spinner is not scaled for GUI
-
-  Wheel spinner needs function for host to create a custom wheel and have it saved
+  --Wheel spinner needs function for host to create a custom wheel and have it saved
 
   team grid needs to be smaller when viewing the teams info when clicking on a team from the teams list
 
   clicking on the no wifi connected button should provide troubleshooting steps and tools
 
   The no wifi button is currently just for visual effect and not connected to anything on the backend
-
-  if the host closes the application, if there is an external display window currently open it should close it, same if the huost unticks the external display box on the top navigation as currently it keeps the external display window open
 
   in settings, external screen settings should have individual controlls to increase / decreas the size of the text 
 

@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, dialog } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -35,6 +35,37 @@ function createMainWindow() {
     // ✅ Load production build from dist
     win.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
+
+  // Handle close with confirmation dialog
+  win.on('close', (e) => {
+    // Check if there are teams loaded (quiz in progress or lobby has teams)
+    // We do this by checking if the user has interacted with the app
+    // For simplicity, we'll show a confirmation dialog
+
+    // Prevent default close
+    e.preventDefault();
+
+    // Show confirmation dialog
+    dialog.showMessageBox(win, {
+      type: 'question',
+      buttons: ['Cancel', 'Close'],
+      defaultId: 0,
+      title: 'Close Application',
+      message: 'Are you sure you want to close the application?',
+      detail: 'If you close without saving, you may lose quiz progress.'
+    }).then((result) => {
+      if (result.response === 1) {
+        // User clicked 'Close' button
+        // Close external display window first
+        if (externalWindow && !externalWindow.isDestroyed()) {
+          externalWindow.close();
+        }
+        // Then close the main window
+        win.destroy();
+      }
+      // If result.response === 0, user clicked 'Cancel' - do nothing
+    });
+  });
 
   return win;
 }
