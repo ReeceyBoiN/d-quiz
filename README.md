@@ -37,7 +37,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   clicking on the no wifi connected button should provide troubleshooting steps and tools
 
-  no wifi button is currently just for visual effect and not connected to anything on the backend
+  The no wifi button is currently just for visual effect and not connected to anything on the backend
 
   if the host closes the application, if there is an external display window currently open it should close it, same if the huost unticks the external display box on the top navigation as currently it keeps the external display window open
 
@@ -47,7 +47,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   in setting, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
 
-  in settings, waiting room should have the ability to display waiting room images
+  in settings, waiting room should have the ability to display waiting room images.
 
   x Scaling visually needs adding as its currently too cramped on the screen slightly whole software wide. 
  
