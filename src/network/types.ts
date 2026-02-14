@@ -6,6 +6,7 @@ export type PlayerMessageType =
   | 'PLAYER_JOIN'      // Player registers team name
   | 'PLAYER_ANSWER'    // Player submits answer
   | 'PLAYER_BUZZ'      // Player buzzes in
+  | 'PLAYER_BUZZER_SELECT'  // Player selects a buzzer audio file
   | 'PLAYER_DISCONNECT';
 
 export type HostMessageType =
@@ -42,4 +43,14 @@ export interface NetworkPlayer {
   teamName: string;
   timestamp: number;
   isConnected: boolean;
+  buzzerSound?: string; // Selected buzzer audio filename
+}
+
+export interface PlayerBuzzerSelectMessage {
+  type: 'PLAYER_BUZZER_SELECT';
+  playerId: string;
+  deviceId: string;
+  teamName: string;
+  buzzerSound: string; // Buzzer audio filename
+  timestamp?: number;
 }

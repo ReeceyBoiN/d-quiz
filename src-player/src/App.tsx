@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { TeamNameEntry } from './components/TeamNameEntry';
+import { BuzzerSelectionModal } from './components/BuzzerSelectionModal';
 import { QuestionDisplay } from './components/QuestionDisplay';
 import { WaitingScreen } from './components/WaitingScreen';
 import { PlayerDisplayManager } from './components/PlayerDisplayManager';
@@ -27,12 +28,28 @@ interface LeaderboardEntry {
   position: number;
 }
 
+interface PendingApprovalData {
+  displayMode: DisplayMode;
+  slideshowImages: SlideshowImage[];
+  rotationInterval: number;
+  leaderboardScores: LeaderboardEntry[];
+}
+
+interface PendingMessage {
+  type: string;
+  data: any;
+}
+
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display'>('team-entry');
+  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'buzzer-selection' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display'>('team-entry');
+  const [selectedBuzzers, setSelectedBuzzers] = useState<Record<string, string>>({}); // deviceId -> buzzerSound mapping (other players)
+  const [confirmedBuzzer, setConfirmedBuzzer] = useState<string | null>(null); // Current player's confirmed buzzer
   const [teamName, setTeamName] = useState('');
   const [playerId] = useState(() => `player-${Math.random().toString(36).slice(2, 9)}`);
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
+  const [pendingApprovalData, setPendingApprovalData] = useState<PendingApprovalData | null>(null);
+  const [pendingMessage, setPendingMessage] = useState<PendingMessage | null>(null);
   const [showTimer, setShowTimer] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [totalTimerLength, setTotalTimerLength] = useState(30);
@@ -71,7 +88,16 @@ export default function App() {
   const visibilityDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { settings, isLoaded: playerSettingsLoaded } = usePlayerSettings();
+  const { settings, isLoaded: playerSettingsLoaded, updateBuzzerSound } = usePlayerSettings();
+
+  // Helper function to determine if we should ignore screen transitions during buzzer selection
+  const shouldIgnoreScreenTransition = useCallback((messageType: string, currentScreenState: string): boolean => {
+    const shouldIgnore = currentScreenState === 'buzzer-selection';
+    if (shouldIgnore) {
+      console.log(`[Player] ⏸️  Deferring ${messageType} during buzzer selection`);
+    }
+    return shouldIgnore;
+  }, []);
 
   // Handle 5-second display of fastest team overlay
   useEffect(() => {
@@ -211,12 +237,29 @@ export default function App() {
     console.log('[handleMessage] Callback executed');
     console.log('[handleMessage] - Current teamName:', teamName);
     console.log('[handleMessage] - Current isApproved:', isApproved);
+
+    // Handle PLAYER_BUZZER_SELECT broadcasts from other players
+    if ((message.type as any) === 'PLAYER_BUZZER_SELECT') {
+      try {
+        const buzzerMessage = message as any;
+        console.log('[Player] Received PLAYER_BUZZER_SELECT from', buzzerMessage.teamName, ':', buzzerMessage.buzzerSound);
+        setSelectedBuzzers((prev) => ({
+          ...prev,
+          [buzzerMessage.deviceId]: buzzerMessage.buzzerSound,
+        }));
+      } catch (err) {
+        console.error('[Player] Error handling PLAYER_BUZZER_SELECT:', err);
+      }
+      return;
+    }
+
     switch (message.type) {
       case 'TEAM_APPROVED':
         try {
           console.log('[Player] 🎉🎉🎉 TEAM_APPROVED HANDLER ENTERED 🎉🎉🎉');
           console.log('[Player] - Current teamName state:', teamName);
           console.log('[Player] - Current isApproved state:', isApproved);
+          console.log('[Player] - Current screen:', currentScreen);
           console.log('[Player] - Message object:', JSON.stringify(message).substring(0, 200));
           console.log('[Player] - message.data:', message.data);
           console.log('[Player] - displayData:', message.data?.displayData);
@@ -236,6 +279,10 @@ export default function App() {
           const currentGameState = displayData?.currentGameState;
           console.log('[Player] 🎮 currentGameState received:', currentGameState ? 'YES' : 'NO');
           console.log('[Player] ❓ currentQuestion in currentGameState:', currentGameState?.currentQuestion ? 'YES' : 'NO');
+
+          // Check if we're currently in buzzer selection screen
+          const isInBuzzerSelection = currentScreen === 'buzzer-selection';
+          console.log('[Player] 🎺 In buzzer selection screen:', isInBuzzerSelection);
 
           if (currentGameState?.currentQuestion) {
             // Late joiner - show current question immediately
@@ -261,6 +308,43 @@ export default function App() {
               setTimeRemaining(currentGameState.timerState.timeRemaining);
               setShowTimer(true);
             }
+          } else if (isInBuzzerSelection) {
+            // Buzzer selection in progress - save approval data without changing screen
+            console.log('[Player] ⏸️  Buzzer selection in progress - saving approval data for later');
+
+            // Extract and save display mode data
+            if (displayData) {
+              try {
+                const { mode, images, rotationInterval, scores } = displayData;
+                const approvalData: PendingApprovalData = {
+                  displayMode: mode || 'basic',
+                  slideshowImages: images || [],
+                  rotationInterval: rotationInterval || 10000,
+                  leaderboardScores: scores || [],
+                };
+                console.log('[Player] Saved pending approval data:', approvalData);
+                setPendingApprovalData(approvalData);
+              } catch (dataErr) {
+                console.error('❌ [Player] Error extracting displayData during buzzer selection:', dataErr);
+                setPendingApprovalData({
+                  displayMode: 'basic',
+                  slideshowImages: [],
+                  rotationInterval: 10000,
+                  leaderboardScores: [],
+                });
+              }
+            } else {
+              console.log('[Player] No displayData, saving default pending approval data');
+              setPendingApprovalData({
+                displayMode: 'basic',
+                slideshowImages: [],
+                rotationInterval: 10000,
+                leaderboardScores: [],
+              });
+            }
+
+            // Don't change screen - stay in buzzer-selection to let user select
+            console.log('[Player] Staying in buzzer-selection screen to allow user to select buzzer');
           } else {
             // Normal approval flow - show approval screen
             console.log('[Player] ✅ Normal approval flow: Showing approval screen for team:', teamName);
@@ -328,6 +412,12 @@ export default function App() {
         }
         break;
       case 'APPROVAL_PENDING':
+        if (shouldIgnoreScreenTransition('APPROVAL_PENDING', currentScreen)) {
+          // Save message for later processing
+          console.log('[Player] Saving APPROVAL_PENDING message for processing after buzzer selection');
+          setPendingMessage({ type: 'APPROVAL_PENDING', data: message.data });
+          return;
+        }
         setCurrentScreen('approval');
         break;
       case 'TEAM_DECLINED':
@@ -337,6 +427,13 @@ export default function App() {
         setCurrentScreen('declined');
         break;
       case 'QUESTION':
+        if (shouldIgnoreScreenTransition('QUESTION', currentScreen)) {
+          // Save question data for later processing
+          console.log('[Player] Saving QUESTION message for processing after buzzer selection');
+          setPendingMessage({ type: 'QUESTION', data: message.data });
+          return;
+        }
+
         // Cancel any pending display mode timer when question arrives
         if (displayModeTimerRef.current) {
           clearTimeout(displayModeTimerRef.current);
@@ -474,6 +571,13 @@ export default function App() {
         }
         break;
       case 'NEXT':
+        if (shouldIgnoreScreenTransition('NEXT', currentScreen)) {
+          // Save NEXT message for later processing
+          console.log('[Player] Saving NEXT message for processing after buzzer selection');
+          setPendingMessage({ type: 'NEXT', data: message.data });
+          return;
+        }
+
         console.log('[Player] NEXT message received - clearing all question state immediately');
         // Clear any pending timer lock delay when moving to next question
         clearTimerLockDelay();
@@ -510,6 +614,13 @@ export default function App() {
         }
         break;
       case 'PICTURE':
+        if (shouldIgnoreScreenTransition('PICTURE', currentScreen)) {
+          // Save PICTURE message for later processing
+          console.log('[Player] Saving PICTURE message for processing after buzzer selection');
+          setPendingMessage({ type: 'PICTURE', data: message.data });
+          return;
+        }
+
         setCurrentScreen('question');
         setShowAnswerFeedback(false);
         setIsAnswerCorrect(undefined);
@@ -524,6 +635,13 @@ export default function App() {
       case 'DISPLAY_UPDATE':
         try {
           console.log('[Player] Received DISPLAY_MODE/UPDATE:', message);
+
+          // Protect buzzer selection from any screen transitions
+          if (shouldIgnoreScreenTransition('DISPLAY_MODE', currentScreen)) {
+            console.log('[Player] Saving DISPLAY_MODE message for processing after buzzer selection');
+            setPendingMessage({ type: 'DISPLAY_MODE', data: message.data });
+            return;
+          }
 
           // Don't switch away from question/ready-for-question screens during active game
           // This prevents display modes (BASIC/SCORES/SLIDESHOW) from interrupting the question interface
@@ -658,7 +776,7 @@ export default function App() {
         // Score updates are handled on display side, just log here
         break;
     }
-  }, [teamName, currentQuestion, currentScreen, submittedAnswer, displayMode, clearTimerLockDelay]);
+  }, [teamName, currentQuestion, currentScreen, submittedAnswer, displayMode, clearTimerLockDelay, pendingApprovalData, shouldIgnoreScreenTransition]);
 
   const { isConnected, error } = useNetworkConnection({
     playerId,
@@ -694,6 +812,14 @@ export default function App() {
         console.log('[App] Team photo prefix (first 100 chars):', rejoinPayload.teamPhoto.substring(0, 100));
       } else {
         console.log('[App] Auto-rejoin PLAYER_JOIN payload includes teamPhoto: false');
+      }
+
+      // Include buzzer sound if set in settings
+      if (settings.buzzerSound) {
+        rejoinPayload.buzzerSound = settings.buzzerSound;
+        console.log('[App] Auto-rejoin PLAYER_JOIN payload includes buzzer: true, Sound:', settings.buzzerSound);
+      } else {
+        console.log('[App] Auto-rejoin PLAYER_JOIN payload includes buzzer: false');
       }
 
       console.log('[App] Auto-rejoin: Sending PLAYER_JOIN payload with fields:', Object.keys(rejoinPayload).join(', '));
@@ -887,7 +1013,10 @@ export default function App() {
     }));
 
     setTeamName(name);
-    setCurrentScreen('approval');
+    // Clear selected buzzers for fresh buzzer selection and reset confirmed buzzer
+    setSelectedBuzzers({});
+    setConfirmedBuzzer(null);
+    setCurrentScreen('buzzer-selection');
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       const joinPayload: any = {
@@ -913,6 +1042,204 @@ export default function App() {
     } else {
       console.log('[App] ❌ WebSocket not ready, readyState:', wsRef.current?.readyState);
     }
+  };
+
+  const handleBuzzerConfirm = (buzzerSound: string) => {
+    console.log('[App] Buzzer selection confirmed:', buzzerSound);
+
+    // Store confirmed buzzer in state
+    setConfirmedBuzzer(buzzerSound);
+
+    // Update local settings
+    updateBuzzerSound(buzzerSound);
+
+    // Send PLAYER_BUZZER_SELECT immediately to notify host of buzzer selection
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && teamName) {
+      const buzzerSelectPayload = {
+        type: 'PLAYER_BUZZER_SELECT',
+        playerId,
+        deviceId,
+        teamName,
+        buzzerSound: buzzerSound,
+        timestamp: Date.now(),
+      };
+
+      console.log('[App] 🔊 Sending PLAYER_BUZZER_SELECT:', buzzerSelectPayload);
+      wsRef.current.send(JSON.stringify(buzzerSelectPayload));
+    }
+
+    // Resend PLAYER_JOIN with buzzer included so host can approve with buzzer sound
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && teamName) {
+      const updatedJoinPayload: any = {
+        type: 'PLAYER_JOIN',
+        playerId,
+        deviceId,
+        teamName,
+        buzzerSound: buzzerSound, // Include buzzer in updated PLAYER_JOIN
+        timestamp: Date.now(),
+      };
+
+      if (settings.teamPhoto) {
+        updatedJoinPayload.teamPhoto = settings.teamPhoto;
+      }
+
+      console.log('[App] 🔊 Resending PLAYER_JOIN with confirmed buzzer:', buzzerSound);
+      wsRef.current.send(JSON.stringify(updatedJoinPayload));
+    }
+
+    // Apply any pending approval data that was saved during buzzer selection
+    if (pendingApprovalData) {
+      console.log('[App] Applying pending approval data:', pendingApprovalData);
+      setDisplayMode(pendingApprovalData.displayMode);
+      setSlideshowImages(pendingApprovalData.slideshowImages);
+      setRotationInterval(pendingApprovalData.rotationInterval);
+      setLeaderboardScores(pendingApprovalData.leaderboardScores);
+      setPendingApprovalData(null); // Clear pending data after applying
+    }
+
+    // Process any pending messages that arrived during buzzer selection
+    if (pendingMessage) {
+      console.log('[App] Processing pending message after buzzer confirmation:', pendingMessage.type);
+
+      // Handle each message type appropriately
+      switch (pendingMessage.type) {
+        case 'QUESTION':
+          console.log('[App] Applying pending QUESTION message');
+          const normalizedPendingQuestion = {
+            ...pendingMessage.data,
+            type: normalizeQuestionType(pendingMessage.data?.type),
+          };
+          setCurrentQuestion(normalizedPendingQuestion);
+          setGoWideEnabled(pendingMessage.data?.goWideEnabled ?? false);
+          setAnswerRevealed(false);
+          setCorrectAnswer(undefined);
+          setSelectedAnswers([]);
+          setCurrentScreen('question');
+          break;
+
+        case 'NEXT':
+          console.log('[App] Applying pending NEXT message');
+          setCurrentQuestion(null);
+          setGoWideEnabled(false);
+          setAnswerRevealed(false);
+          setCorrectAnswer(undefined);
+          setSelectedAnswers([]);
+          setShowTimer(false);
+          setTimerEnded(false);
+          setCurrentScreen('ready-for-question');
+          break;
+
+        case 'PICTURE':
+          console.log('[App] Applying pending PICTURE message');
+          setCurrentScreen('question');
+          setShowAnswerFeedback(false);
+          setIsAnswerCorrect(undefined);
+          if (pendingMessage.data?.image) {
+            setCurrentQuestion((prev: any) => ({
+              ...prev,
+              imageUrl: pendingMessage.data.image,
+            }));
+          }
+          break;
+
+        case 'DISPLAY_MODE':
+          console.log('[App] Applying pending DISPLAY_MODE message');
+          if (pendingMessage.data?.mode) {
+            setDisplayMode(pendingMessage.data.mode);
+            if (pendingMessage.data.mode === 'slideshow' && pendingMessage.data.images) {
+              setSlideshowImages(pendingMessage.data.images);
+              if (pendingMessage.data.rotationInterval) {
+                setRotationInterval(pendingMessage.data.rotationInterval);
+              }
+            }
+            if (pendingMessage.data.mode === 'scores' && pendingMessage.data.scores) {
+              setLeaderboardScores(pendingMessage.data.scores);
+            }
+          }
+          setCurrentScreen('display');
+          break;
+
+        case 'APPROVAL_PENDING':
+          console.log('[App] Applying pending APPROVAL_PENDING message');
+          setCurrentScreen('approval');
+          break;
+
+        default:
+          console.log('[App] Unknown pending message type:', pendingMessage.type);
+      }
+
+      setPendingMessage(null); // Clear pending message after applying
+      return; // Exit early - don't show approval screen
+    }
+
+    setCurrentScreen('approval');
+
+    // Clear any existing approval timer before setting a new one
+    if (approvalTimerRef.current) {
+      clearTimeout(approvalTimerRef.current);
+      console.log('[App] 🧹 Cleared existing approval timer');
+    }
+
+    // Set approval screen transition timer
+    console.log('[App] ⏱️  Setting 2-second timer to transition from approval screen to display');
+    approvalTimerRef.current = setTimeout(() => {
+      try {
+        console.log('[App] ✅ 2-second approval timer FIRED - transitioning to display screen');
+        setCurrentScreen('display');
+        approvalTimerRef.current = null;
+      } catch (screenErr) {
+        console.error('❌ [App] Error during approval screen transition:', screenErr);
+      }
+    }, 2000);
+
+    // Send PLAYER_JOIN again with buzzer included (atomic team + buzzer creation)
+    // This ensures backend receives team and buzzer together
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const joinPayloadWithBuzzer: any = {
+        type: 'PLAYER_JOIN',
+        playerId,
+        deviceId,
+        teamName,
+        buzzerSound, // Include buzzer in PLAYER_JOIN
+        timestamp: Date.now(),
+      };
+
+      // Include team photo if available
+      if (settings.teamPhoto) {
+        joinPayloadWithBuzzer.teamPhoto = settings.teamPhoto;
+        console.log('[App] PLAYER_JOIN with buzzer includes teamPhoto: true, Length:', joinPayloadWithBuzzer.teamPhoto.length, 'bytes');
+      } else {
+        console.log('[App] PLAYER_JOIN with buzzer includes teamPhoto: false');
+      }
+
+      console.log('[App] 🔊 Sending PLAYER_JOIN with buzzer:', buzzerSound);
+      console.log('[App] Sending PLAYER_JOIN payload with fields:', Object.keys(joinPayloadWithBuzzer).join(', '));
+      wsRef.current.send(JSON.stringify(joinPayloadWithBuzzer));
+    } else {
+      console.warn('[App] Cannot send PLAYER_JOIN with buzzer - WebSocket not open');
+    }
+
+    // Also send PLAYER_BUZZER_SELECT for backward compatibility and other players to see buzzer selection
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const buzzerSelectPayload = {
+        type: 'PLAYER_BUZZER_SELECT',
+        playerId,
+        deviceId,
+        teamName,
+        buzzerSound,
+        timestamp: Date.now(),
+      };
+
+      console.log('[App] Sending PLAYER_BUZZER_SELECT for display to other players:', buzzerSelectPayload);
+      wsRef.current.send(JSON.stringify(buzzerSelectPayload));
+    }
+  };
+
+  const handleBuzzerCancel = () => {
+    console.log('[App] Buzzer selection cancelled, returning to team entry');
+    setTeamName('');
+    setConfirmedBuzzer(null); // Clear confirmed buzzer when cancelling
+    setCurrentScreen('team-entry');
   };
 
   const handleAnswerSubmit = (answer: any) => {
@@ -977,6 +1304,18 @@ export default function App() {
 
           {isConnected && playerSettingsLoaded && currentScreen === 'team-entry' && (
             <TeamNameEntry onSubmit={handleTeamNameSubmit} />
+          )}
+
+          {isConnected && currentScreen === 'buzzer-selection' && (
+            <>
+              <WaitingScreen teamName={teamName} />
+              <BuzzerSelectionModal
+                isOpen={currentScreen === 'buzzer-selection'}
+                selectedBuzzers={selectedBuzzers}
+                onConfirm={handleBuzzerConfirm}
+                onCancel={handleBuzzerCancel}
+              />
+            </>
           )}
 
           {isConnected && currentScreen === 'approval' && (

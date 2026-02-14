@@ -203,4 +203,13 @@ export interface PlayerActiveMessage {
   timestamp: number;
 }
 
-export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage | PlayerAwayMessage | PlayerActiveMessage;
+export interface PlayerBuzzerSelectMessage {
+  type: 'PLAYER_BUZZER_SELECT';
+  playerId: string;
+  deviceId: string;
+  teamName: string;
+  buzzerSound: string; // Buzzer audio filename
+  timestamp?: number;
+}
+
+export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage | PlayerAwayMessage | PlayerActiveMessage | PlayerBuzzerSelectMessage;

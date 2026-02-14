@@ -18,7 +18,8 @@ const FOLDERS_TO_CREATE = [
   'PopQuiz/Resources/Sounds',
   'PopQuiz/Resources/Sounds/Countdown',
   'PopQuiz/Resources/Sounds/Applause',
-  'PopQuiz/Resources/Sounds/Fail Sounds'
+  'PopQuiz/Resources/Sounds/Fail Sounds',
+  'PopQuiz/Resources/Sounds/Buzzers'
 ];
 
 /**

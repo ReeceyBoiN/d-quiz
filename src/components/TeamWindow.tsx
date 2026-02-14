@@ -4,12 +4,12 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from "./ui/select";
 import {
   AlertDialog,
@@ -22,6 +22,8 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { useHostInfo } from "../hooks/useHostInfo";
+import { getBuzzersList, getBuzzerFilePath } from "../utils/api";
 
 interface TeamWindowProps {
   team: {
@@ -37,6 +39,11 @@ interface TeamWindowProps {
     blocked?: boolean; // Whether the team is blocked from earning points
     scrambled?: boolean; // Whether the team's keypad is scrambled
   };
+  teams?: {
+    id: string;
+    name: string;
+    buzzerSound?: string;
+  }[]; // All teams for checking buzzer availability
   hostLocation?: { x: number; y: number } | null;
   onClose: () => void;
   onLocationChange?: (teamId: string, location: { x: number; y: number }) => void;
@@ -54,10 +61,11 @@ interface TeamWindowProps {
   onClearAllLocations?: () => void;
 }
 
-export function TeamWindow({ 
-  team, 
+export function TeamWindow({
+  team,
+  teams = [],
   hostLocation,
-  onClose, 
+  onClose,
   onLocationChange,
   onNameChange,
   onBuzzerChange,
@@ -81,12 +89,53 @@ export function TeamWindow({
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isEvilModeEnabled, setIsEvilModeEnabled] = useState(false);
+  const [buzzerSounds, setBuzzerSounds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { hostInfo, isLoading: loadingHostInfo } = useHostInfo();
+
+  const loadingBuzzers = loadingHostInfo || buzzerSounds.length === 0;
+
+  // Load buzzer sounds from API
+  useEffect(() => {
+    const loadBuzzers = async () => {
+      if (!hostInfo) {
+        console.log('[TeamWindow] Waiting for host info...');
+        return;
+      }
+
+      try {
+        console.log('[TeamWindow] Loading buzzers from API...');
+        const buzzers = await getBuzzersList(hostInfo);
+        console.log('[TeamWindow] Loaded buzzers:', buzzers);
+        setBuzzerSounds(buzzers);
+      } catch (error) {
+        console.error('[TeamWindow] Error loading buzzer list:', error);
+        setBuzzerSounds([]);
+      }
+    };
+
+    loadBuzzers();
+  }, [hostInfo]);
 
   // Debug logging for team prop changes
   useEffect(() => {
     console.log(`🔀 TeamWindow: Team data updated for ${team.name} (${team.id}), scrambled:`, team.scrambled);
   }, [team.scrambled, team.name, team.id]);
+
+  // Helper function to check if a buzzer is taken by another team
+  const isBuzzerTaken = (buzzerName: string): boolean => {
+    return teams.some(t => {
+      if (t.id === team.id) return false; // Don't count current team
+      // Compare buzzer names, both should have .mp3 extension after normalization
+      return t.buzzerSound === buzzerName;
+    });
+  };
+
+  // Helper function to normalize buzzer name (remove .mp3 extension)
+  const getNormalizedBuzzerName = (filename: string): string => {
+    if (!filename) return '';
+    return filename.replace(/\.mp3$/i, '');
+  };
 
   const handleCellClick = (x: number, y: number) => {
     if (onLocationChange) {
@@ -203,17 +252,6 @@ export function TeamWindow({
       };
     }
   }, [isDraggingHost]);
-
-  const buzzerSounds = [
-    { value: "classic", label: "🔔 Classic Buzzer" },
-    { value: "ding", label: "🎵 Ding" },
-    { value: "horn", label: "📢 Air Horn" },
-    { value: "bell", label: "🔔 Bell" },
-    { value: "chime", label: "🎶 Chime" },
-    { value: "beep", label: "🔊 Beep" },
-    { value: "whistle", label: "🎺 Whistle" },
-    { value: "gong", label: "🥁 Gong" }
-  ];
 
   const backgroundColors = [
     { value: "clear", label: "⬜ Clear (Default)" },
@@ -546,22 +584,39 @@ export function TeamWindow({
                 <div className="space-y-2">
                   <Label htmlFor="buzzer-sound">Team Buzzer Sound</Label>
                   <Select
-                    value={team.buzzerSound || "classic"}
+                    value={team.buzzerSound || ""}
                     onValueChange={(value) => onBuzzerChange?.(team.id, value)}
+                    disabled={loadingBuzzers}
                   >
-                    <SelectTrigger id="buzzer-sound" className="emoji emoji-font">
-                      <SelectValue placeholder="Select buzzer sound" />
+                    <SelectTrigger id="buzzer-sound">
+                      <SelectValue placeholder={loadingBuzzers ? "Loading buzzers..." : "Select buzzer sound"} />
                     </SelectTrigger>
-                    <SelectContent className="emoji emoji-font">
-                      {buzzerSounds.map((sound) => (
-                        <SelectItem key={sound.value} value={sound.value} className="emoji emoji-font">
-                          {sound.label}
-                        </SelectItem>
-                      ))}
+                    <SelectContent>
+                      {buzzerSounds.map((sound) => {
+                        const taken = isBuzzerTaken(sound);
+                        const isSelected = team.buzzerSound === sound;
+                        const teamWithBuzzer = teams.find(t => t.buzzerSound === sound && t.id !== team.id);
+                        const normalizedName = getNormalizedBuzzerName(sound);
+
+                        return (
+                          <SelectItem
+                            key={sound}
+                            value={sound}
+                            disabled={taken}
+                          >
+                            <span>
+                              {isSelected && <span className="text-green-500">✓ </span>}
+                              {normalizedName}
+                              {taken && teamWithBuzzer ? ` (${teamWithBuzzer.name})` : ""}
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     This sound will play when the team buzzes in
+                    {loadingBuzzers && " (Loading buzzers...)"}
                   </p>
                 </div>
 

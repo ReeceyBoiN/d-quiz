@@ -27,7 +27,8 @@ export type NetworkMessageType =
   | 'PLAYER_DISCONNECT'
   | 'PLAYER_AWAY'  // incoming from players when they switch tabs/windows
   | 'PLAYER_ACTIVE'  // incoming from players when they return to active state
-  | 'TEAM_PHOTO_UPDATED';  // incoming from backend when player updates photo
+  | 'TEAM_PHOTO_UPDATED'  // incoming from backend when player updates photo
+  | 'PLAYER_BUZZER_SELECT';  // incoming from players when they select a buzzer
 
 export interface NetworkPayload {
   type: NetworkMessageType;

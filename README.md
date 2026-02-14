@@ -15,12 +15,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   dax - Livescreen needs to be able to be moved and also closed when the livescreen box / button gets un-ticked in the host app.
 
-  ?reece - Numbers questions on quiz packs dont always get marked correctly - some questions people answer correctly but it gets marked incorrect
-
   ?dax - Add the filter for questions so "THE LION KING" answer isnt a "T" as we're ignoring the word "THE" So for questions that may get added in the future, if the answer is "The Cat" then it should be the letter C as the correct answer. - In quiz pack mode, some questions will have the answer pre defined or marked in the question information, so that should also be taken into account, however if it is not already marked, the application should have this understanding built in to fall back on.
-
-  reece - When a Teams Pic is sent from a teams phone, its not getting assigned to the team or coming through to host app. The team that uploads a picture should have that set as that teams picture until the quiz game has been fully reset with the "Empty Lobby".
-  + + + + + Some folders are being created not in the main root folder, currently they are in (C:\Users\windows1\Documents\PopQuiz) which i think i want to move the whole root directory to that filepath anyways so filepath fix is on the to do list. - Guessing at the end as during builds it may cause an issue? Dax can you advise??
 
   reece - Add buzzer folder audio folder for host and selection screen for players upon connecting
 
@@ -55,8 +50,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
   in setting, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
 
   in settings, waiting room should have the ability to display waiting room images
-  -
-  the close button for the settings menu, i think i found the issue, it does close but the hitbox / interactive part is smaller than the visual box for the closing of the window function, so it needs increasing in size the activation of closing the settings window
 
   x Scaling visually needs adding as its currently too cramped on the screen slightly whole software wide. 
  

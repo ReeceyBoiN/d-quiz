@@ -1,4 +1,4 @@
-const { z } = require('zod');
+import { z } from 'zod';
 
 const StartQuizSchema = z.object({
   quizId: z.string(),
@@ -10,4 +10,8 @@ const ScoreSchema = z.object({
   answers: z.array(z.object({ q: z.string(), a: z.any() }))
 });
 
-module.exports = { StartQuizSchema, ScoreSchema };
+const GetBuzzerPathSchema = z.object({
+  buzzerName: z.string().min(1, 'Buzzer name is required')
+});
+
+export { StartQuizSchema, ScoreSchema, GetBuzzerPathSchema };

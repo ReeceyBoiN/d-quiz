@@ -512,6 +512,13 @@ export function QuizHost() {
 
   // Game mode configuration state is now handled by settings context
 
+  // Helper function to normalize buzzer sound value
+  const normalizeBuzzerSound = (buzzerSound: string): string => {
+    if (!buzzerSound) return '';
+    // Trim whitespace and remove .mp3 extension if present
+    return buzzerSound.trim().replace(/\.mp3$/i, '') + '.mp3';
+  };
+
   // Sync fastestTeamData with updated team data when quizzes change
   useEffect(() => {
     if (fastestTeamData) {
@@ -907,8 +914,9 @@ export function QuizHost() {
       console.log('  - Has leading/trailing spaces:', deviceId !== deviceId.trim() ? 'YES' : 'NO');
       console.log('  - Trimmed version:', `"${deviceId.trim()}"`);
 
-      // Fetch player data to get team photo
+      // Fetch player data to get team photo and buzzer sound
       let teamPhoto: string | undefined = undefined;
+      let buzzerSound: string | undefined = undefined;
       try {
         console.log('[QuizHost] 🔍 Fetching all network players via IPC...');
         const fetchStartTime = Date.now();
@@ -932,6 +940,8 @@ export function QuizHost() {
               deviceIdLength: p.deviceId?.length,
               teamName: p.teamName,
               hasTeamPhoto: !!p.teamPhoto,
+              hasBuzzerSound: !!p.buzzerSound,
+              buzzerSound: p.buzzerSound || 'none',
               deviceIdMatches: p.deviceId === deviceId ? 'EXACT' : (p.deviceId?.trim() === deviceId?.trim() ? 'TRIMMED' : 'NO')
             });
           });
@@ -957,6 +967,8 @@ export function QuizHost() {
               teamName: finalPlayer.teamName,
               hasTeamPhoto: !!finalPlayer.teamPhoto,
               photoValue: finalPlayer.teamPhoto ? (finalPlayer.teamPhoto.substring(0, 50) + '...') : 'null',
+              hasBuzzerSound: !!finalPlayer.buzzerSound,
+              buzzerSound: finalPlayer.buzzerSound || 'none',
               status: finalPlayer.status
             });
           }
@@ -969,12 +981,20 @@ export function QuizHost() {
           } else {
             console.log('[QuizHost] ⚠️ Player found but has no teamPhoto');
           }
+
+          if (finalPlayer?.buzzerSound) {
+            buzzerSound = finalPlayer.buzzerSound;
+            console.log('✅ Retrieved buzzer sound for team:', teamName);
+            console.log('[QuizHost] Buzzer sound:', buzzerSound);
+          } else {
+            console.log('[QuizHost] ℹ️ Player found but has no buzzerSound (will use on-demand selection)');
+          }
         } else {
           console.log('[QuizHost] ⚠️ IPC result was not successful or no data array');
           console.log('[QuizHost] Result details:', { ok: result?.ok, error: result?.error, hasData: !!result?.data });
         }
       } catch (err) {
-        console.warn('[QuizHost] Could not fetch team photo:', err);
+        console.warn('[QuizHost] Could not fetch team photo or buzzer:', err);
         console.log('[QuizHost] Error type:', err instanceof Error ? err.constructor.name : typeof err);
         if (err instanceof Error) {
           console.log('[QuizHost] Error message:', err.message);
@@ -999,6 +1019,22 @@ export function QuizHost() {
       }
 
       if (!quizzesRef.current.find(q => q.id === deviceId)) {
+        // Apply buzzer from backend (primary source - initial selection during team creation)
+        if (buzzerSound) {
+          console.log('[QuizHost] 🔊 Applying buzzer from backend player entry:', buzzerSound);
+          newTeam.buzzerSound = buzzerSound;
+        } else {
+          // Fallback: Check if there's a pending buzzer selection for this device
+          // This handles the race condition where PLAYER_BUZZER_SELECT arrives before team approval
+          const pendingBuzzer = (window as any).__pendingBuzzerSelections?.[deviceId];
+          if (pendingBuzzer) {
+            console.log('[QuizHost] 🔊 Found pending buzzer selection for device:', deviceId, '- applying on team creation:', pendingBuzzer);
+            newTeam.buzzerSound = pendingBuzzer;
+            // Clean up the pending buzzer
+            delete (window as any).__pendingBuzzerSelections?.[deviceId];
+          }
+        }
+
         setQuizzes(prev => [...prev, newTeam]);
         console.log('✅ Added team to quizzes');
       }
@@ -2895,6 +2931,66 @@ export function QuizHost() {
     };
   }, []); // Empty dependency array - register once on mount
 
+  // Listen for player buzzer selections
+  useEffect(() => {
+    const handleNetworkPlayerBuzzerSelect = (data: any) => {
+      const { deviceId, teamName, buzzerSound } = data;
+
+      if (!deviceId) {
+        console.warn('[QuizHost] PLAYER_BUZZER_SELECT missing deviceId');
+        return;
+      }
+
+      // Normalize the buzzer sound value for consistency
+      const normalizedBuzzerSound = normalizeBuzzerSound(buzzerSound);
+
+      console.log('[QuizHost] 📨 Received PLAYER_BUZZER_SELECT from backend:');
+      console.log('[QuizHost] - deviceId:', deviceId);
+      console.log('[QuizHost] - teamName:', teamName);
+      console.log('[QuizHost] - buzzerSound (raw):', buzzerSound);
+      console.log('[QuizHost] - buzzerSound (normalized):', normalizedBuzzerSound);
+
+      // Check if team exists in quizzes
+      const teamExists = quizzesRef.current.some(q => q.id === deviceId);
+      console.log('[QuizHost] 🔍 Team exists in quizzes:', teamExists);
+      console.log('[QuizHost] 📋 Current quizzes count:', quizzesRef.current.length);
+      if (quizzesRef.current.length > 0) {
+        console.log('[QuizHost] 📋 Team IDs in quizzes:', quizzesRef.current.map(q => q.id).join(', '));
+      }
+
+      if (teamExists) {
+        // Update quizzes state with normalized buzzer selection
+        const beforeQuiz = quizzesRef.current.find(q => q.id === deviceId);
+        console.log('[QuizHost] Before update - Team buzzer:', beforeQuiz?.buzzerSound);
+
+        setQuizzes(prev => {
+          const updated = prev.map(q =>
+            q.id === deviceId
+              ? { ...q, buzzerSound: normalizedBuzzerSound }
+              : q
+          );
+          console.log('[QuizHost] ✅ Updated quizzes state - team buzzer now:', updated.find(q => q.id === deviceId)?.buzzerSound);
+          return updated;
+        });
+        console.log(`✅ Updated buzzer selection for team "${teamName}": ${normalizedBuzzerSound}`);
+      } else {
+        // Team doesn't exist yet - store as pending buzzer selection to be applied when team is created
+        if (!(window as any).__pendingBuzzerSelections) {
+          (window as any).__pendingBuzzerSelections = {};
+        }
+        (window as any).__pendingBuzzerSelections[deviceId] = normalizedBuzzerSound;
+        console.log(`⏳ Stored pending buzzer selection for device "${deviceId}": ${normalizedBuzzerSound} (team not in quizzes yet)`);
+      }
+    };
+
+    // Register listener and get unsubscribe function
+    const unsubscribe = onNetworkMessage('PLAYER_BUZZER_SELECT', handleNetworkPlayerBuzzerSelect);
+    console.log('[QuizHost] 📝 Registered PLAYER_BUZZER_SELECT listener');
+
+    // Clean up listener on unmount
+    return unsubscribe;
+  }, []); // Empty dependency array - register once on mount
+
   /**
    * Centralized function to broadcast answer reveal to player devices
    * Used by both handleRevealAnswer and handlePrimaryAction to avoid duplicate broadcasts
@@ -3884,9 +3980,12 @@ export function QuizHost() {
 
   // Handle buzzer change
   const handleBuzzerChange = (teamId: string, buzzerSound: string) => {
-    setQuizzes(prevQuizzes => 
-      prevQuizzes.map(quiz => 
-        quiz.id === teamId ? { ...quiz, buzzerSound } : quiz
+    const normalizedBuzzerSound = normalizeBuzzerSound(buzzerSound);
+    console.log('[QuizHost] 🔊 Buzzer change for team:', teamId, 'buzzer:', normalizedBuzzerSound);
+
+    setQuizzes(prevQuizzes =>
+      prevQuizzes.map(quiz =>
+        quiz.id === teamId ? { ...quiz, buzzerSound: normalizedBuzzerSound } : quiz
       )
     );
   };
@@ -4064,8 +4163,9 @@ export function QuizHost() {
       const team = quizzes.find(q => q.id === selectedTeamForWindow);
       if (team) {
         return (
-          <TeamWindow 
-            team={team} 
+          <TeamWindow
+            team={team}
+            teams={quizzes}
             hostLocation={hostLocation}
             onClose={handleCloseTeamWindow}
             onLocationChange={handleTeamLocationChange}

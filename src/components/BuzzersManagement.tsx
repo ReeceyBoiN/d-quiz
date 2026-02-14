@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Play, Volume2, Users } from "lucide-react";
 import {
@@ -8,6 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { useHostInfo } from "../hooks/useHostInfo";
+import { getBuzzersList, getBuzzerUrl, getBuzzerFilePath } from "../utils/api";
 
 interface Team {
   id: string;
@@ -27,21 +29,43 @@ interface BuzzersManagementProps {
   onShowTeamOnDisplay?: (teamName: string) => void;
 }
 
-const buzzerSounds = [
-  { value: "classic", label: "🔔 Classic Buzzer" },
-  { value: "ding", label: "🎵 Ding" },
-  { value: "horn", label: "📯 Horn" },
-  { value: "bell", label: "🔔 Bell" },
-  { value: "chime", label: "🎐 Chime" },
-  { value: "gong", label: "🔨 Gong" },
-  { value: "whistle", label: "🎵 Whistle" },
-  { value: "beep", label: "📢 Beep" },
-];
-
 export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOnDisplay }: BuzzersManagementProps) {
   const [playingBuzzer, setPlayingBuzzer] = useState<string | null>(null);
   const [welcomeMode, setWelcomeMode] = useState(false);
   const [currentTeamIndex, setCurrentTeamIndex] = useState(0);
+  const [buzzerSounds, setBuzzerSounds] = useState<string[]>([]);
+  const audioRef = React.useRef<HTMLAudioElement>(null);
+  const { hostInfo, isLoading: loadingHostInfo } = useHostInfo();
+
+  const loadingBuzzers = loadingHostInfo || buzzerSounds.length === 0;
+
+  // Helper function to normalize buzzer name (remove .mp3 extension)
+  const getNormalizedBuzzerName = (filename: string): string => {
+    if (!filename) return '';
+    return filename.replace(/\.mp3$/i, '');
+  };
+
+  // Load buzzer sounds from API
+  useEffect(() => {
+    const loadBuzzers = async () => {
+      if (!hostInfo) {
+        console.log('[BuzzersManagement] Waiting for host info...');
+        return;
+      }
+
+      try {
+        console.log('[BuzzersManagement] Loading buzzers from API...');
+        const buzzers = await getBuzzersList(hostInfo);
+        console.log('[BuzzersManagement] Loaded buzzers:', buzzers);
+        setBuzzerSounds(buzzers);
+      } catch (error) {
+        console.error('[BuzzersManagement] Error loading buzzer list:', error);
+        setBuzzerSounds([]);
+      }
+    };
+
+    loadBuzzers();
+  }, [hostInfo]);
 
   // Function to handle next team welcome
   const handleNextTeam = () => {
@@ -65,100 +89,42 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
     setCurrentTeamIndex(0);
   };
 
-  // Function to play buzzer sound
-  const playBuzzerSound = (teamId: string, buzzerSound?: string) => {
+  // Function to play buzzer sound - tries IPC file path first, falls back to HTTP
+  const playBuzzerSound = async (teamId: string, buzzerSound?: string) => {
+    if (!buzzerSound) return;
+
     setPlayingBuzzer(teamId);
-    
-    // Get the buzzer sound type (default to classic if not set)
-    const soundType = buzzerSound || "classic";
-    
-    // Create audio context for playing buzzer sounds
+
     try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) {
-        console.warn('Web Audio API not supported');
-        setTimeout(() => setPlayingBuzzer(null), 1000);
-        return;
-      }
-      
-      const audioContext = new AudioContextClass();
-      
-      // Resume if suspended
-      if (audioContext.state === 'suspended') {
-        audioContext.resume();
-      }
-      
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      // Different frequencies and patterns for different buzzer sounds
-      let duration = 0.3;
-      
-      switch (soundType) {
-        case "classic":
-          oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-          oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.15);
-          duration = 0.3;
-          break;
-        case "ding":
-          oscillator.frequency.setValueAtTime(1200, audioContext.currentTime);
-          oscillator.frequency.exponentialRampToValueAtTime(1000, audioContext.currentTime + 0.2);
-          duration = 0.4;
-          break;
-        case "horn":
-          oscillator.frequency.setValueAtTime(220, audioContext.currentTime);
-          duration = 0.5;
-          break;
-        case "bell":
-          oscillator.frequency.setValueAtTime(1500, audioContext.currentTime);
-          oscillator.frequency.exponentialRampToValueAtTime(1200, audioContext.currentTime + 0.3);
-          duration = 0.6;
-          break;
-        case "chime":
-          oscillator.frequency.setValueAtTime(2000, audioContext.currentTime);
-          oscillator.frequency.exponentialRampToValueAtTime(1600, audioContext.currentTime + 0.4);
-          duration = 0.7;
-          break;
-        case "gong":
-          oscillator.frequency.setValueAtTime(150, audioContext.currentTime);
-          oscillator.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.5);
-          duration = 1.0;
-          break;
-        case "whistle":
-          oscillator.frequency.setValueAtTime(3000, audioContext.currentTime);
-          duration = 0.3;
-          break;
-        case "beep":
-          oscillator.frequency.setValueAtTime(1000, audioContext.currentTime);
-          duration = 0.2;
-          break;
-        default:
-          oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-      }
-      
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-      
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + duration);
-      
-      setTimeout(() => {
-        try {
-          oscillator.disconnect();
-          gainNode.disconnect();
-          audioContext.close();
-          setPlayingBuzzer(null);
-        } catch (error) {
-          console.warn('Error during audio cleanup:', error);
-          setPlayingBuzzer(null);
+      let audioUrl: string | null = null;
+
+      // Try to get file:// URL via IPC first (more efficient and avoids CSP issues)
+      try {
+        console.log('[BuzzersManagement] Attempting to load buzzer via IPC:', buzzerSound);
+        audioUrl = await getBuzzerFilePath(buzzerSound);
+        console.log('[BuzzersManagement] Successfully got file URL via IPC:', audioUrl);
+      } catch (ipcError) {
+        console.warn('[BuzzersManagement] IPC file path failed, falling back to HTTP:', (ipcError as Error).message);
+
+        // Fallback to HTTP URL if IPC fails
+        if (hostInfo) {
+          audioUrl = getBuzzerUrl(hostInfo, buzzerSound);
+          console.log('[BuzzersManagement] Using HTTP fallback URL:', audioUrl);
         }
-      }, duration * 1000 + 100);
-      
+      }
+
+      if (!audioUrl) {
+        throw new Error('No valid audio URL available');
+      }
+
+      if (audioRef.current) {
+        audioRef.current.src = audioUrl;
+        await audioRef.current.play().catch((error) => {
+          console.error('[BuzzersManagement] Error playing buzzer:', error);
+        });
+      }
     } catch (error) {
-      console.warn('Could not play buzzer sound:', error);
+      console.error('[BuzzersManagement] Error in playBuzzerSound:', error);
       setPlayingBuzzer(null);
     }
   };
@@ -288,8 +254,9 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
                 {/* Buzzer Sound Selector */}
                 <div className="w-56">
                   <Select
-                    value={team.buzzerSound || "classic"}
+                    value={team.buzzerSound || ""}
                     onValueChange={(value) => onBuzzerChange(team.id, value)}
+                    disabled={loadingBuzzers}
                   >
                     <SelectTrigger
                       className="w-full h-9"
@@ -297,24 +264,34 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
                         fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
                       }}
                     >
-                      <SelectValue placeholder="Select buzzer sound" />
+                      <SelectValue
+                        placeholder={loadingBuzzers ? "Loading..." : "Select buzzer sound"}
+                      />
                     </SelectTrigger>
                     <SelectContent
                       style={{
                         fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
                       }}
                     >
-                      {buzzerSounds.map((sound) => (
-                        <SelectItem
-                          key={sound.value}
-                          value={sound.value}
-                          style={{
-                            fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
-                          }}
-                        >
-                          {sound.label}
-                        </SelectItem>
-                      ))}
+                      {buzzerSounds.map((sound) => {
+                        const isSelected = team.buzzerSound === sound;
+                        const normalizedName = getNormalizedBuzzerName(sound);
+
+                        return (
+                          <SelectItem
+                            key={sound}
+                            value={sound}
+                            style={{
+                              fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
+                            }}
+                          >
+                            <span>
+                              {isSelected && <span className="text-green-500">✓ </span>}
+                              {normalizedName}
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -322,7 +299,7 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
                 {/* Play Button */}
                 <Button
                   onClick={() => playBuzzerSound(team.id, team.buzzerSound)}
-                  disabled={playingBuzzer === team.id}
+                  disabled={playingBuzzer === team.id || !team.buzzerSound || loadingBuzzers}
                   variant="default"
                   size="sm"
                   className="w-32"
@@ -335,6 +312,13 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
           </div>
         )}
       </div>
+
+      {/* Hidden audio element for buzzer playback */}
+      <audio
+        ref={audioRef}
+        onEnded={() => setPlayingBuzzer(null)}
+        className="hidden"
+      />
     </div>
   );
 }

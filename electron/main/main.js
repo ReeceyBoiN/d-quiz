@@ -7,6 +7,8 @@ import { applySecurity } from './security.js';
 import { createIpcRouter } from '../ipc/ipcRouter.js';
 import { startBackend } from '../backend/server.js';
 import { initializePaths, getResourcePaths } from '../backend/pathInitializer.js';
+import { handleGetBuzzerPath } from '../ipc/handlers/audioHandler.js';
+import { GetBuzzerPathSchema } from '../ipc/validators.js';
 import os from 'os';
 
 let mainWindow;
@@ -125,11 +127,14 @@ async function boot() {
     }
   });
   router.mount('app/ready', async () => ({ ok: true, version: app.getVersion() }));
-  
+
+  // Audio handlers
+  router.mount('audio/get-buzzer-path', handleGetBuzzerPath, GetBuzzerPathSchema);
+
   // Dynamic imports for quiz modules
   const quizEngine = await import('../modules/quizEngine.js');
   const scoring = await import('../modules/scoring.js');
-  
+
   router.mount('quiz/start', quizEngine.startQuiz);
   router.mount('quiz/score', scoring.scoreAttempt);
 

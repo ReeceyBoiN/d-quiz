@@ -16,8 +16,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 async function loadEndpoints(app) {
   const quizzesEndpoint = await import('./endpoints/quizzes.js');
   const usersEndpoint = await import('./endpoints/users.js');
+  const soundsEndpoint = await import('./endpoints/sounds.js');
   quizzesEndpoint.default(app);
   usersEndpoint.default(app);
+  soundsEndpoint.default(app);
 }
 
 async function loadEvents(wss) {
@@ -362,17 +364,41 @@ async function startBackend({ port = 4310 } = {}) {
               const oldLastPongAt = existingPlayer.lastPongAt;
               existingPlayer.lastPongAt = Date.now(); // Phase 2: Update heartbeat on reconnection
               log.info(`[WS-${connectionId}] [RECONNECT] Updated lastPongAt from ${oldLastPongAt} to ${existingPlayer.lastPongAt} for device ${deviceId}`);
+
+              // Handle buzzer in reconnection (update if new buzzer provided)
+              if (data.buzzerSound) {
+                const normalizedBuzzer = (data.buzzerSound || '')
+                  .trim()
+                  .replace(/\.mp3$/i, '') + '.mp3';
+                existingPlayer.buzzerSound = normalizedBuzzer;
+                console.log('[PLAYER_JOIN] 🔊 Updated buzzer on reconnection:', data.buzzerSound, '→', normalizedBuzzer);
+                log.info(`[WS-${connectionId}] 🔊 [RECONNECT] Updated buzzer: "${data.buzzerSound}" → "${normalizedBuzzer}"`);
+              }
+
               if (photoPath) {
                 existingPlayer.teamPhoto = photoPath;
                 console.log('[PLAYER_JOIN] - Updated teamPhoto to:', photoPath.substring(0, 50) + '...');
               } else if (data.teamPhoto) {
                 console.log('[PLAYER_JOIN] ⚠️ photoPath is null but data.teamPhoto exists (size:', data.teamPhoto.length, 'bytes)');
               }
-              log.info(`[WS-${connectionId}] 🔄 [Reconnection] Device ${deviceId} rejoining as "${data.teamName}", was approved at ${new Date(existingPlayer.approvedAt).toISOString()}, teamPhoto: ${existingPlayer.teamPhoto || 'null'}`);
+              log.info(`[WS-${connectionId}] 🔄 [Reconnection] Device ${deviceId} rejoining as "${data.teamName}", was approved at ${new Date(existingPlayer.approvedAt).toISOString()}, teamPhoto: ${existingPlayer.teamPhoto || 'null'}, buzzer: ${existingPlayer.buzzerSound || 'null'}`);
             } else {
               // New join - treat as first time
               // FIX: Create playerEntry with null teamPhoto, store IMMEDIATELY, THEN do async photo save
               const createdAt = Date.now();
+
+              // Extract and normalize buzzer sound if provided (fix for initial buzzer race condition)
+              let buzzerSound = null;
+              if (data.buzzerSound) {
+                buzzerSound = (data.buzzerSound || '')
+                  .trim()
+                  .replace(/\.mp3$/i, '') + '.mp3';
+                console.log('[PLAYER_JOIN] 🔊 Buzzer sound included in PLAYER_JOIN: ' + data.buzzerSound + ' → normalized to ' + buzzerSound);
+                log.info(`[WS-${connectionId}] 🔊 PLAYER_JOIN includes buzzer: "${data.buzzerSound}" → normalized to "${buzzerSound}"`);
+              } else {
+                console.log('[PLAYER_JOIN] No buzzer sound in PLAYER_JOIN payload');
+              }
+
               const playerEntry = {
                 ws,
                 playerId,
@@ -381,6 +407,7 @@ async function startBackend({ port = 4310 } = {}) {
                 approvedAt: null,
                 timestamp: createdAt,
                 teamPhoto: null, // Will be set when photo save completes
+                buzzerSound: buzzerSound, // Store buzzer if provided (fix for initial buzzer race condition)
                 lastPongAt: createdAt // Phase 2: Track heartbeat timestamp on join
               };
               log.info(`[WS-${connectionId}] [NEW_JOIN] Created player entry with lastPongAt=${createdAt} for device ${deviceId}`);
@@ -389,13 +416,15 @@ async function startBackend({ port = 4310 } = {}) {
               console.log('[PLAYER_JOIN] Creating new player entry:', {
                 deviceId,
                 teamName: data.teamName,
-                teamPhoto: 'null (will be set after async save)'
+                teamPhoto: 'null (will be set after async save)',
+                buzzerSound: buzzerSound || 'none'
               });
               console.log('[PLAYER_JOIN] Entry object details:');
               console.log('  - ws.readyState:', ws.readyState);
               console.log('  - ws._socket exists:', !!ws._socket);
               console.log('  - playerId:', playerId);
               console.log('  - status: pending');
+              console.log('  - buzzerSound:', buzzerSound || 'none');
 
               // FIX: Store in map IMMEDIATELY - this is the critical fix
               console.log('[PLAYER_JOIN] 🔑 About to store in networkPlayers at deviceId:', `"${deviceId}"`);
@@ -803,6 +832,65 @@ async function startBackend({ port = 4310 } = {}) {
             log.error(`[WS-${connectionId}] ❌ Error processing TEAM_PHOTO_UPDATE:`, photoUpdateErr.message);
             if (photoUpdateErr.stack) {
               log.error(`[WS-${connectionId}] TEAM_PHOTO_UPDATE error stack:`, photoUpdateErr.stack);
+            }
+          }
+        } else if (data.type === 'PLAYER_BUZZER_SELECT') {
+          try {
+            // Normalize buzzer sound value (trim whitespace and ensure .mp3 extension)
+            const normalizedBuzzerSound = (data.buzzerSound || '')
+              .trim()
+              .replace(/\.mp3$/i, '') + '.mp3';
+
+            log.info(`[WS-${connectionId}] 🔊 Player buzzer selection: ${data.teamName} selected "${data.buzzerSound}" → normalized to "${normalizedBuzzerSound}" (device: ${data.deviceId})`);
+
+            const buzzerDeviceId = data.deviceId || deviceId;
+
+            // Update networkPlayers with normalized buzzer sound
+            const existingPlayer = networkPlayers.get(buzzerDeviceId);
+            if (existingPlayer) {
+              existingPlayer.buzzerSound = normalizedBuzzerSound;
+              log.info(`[WS-${connectionId}] ✅ Updated networkPlayers for ${data.teamName}, buzzer: ${normalizedBuzzerSound}`);
+            } else {
+              log.warn(`[WS-${connectionId}] ⚠️  Player not found in networkPlayers when updating buzzer (device: ${buzzerDeviceId})`);
+            }
+
+            // Broadcast PLAYER_BUZZER_SELECT message to all other clients (host and other players) with normalized value
+            try {
+              const buzzerClients = Array.from(wss.clients).filter(c => c.readyState === 1 && c !== ws);
+              log.info(`[WS-${connectionId}] Broadcasting PLAYER_BUZZER_SELECT to ${buzzerClients.length} clients`);
+
+              const buzzerMessage = JSON.stringify({
+                type: 'PLAYER_BUZZER_SELECT',
+                playerId: data.playerId,
+                deviceId: buzzerDeviceId,
+                teamName: data.teamName,
+                buzzerSound: normalizedBuzzerSound,
+                timestamp: Date.now()
+              });
+
+              buzzerClients.forEach((client, idx) => {
+                try {
+                  log.info(`[WS-${connectionId}] Sending PLAYER_BUZZER_SELECT to client ${idx + 1}/${buzzerClients.length}`);
+                  client.send(buzzerMessage);
+                  log.info(`[WS-${connectionId}] Successfully sent PLAYER_BUZZER_SELECT to client ${idx + 1}/${buzzerClients.length}`);
+                } catch (sendErr) {
+                  log.error(`[WS-${connectionId}] ❌ Failed to broadcast PLAYER_BUZZER_SELECT to client ${idx}:`, sendErr.message);
+                }
+              });
+
+              if (buzzerClients.length === 0) {
+                log.warn(`[WS-${connectionId}] ⚠️  No other clients connected to receive PLAYER_BUZZER_SELECT message!`);
+              }
+            } catch (broadcastErr) {
+              log.error(`[WS-${connectionId}] ❌ Error broadcasting PLAYER_BUZZER_SELECT:`, broadcastErr.message);
+              if (broadcastErr.stack) {
+                log.error(`[WS-${connectionId}] Broadcast error stack:`, broadcastErr.stack);
+              }
+            }
+          } catch (buzzerSelectErr) {
+            log.error(`[WS-${connectionId}] ❌ Error processing PLAYER_BUZZER_SELECT:`, buzzerSelectErr.message);
+            if (buzzerSelectErr.stack) {
+              log.error(`[WS-${connectionId}] PLAYER_BUZZER_SELECT error stack:`, buzzerSelectErr.stack);
             }
           }
         } else {

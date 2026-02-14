@@ -44,16 +44,28 @@ export function SettingsBar() {
     }
   }, [isExpanded]);
 
-  // Load buzzer list from host (placeholder - would need backend endpoint)
+  // Load buzzer list from host API
   useEffect(() => {
     const loadBuzzers = async () => {
       try {
-        // Placeholder: This would fetch from the host backend
-        // For now, using mock data
-        const mockBuzzers = ['classic', 'horn', 'bell', 'chime', 'ding', 'buzz'];
-        setBuzzerList(mockBuzzers);
+        console.log('[SettingsBar] Loading buzzers from API...');
+
+        // Get host info to construct correct API URL
+        const hostInfoResponse = await fetch('/api/host-info');
+        const hostInfo = await hostInfoResponse.json();
+        const apiUrl = `http://${hostInfo.localIP}:${hostInfo.port}/api/buzzers/list`;
+
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to load buzzers: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('[SettingsBar] Loaded buzzers:', data.buzzers);
+        setBuzzerList(data.buzzers || []);
       } catch (error) {
         console.error('[SettingsBar] Error loading buzzer list:', error);
+        setBuzzerList([]);
       }
     };
 
@@ -153,9 +165,14 @@ export function SettingsBar() {
   const handlePlayBuzzer = async (buzzerName: string) => {
     try {
       setPlayingBuzzer(buzzerName);
-      // Placeholder: Fetch audio from host backend
-      // This would need to be: /api/buzzers/{buzzerName}.mp3
-      const audioUrl = `/api/buzzers/${buzzerName}.mp3`;
+
+      // Get host info to construct correct API URL
+      const hostInfoResponse = await fetch('/api/host-info');
+      const hostInfo = await hostInfoResponse.json();
+      const audioUrl = `http://${hostInfo.localIP}:${hostInfo.port}/api/buzzers/${buzzerName}`;
+
+      console.log('[SettingsBar] Playing buzzer from:', audioUrl);
+
       if (audioRef.current) {
         audioRef.current.src = audioUrl;
         audioRef.current.play().catch((error) => {
@@ -170,10 +187,31 @@ export function SettingsBar() {
     }
   };
 
-  // Handle buzzer selection
+  // Handle buzzer selection - update local settings and send to host
   const handleSelectBuzzer = (buzzerName: string) => {
     updateBuzzerSound(buzzerName);
     console.log('[SettingsBar] Selected buzzer:', buzzerName);
+
+    // Send PLAYER_BUZZER_SELECT message to host
+    if (isConnected && sendMessage && deviceId && teamName) {
+      console.log('[SettingsBar] Sending PLAYER_BUZZER_SELECT message...');
+      const buzzerSelectPayload = {
+        type: 'PLAYER_BUZZER_SELECT',
+        playerId,
+        deviceId,
+        teamName,
+        buzzerSound: buzzerName,
+        timestamp: Date.now(),
+      };
+      console.log('[SettingsBar] Sending PLAYER_BUZZER_SELECT:', buzzerSelectPayload);
+      sendMessage(buzzerSelectPayload);
+    } else {
+      console.warn('[SettingsBar] Cannot send PLAYER_BUZZER_SELECT - Missing conditions:');
+      console.warn('[SettingsBar] - isConnected:', isConnected);
+      console.warn('[SettingsBar] - sendMessage:', !!sendMessage);
+      console.warn('[SettingsBar] - deviceId:', !!deviceId);
+      console.warn('[SettingsBar] - teamName:', !!teamName);
+    }
   };
 
   // Handle theme toggle
