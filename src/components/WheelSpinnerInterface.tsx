@@ -5,7 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
-import { Play, Square, RotateCcw, Settings, Plus, Minus, X, Home, ArrowLeft } from 'lucide-react';
+import { Play, Square, RotateCcw, Settings, Plus, Minus, X, Home, ArrowLeft, Save, Download, Trash2, Settings2 } from 'lucide-react';
+import { SaveWheelPresetDialog } from './dialogs/SaveWheelPresetDialog';
+import { WheelTypeManager } from './dialogs/WheelTypeManager';
+import { wheelTypeStorage, WheelTypeDefinition } from '../utils/wheelTypeStorage';
+import { wheelPresetStorage, WheelPreset } from '../utils/wheelPresetStorage';
 
 interface Quiz {
   id: string;
@@ -25,7 +29,7 @@ interface WheelSpinnerInterfaceProps {
   onExternalDisplayUpdate?: (mode: string, data?: any) => void; // External display update callback
 }
 
-type WheelContentType = 'teams' | 'random-points' | 'custom';
+type WheelContentType = 'teams' | 'random-points' | 'custom' | string; // String for custom wheel type IDs
 
 interface WheelItem {
   id: string;
@@ -61,6 +65,22 @@ export function WheelSpinnerInterface({ teams = [], onBack, onHome, onAwardPoint
   const [removedItems, setRemovedItems] = useState<Set<string>>(new Set());
   const wheelRef = useRef<HTMLDivElement>(null);
 
+  // Custom wheel types and presets
+  const [customWheelTypes, setCustomWheelTypes] = useState<WheelTypeDefinition[]>([]);
+  const [presets, setPresets] = useState<WheelPreset[]>([]);
+  const [loadedPresetId, setLoadedPresetId] = useState<string | null>(null);
+  const [wheelTypeDialogOpen, setWheelTypeDialogOpen] = useState(false);
+  const [savePresetDialogOpen, setSavePresetDialogOpen] = useState(false);
+  const [selectedWheelTypeId, setSelectedWheelTypeId] = useState<string | null>(null);
+
+  // Load custom wheel types and presets on mount
+  useEffect(() => {
+    const types = wheelTypeStorage.loadAll();
+    setCustomWheelTypes(types);
+    const presetsList = wheelPresetStorage.loadAll();
+    setPresets(presetsList);
+  }, []);
+
   // Generate wheel items based on content type
   useEffect(() => {
     let items: WheelItem[] = [];
@@ -89,11 +109,79 @@ export function WheelSpinnerInterface({ teams = [], onBack, onHome, onAwardPoint
           label: item.label,
           color: COLORS[index % COLORS.length]
         }));
+    } else {
+      // Check if it's a custom wheel type ID
+      const wheelType = customWheelTypes.find(wt => wt.id === contentType);
+      if (wheelType) {
+        items = wheelType.items
+          .filter(item => !removedItems.has(item.id))
+          .map((item, index) => ({
+            id: item.id,
+            label: item.label,
+            color: COLORS[index % COLORS.length]
+          }));
+      }
     }
 
     setWheelItems(items);
     setWinner(null);
-  }, [contentType, teams, customPointValues, customWheelItems, removedItems]);
+  }, [contentType, teams, customPointValues, customWheelItems, customWheelTypes, removedItems]);
+
+  // Handle preset loading
+  const loadPreset = (presetId: string) => {
+    const preset = wheelPresetStorage.getById(presetId);
+    if (!preset) return;
+
+    setLoadedPresetId(presetId);
+    setContentType(preset.contentType as WheelContentType);
+
+    if (preset.customItems) {
+      setCustomWheelItems(preset.customItems);
+    }
+    if (preset.customPointValues) {
+      setCustomPointValues(preset.customPointValues);
+    }
+    if (preset.wheelTypeId) {
+      setSelectedWheelTypeId(preset.wheelTypeId);
+    }
+
+    // Reset removed items when loading preset
+    setRemovedItems(new Set());
+    setWinner(null);
+    setRotation(0);
+  };
+
+  // Handle deleting loaded preset
+  const deleteLoadedPreset = () => {
+    if (!loadedPresetId) return;
+    if (confirm('Delete this preset?')) {
+      wheelPresetStorage.delete(loadedPresetId);
+      setLoadedPresetId(null);
+      setPresets(wheelPresetStorage.loadAll());
+    }
+  };
+
+  // Handle wheel type creation
+  const handleWheelTypeCreated = (type: WheelTypeDefinition) => {
+    const types = wheelTypeStorage.loadAll();
+    setCustomWheelTypes(types);
+  };
+
+  // Handle wheel type deletion
+  const handleWheelTypeDeleted = (typeId: string) => {
+    const types = wheelTypeStorage.loadAll();
+    setCustomWheelTypes(types);
+    // If deleted type is currently selected, switch back to teams
+    if (contentType === typeId) {
+      setContentType('teams');
+    }
+  };
+
+  // Handle preset save
+  const handlePresetSaved = (preset: WheelPreset) => {
+    setPresets(wheelPresetStorage.loadAll());
+    setLoadedPresetId(preset.id);
+  };
 
   // Update external display when wheel spinner is active
   useEffect(() => {
@@ -325,7 +413,8 @@ export function WheelSpinnerInterface({ teams = [], onBack, onHome, onAwardPoint
   };
 
   return (
-    <div className="h-full bg-background flex flex-col">
+    <>
+      <div className="h-full bg-background flex flex-col">
       {/* Header */}
       <div className="bg-sidebar-accent border-b border-sidebar-border p-4 flex items-center justify-center">
         <h2 className="text-xl font-semibold">
@@ -342,7 +431,17 @@ export function WheelSpinnerInterface({ teams = [], onBack, onHome, onAwardPoint
               <label className="block text-foreground mb-2 font-medium">
                 Wheel Content Type
               </label>
-              <Select value={contentType} onValueChange={(value: WheelContentType) => setContentType(value)}>
+              <Select value={contentType} onValueChange={(value: WheelContentType) => {
+                setContentType(value);
+                setLoadedPresetId(null);
+                // Check if selecting a custom wheel type
+                const wheelType = customWheelTypes.find(wt => wt.id === value);
+                if (wheelType) {
+                  setSelectedWheelTypeId(value);
+                } else {
+                  setSelectedWheelTypeId(null);
+                }
+              }}>
                 <SelectTrigger className="h-10">
                   <SelectValue />
                 </SelectTrigger>
@@ -356,9 +455,70 @@ export function WheelSpinnerInterface({ teams = [], onBack, onHome, onAwardPoint
                   <SelectItem value="custom">
                     Blank Wheel ({customWheelItems.length} slices)
                   </SelectItem>
+                  {customWheelTypes.length > 0 && (
+                    <>
+                      <div className="my-1 h-px bg-border" />
+                      {customWheelTypes.map((type) => (
+                        <SelectItem key={type.id} value={type.id}>
+                          {type.name} ({type.items.length} items)
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Preset Management */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Presets</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {presets.length > 0 && (
+                  <Select value={loadedPresetId || ''} onValueChange={(value) => {
+                    if (value) loadPreset(value);
+                  }}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Load a preset..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {presets.map((preset) => (
+                        <SelectItem key={preset.id} value={preset.id}>
+                          {preset.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Button
+                  onClick={() => setSavePresetDialogOpen(true)}
+                  variant="outline"
+                  className="w-full h-9 text-sm"
+                >
+                  <Save className="h-3 w-3 mr-2" />
+                  {loadedPresetId ? 'Update Preset' : 'Save as Preset'}
+                </Button>
+                {loadedPresetId && (
+                  <Button
+                    onClick={deleteLoadedPreset}
+                    variant="outline"
+                    className="w-full h-9 text-sm text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  >
+                    <Trash2 className="h-3 w-3 mr-2" />
+                    Delete Preset
+                  </Button>
+                )}
+                <Button
+                  onClick={() => setWheelTypeDialogOpen(true)}
+                  variant="outline"
+                  className="w-full h-9 text-sm"
+                >
+                  <Settings2 className="h-3 w-3 mr-2" />
+                  Manage Types
+                </Button>
+              </CardContent>
+            </Card>
 
             {/* Custom Points Configuration */}
             {contentType === 'random-points' && (
@@ -603,6 +763,25 @@ export function WheelSpinnerInterface({ teams = [], onBack, onHome, onAwardPoint
           </div>
         </div>
       </div>
-    </div>
+      </div>
+
+      {/* Dialogs */}
+      <SaveWheelPresetDialog
+        open={savePresetDialogOpen}
+        onOpenChange={setSavePresetDialogOpen}
+        contentType={contentType}
+        customItems={customWheelItems}
+        customPointValues={customPointValues}
+        wheelTypeId={selectedWheelTypeId}
+        existingPresetId={loadedPresetId || undefined}
+        onSaveSuccess={handlePresetSaved}
+      />
+      <WheelTypeManager
+        open={wheelTypeDialogOpen}
+        onOpenChange={setWheelTypeDialogOpen}
+        onTypeCreated={handleWheelTypeCreated}
+        onTypeDeleted={handleWheelTypeDeleted}
+      />
+    </>
   );
 }
