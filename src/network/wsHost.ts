@@ -28,7 +28,8 @@ export type NetworkMessageType =
   | 'PLAYER_AWAY'  // incoming from players when they switch tabs/windows
   | 'PLAYER_ACTIVE'  // incoming from players when they return to active state
   | 'TEAM_PHOTO_UPDATED'  // incoming from backend when player updates photo
-  | 'PLAYER_BUZZER_SELECT';  // incoming from players when they select a buzzer
+  | 'PLAYER_BUZZER_SELECT'  // incoming from players when they select a buzzer
+  | 'BUZZERS_FOLDER_CHANGED';  // broadcast to players when buzzer folder changes
 
 export interface NetworkPayload {
   type: NetworkMessageType;
@@ -212,6 +213,16 @@ class HostNetwork {
   }
 
   /**
+   * Helper to broadcast buzzer folder change to all players.
+   */
+  public sendBuzzerFolderChange(folderPath: string) {
+    this.broadcast({
+      type: 'BUZZERS_FOLDER_CHANGED',
+      data: { folderPath },
+    });
+  }
+
+  /**
    * Register a player from the network.
    */
   public registerNetworkPlayer(playerId: string, teamName: string, deviceId?: string) {
@@ -341,5 +352,25 @@ export function sendTimeUpToPlayers() {
     }
   } catch (err) {
     console.error('[wsHost] Error calling broadcastTimeUp IPC:', err);
+  }
+}
+
+export function sendBuzzerFolderChangeToPlayers(folderPath: string) {
+  // Send local listeners first (for internal displays)
+  hostNetwork.sendBuzzerFolderChange(folderPath);
+
+  // Send via IPC to backend/WebSocket for remote players (Electron)
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.broadcastBuzzerFolderChange) {
+      console.log('[wsHost] Calling IPC broadcastBuzzerFolderChange to notify players:', folderPath);
+      api.network.broadcastBuzzerFolderChange(folderPath).catch((err: any) => {
+        console.error('[wsHost] IPC broadcastBuzzerFolderChange error:', err);
+      });
+    } else {
+      console.log('[wsHost] broadcastBuzzerFolderChange IPC not available (browser mode or dev)');
+    }
+  } catch (err) {
+    console.error('[wsHost] Error calling broadcastBuzzerFolderChange IPC:', err);
   }
 }

@@ -33,6 +33,7 @@ interface SettingsContextType {
   punishmentEnabled: boolean;
   voiceCountdown: boolean;
   hideQuizPackAnswers: boolean;
+  buzzerFolderPath: string | null;
   updateDefaultScores: (points: number, speedBonus: number) => void;
   updateGameModePoints: (gameMode: keyof GameModePoints, points: number) => void;
   updateGameModeTimer: (gameMode: keyof GameModeTimers, timer: number) => void;
@@ -47,6 +48,7 @@ interface SettingsContextType {
   updatePunishmentEnabled: (enabled?: boolean) => void;
   updateVoiceCountdown: (enabled: boolean) => void;
   updateHideQuizPackAnswers: (enabled: boolean) => void;
+  updateBuzzerFolderPath: (path: string | null) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -91,6 +93,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   const [punishmentEnabled, setPunishmentEnabled] = useState(false);
   const [voiceCountdown, setVoiceCountdown] = useState(true);
   const [hideQuizPackAnswers, setHideQuizPackAnswers] = useState(false);
+  const [buzzerFolderPath, setBuzzerFolderPath] = useState<string | null>(null);
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -125,6 +128,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         setPunishmentEnabled(parsed.punishmentEnabled || false);
         setVoiceCountdown(parsed.voiceCountdown !== undefined ? parsed.voiceCountdown : true);
         setHideQuizPackAnswers(parsed.hideQuizPackAnswers || false);
+        setBuzzerFolderPath(parsed.buzzerFolderPath || null);
       } catch (error) {
         console.error('Failed to parse saved settings:', error);
       }
@@ -181,6 +185,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
           setPunishmentEnabled(parsed.punishmentEnabled || false);
           setVoiceCountdown(parsed.voiceCountdown !== undefined ? parsed.voiceCountdown : true);
           setHideQuizPackAnswers(parsed.hideQuizPackAnswers || false);
+          setBuzzerFolderPath(parsed.buzzerFolderPath || null);
         } catch (error) {
           console.error('Failed to parse saved settings:', error);
         }
@@ -342,6 +347,15 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     window.dispatchEvent(new Event('settingsUpdated'));
   };
 
+  const updateBuzzerFolderPath = (path: string | null) => {
+    setBuzzerFolderPath(path);
+    // Save to localStorage and trigger event
+    const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
+    const updatedSettings = { ...currentSettings, buzzerFolderPath: path };
+    localStorage.setItem('quizHostSettings', JSON.stringify(updatedSettings));
+    window.dispatchEvent(new Event('settingsUpdated'));
+  };
+
   return (
     <SettingsContext.Provider
       value={{
@@ -361,6 +375,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         punishmentEnabled,
         voiceCountdown,
         hideQuizPackAnswers,
+        buzzerFolderPath,
         updateDefaultScores,
         updateGameModePoints,
         updateGameModeTimer,
@@ -375,6 +390,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         updatePunishmentEnabled,
         updateVoiceCountdown,
         updateHideQuizPackAnswers,
+        updateBuzzerFolderPath,
       }}
     >
       {children}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "./ui/button";
-import { Play, Volume2, Users } from "lucide-react";
+import { Play, Volume2, Users, Folder, AlertCircle } from "lucide-react";
+import { useSettings } from "../utils/SettingsContext";
 import {
   Select,
   SelectContent,
@@ -34,8 +35,12 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
   const [welcomeMode, setWelcomeMode] = useState(false);
   const [currentTeamIndex, setCurrentTeamIndex] = useState(0);
   const [buzzerSounds, setBuzzerSounds] = useState<string[]>([]);
+  const [isSelectingBuzzerFolder, setIsSelectingBuzzerFolder] = useState(false);
+  const [buzzerFolderError, setBuzzerFolderError] = useState<string | null>(null);
+  const [defaultBuzzerPath, setDefaultBuzzerPath] = useState<string | null>(null);
   const audioRef = React.useRef<HTMLAudioElement>(null);
   const { hostInfo, isLoading: loadingHostInfo } = useHostInfo();
+  const { buzzerFolderPath, updateBuzzerFolderPath } = useSettings();
 
   const loadingBuzzers = loadingHostInfo || buzzerSounds.length === 0;
 
@@ -44,6 +49,29 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
     if (!filename) return '';
     return filename.replace(/\.mp3$/i, '');
   };
+
+  // Load default buzzer path on component mount
+  useEffect(() => {
+    const loadDefaultBuzzerPath = async () => {
+      try {
+        console.log('[BuzzersManagement] Loading default buzzer path...');
+        const result = await window.api?.files.getDefaultBuzzerPath();
+        if (result?.path) {
+          console.log('[BuzzersManagement] ✅ Default buzzer path loaded:', result.path);
+          setDefaultBuzzerPath(result.path);
+        } else {
+          console.warn('[BuzzersManagement] getDefaultBuzzerPath returned no path:', result);
+          // Set to empty string to stop showing "Loading..." text
+          setDefaultBuzzerPath('');
+        }
+      } catch (error) {
+        console.error('[BuzzersManagement] Error loading default buzzer path:', error);
+        // Set to empty string to stop showing "Loading..." text
+        setDefaultBuzzerPath('');
+      }
+    };
+    loadDefaultBuzzerPath();
+  }, []);
 
   // Load buzzer sounds from API
   useEffect(() => {
@@ -129,6 +157,80 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
     }
   };
 
+  const handleSelectBuzzerFolder = async () => {
+    try {
+      setIsSelectingBuzzerFolder(true);
+      setBuzzerFolderError(null);
+
+      // Call the IPC handler to open folder selection dialog
+      const result = await window.api?.ipc.invoke('buzzer/select-folder');
+
+      if (result?.ok && result.data?.selectedPath) {
+        const newPath = result.data.selectedPath;
+        console.log('[BuzzersManagement] Buzzer folder selected:', newPath);
+
+        // Show confirmation dialog about clearing selections
+        const confirmed = window.confirm(
+          'Changing the buzzer folder will clear all team buzzer selections. Players will need to re-select their buzzers. Continue?'
+        );
+
+        if (confirmed) {
+          try {
+            // Update the settings context
+            updateBuzzerFolderPath(newPath);
+            console.log('[BuzzersManagement] Updated settings context with new folder path');
+
+            // Notify the backend about the folder change
+            try {
+              const ipcResult = await window.api?.ipc.invoke('buzzer/update-folder-path', { folderPath: newPath });
+              if (ipcResult?.ok) {
+                console.log('[BuzzersManagement] ✅ Backend successfully notified of folder change');
+              } else {
+                console.warn('[BuzzersManagement] ⚠️ Backend notification returned non-ok status:', ipcResult?.error);
+                setBuzzerFolderError('Warning: Folder saved locally but backend notification may have failed');
+              }
+            } catch (ipcError: any) {
+              console.error('[BuzzersManagement] Error notifying backend of folder change:', ipcError);
+              setBuzzerFolderError('Failed to notify players: ' + (ipcError.message || 'Unknown error'));
+              // Continue anyway - folder was saved locally
+            }
+
+            // Reload buzzer list for the new folder
+            if (hostInfo) {
+              console.log('[BuzzersManagement] Reloading buzzer list for new folder...');
+              const buzzers = await getBuzzersList(hostInfo);
+              setBuzzerSounds(buzzers);
+              console.log('[BuzzersManagement] ✅ Buzzer list reloaded with new folder:', buzzers);
+
+              if (!buzzers || buzzers.length === 0) {
+                console.warn('[BuzzersManagement] ⚠️ Selected folder has no buzzer files');
+                setBuzzerFolderError('Warning: Selected folder contains no buzzer sound files. Using default folder instead.');
+              }
+            }
+
+            console.log('[BuzzersManagement] ✅ Buzzer folder change complete');
+          } catch (processError: any) {
+            console.error('[BuzzersManagement] Error during folder change process:', processError);
+            setBuzzerFolderError('Error: ' + (processError.message || 'Unknown error'));
+          }
+        } else {
+          // User cancelled the confirmation dialog
+          console.log('[BuzzersManagement] User cancelled buzzer folder change confirmation');
+        }
+      } else if (result?.data?.selectedPath === null) {
+        // User cancelled the dialog
+        console.log('[BuzzersManagement] User cancelled folder selection');
+      } else {
+        throw new Error(result?.error || 'Failed to select folder');
+      }
+    } catch (error: any) {
+      console.error('[BuzzersManagement] Error in handleSelectBuzzerFolder:', error);
+      setBuzzerFolderError(error.message || 'Failed to select folder');
+    } finally {
+      setIsSelectingBuzzerFolder(false);
+    }
+  };
+
   return (
     <div className="h-[calc(100vh-60px)] w-full flex flex-col bg-background">
       {/* Header */}
@@ -150,6 +252,42 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
           >
             Close
           </Button>
+        </div>
+      </div>
+
+      {/* Buzzer Folder Section */}
+      <div className="border-b border-border bg-card/50 flex-shrink-0">
+        <div className="px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <Folder className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-muted-foreground">Buzzer Folder:</div>
+                {buzzerFolderPath ? (
+                  <p className="text-sm text-foreground truncate">{buzzerFolderPath}</p>
+                ) : defaultBuzzerPath ? (
+                  <p className="text-sm text-muted-foreground truncate">{defaultBuzzerPath}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No buzzer folder selected</p>
+                )}
+              </div>
+            </div>
+            <Button
+              onClick={handleSelectBuzzerFolder}
+              disabled={isSelectingBuzzerFolder}
+              variant="outline"
+              size="sm"
+              className="ml-4 flex-shrink-0"
+            >
+              {isSelectingBuzzerFolder ? 'Selecting...' : 'Change Folder'}
+            </Button>
+          </div>
+          {buzzerFolderError && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-destructive">
+              <AlertCircle className="w-3 h-3 flex-shrink-0" />
+              {buzzerFolderError}
+            </div>
+          )}
         </div>
       </div>
 
@@ -178,7 +316,7 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     size="sm"
                   >
-                    {currentTeamIndex >= teams.length ? "All Teams Introduced" : 
+                    {currentTeamIndex >= teams.length ? "All Teams Introduced" :
                      currentTeamIndex < teams.length ? `Next Team: ${teams[currentTeamIndex]?.name}` : "Next Team"}
                   </Button>
                   <Button

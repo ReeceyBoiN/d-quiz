@@ -9,6 +9,7 @@ import fs from 'fs';
 import fsp from 'fs/promises';
 import os from 'os';
 import { getTeamPicturesPath } from './pathInitializer.js';
+import { setCurrentBuzzerFolderPath } from './buzzerFolderManager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1803,6 +1804,77 @@ async function startBackend({ port = 4310 } = {}) {
     }
   }
 
+  function updateBuzzerFolderPath(folderPath) {
+    try {
+      log.info(`[updateBuzzerFolderPath] Setting buzzer folder to: ${folderPath}`);
+
+      // Update the backend's current buzzer folder
+      setCurrentBuzzerFolderPath(folderPath);
+
+      // Clear all team buzzer selections when folder changes
+      let clearedCount = 0;
+      networkPlayers.forEach((player) => {
+        if (player.buzzerSound) {
+          player.buzzerSound = null;
+          clearedCount++;
+        }
+      });
+
+      log.info(`[updateBuzzerFolderPath] Cleared buzzer selections for ${clearedCount} players`);
+
+      // Broadcast the change to all players
+      broadcastBuzzerFolderChange(folderPath);
+
+      return true;
+    } catch (err) {
+      log.error(`❌ updateBuzzerFolderPath error:`, err.message);
+      return false;
+    }
+  }
+
+  function broadcastBuzzerFolderChange(folderPath) {
+    try {
+      log.info(`[broadcastBuzzerFolderChange] Broadcasting new buzzer folder path: ${folderPath}`);
+
+      const message = JSON.stringify({
+        type: 'BUZZERS_FOLDER_CHANGED',
+        data: { folderPath },
+        timestamp: Date.now()
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+      const failedDevices = [];
+
+      // Broadcast to ALL connected clients (not just approved players)
+      wss.clients.forEach((client) => {
+        if (client.readyState === 1) {
+          try {
+            client.send(message, (err) => {
+              if (err) {
+                log.error(`❌ [broadcastBuzzerFolderChange] ws.send callback error:`, err.message);
+              } else {
+                log.debug(`[broadcastBuzzerFolderChange] Successfully sent to client`);
+              }
+            });
+            successCount++;
+          } catch (error) {
+            log.error(`❌ Failed to send buzzer folder change notification:`, error.message);
+            failCount++;
+            failedDevices.push('unknown');
+          }
+        }
+      });
+
+      log.info(`🔊 Broadcast BUZZERS_FOLDER_CHANGED to ${successCount} clients` + (failCount > 0 ? `, ${failCount} failed` : ''));
+    } catch (err) {
+      log.error(`❌ broadcastBuzzerFolderChange error:`, err.message);
+      if (err && err.stack) {
+        log.error(`[broadcastBuzzerFolderChange] Error stack:`, err.stack);
+      }
+    }
+  }
+
   // Phase 2: Cleanup function for heartbeat intervals
   const stopHeartbeat = () => {
     log.info('[Heartbeat] Stopping heartbeat mechanism');
@@ -1818,7 +1890,7 @@ async function startBackend({ port = 4310 } = {}) {
     }
   };
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos, stopHeartbeat };
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange };
 }
 
 export { startBackend };

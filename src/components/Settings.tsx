@@ -11,6 +11,8 @@ import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { audioStorage, StoredAudio } from "../utils/audioStorage";
 import { useSettings } from "../utils/SettingsContext";
+import { useHostInfo } from "../hooks/useHostInfo";
+import { getBuzzersList } from "../utils/api";
 import { 
   X, 
   Settings as SettingsIcon, 
@@ -177,7 +179,8 @@ function KeypadPreview({ design }: KeypadPreviewProps) {
 }
 
 export function Settings({ isOpen, onClose }: SettingsProps) {
-  const { version, updateResponseTimesEnabled, updateTeamPhotosAutoApprove, updateGameModePoints, updateGameModeTimer, updateCountdownStyle, updateVoiceCountdown, updateKeypadDesign, updateEvilModeEnabled, updatePunishmentEnabled } = useSettings();
+  const { version, updateResponseTimesEnabled, updateTeamPhotosAutoApprove, updateGameModePoints, updateGameModeTimer, updateCountdownStyle, updateVoiceCountdown, updateKeypadDesign, updateEvilModeEnabled, updatePunishmentEnabled, buzzerFolderPath, updateBuzzerFolderPath } = useSettings();
+  const { hostInfo, isLoading: loadingHostInfo } = useHostInfo();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
@@ -187,6 +190,12 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   const [selectedCountdownAudio, setSelectedCountdownAudio] = useState<string | null>(null);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState<string | null>(null);
+
+  // Buzzer folder selection state
+  const [isSelectingBuzzerFolder, setIsSelectingBuzzerFolder] = useState(false);
+  const [buzzerFolderError, setBuzzerFolderError] = useState<string | null>(null);
+  const [isBuzzerListLoading, setIsBuzzerListLoading] = useState(false);
+  const [defaultBuzzerPath, setDefaultBuzzerPath] = useState<string | null>(null);
 
   // Load countdown audio files on component mount
   useEffect(() => {
@@ -199,6 +208,29 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
       }
     };
     loadAudios();
+  }, []);
+
+  // Load default buzzer path on component mount
+  useEffect(() => {
+    const loadDefaultBuzzerPath = async () => {
+      try {
+        console.log('[Settings] Loading default buzzer path...');
+        const result = await window.api?.files.getDefaultBuzzerPath();
+        if (result?.path) {
+          console.log('[Settings] ✅ Default buzzer path loaded:', result.path);
+          setDefaultBuzzerPath(result.path);
+        } else {
+          console.warn('[Settings] getDefaultBuzzerPath returned no path:', result);
+          // Set to empty string to stop showing "Loading..." text
+          setDefaultBuzzerPath('');
+        }
+      } catch (error) {
+        console.error('[Settings] Error loading default buzzer path:', error);
+        // Set to empty string to stop showing "Loading..." text
+        setDefaultBuzzerPath('');
+      }
+    };
+    loadDefaultBuzzerPath();
   }, []);
 
   // Settings state - load from localStorage or use defaults
@@ -405,6 +437,86 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
         console.error('Failed to delete audio:', error);
         alert('Failed to delete audio file. Please try again.');
       }
+    }
+  };
+
+  const handleSelectBuzzerFolder = async () => {
+    try {
+      setIsSelectingBuzzerFolder(true);
+      setBuzzerFolderError(null);
+
+      // Call the IPC handler to open folder selection dialog
+      const result = await window.api?.ipc.invoke('buzzer/select-folder');
+
+      if (result?.ok && result.data?.selectedPath) {
+        const newPath = result.data.selectedPath;
+        console.log('[Settings] Buzzer folder selected:', newPath);
+
+        // Show confirmation dialog about clearing selections (matching BuzzersManagement.tsx)
+        const confirmed = window.confirm(
+          'Changing the buzzer folder will clear all team buzzer selections. Players will need to re-select their buzzers. Continue?'
+        );
+
+        if (confirmed) {
+          try {
+            // Update the settings context
+            updateBuzzerFolderPath(newPath);
+            console.log('[Settings] Updated settings context with new buzzer folder path');
+
+            // Notify the backend about the folder change
+            try {
+              const ipcResult = await window.api?.ipc.invoke('buzzer/update-folder-path', { folderPath: newPath });
+              if (ipcResult?.ok) {
+                console.log('[Settings] ✅ Backend successfully notified of folder change');
+              } else {
+                console.warn('[Settings] ⚠️ Backend notification returned non-ok status:', ipcResult?.error);
+                setBuzzerFolderError('Backend notification failed, but folder was saved locally');
+              }
+            } catch (ipcError: any) {
+              console.error('[Settings] Error notifying backend of folder change:', ipcError);
+              setBuzzerFolderError('Failed to notify players of folder change: ' + (ipcError.message || 'Unknown error'));
+            }
+
+            // Reload buzzer list for the new folder (for visual feedback)
+            if (hostInfo && !loadingHostInfo) {
+              try {
+                setIsBuzzerListLoading(true);
+                console.log('[Settings] Reloading buzzer list for new folder...');
+                const buzzers = await getBuzzersList(hostInfo);
+                console.log('[Settings] Buzzer list reloaded with new folder:', buzzers);
+
+                if (!buzzers || buzzers.length === 0) {
+                  console.warn('[Settings] ⚠️ New folder appears to have no buzzer files');
+                  setBuzzerFolderError('Selected folder has no buzzer sound files. Using default folder instead.');
+                }
+              } catch (listError: any) {
+                console.error('[Settings] Error reloading buzzer list:', listError);
+                setBuzzerFolderError('Could not reload buzzer list: ' + (listError.message || 'Unknown error'));
+              } finally {
+                setIsBuzzerListLoading(false);
+              }
+            }
+
+            console.log('[Settings] ✅ Buzzer folder selection complete');
+          } catch (confirmError: any) {
+            console.error('[Settings] Error during folder change process:', confirmError);
+            setBuzzerFolderError('Unexpected error: ' + (confirmError.message || 'Unknown error'));
+          }
+        } else {
+          // User cancelled the confirmation dialog
+          console.log('[Settings] User cancelled buzzer folder change confirmation');
+        }
+      } else if (result?.data?.selectedPath === null) {
+        // User cancelled the folder selection dialog
+        console.log('[Settings] User cancelled folder selection dialog');
+      } else {
+        throw new Error(result?.error || 'Failed to select folder');
+      }
+    } catch (error: any) {
+      console.error('[Settings] Error in handleSelectBuzzerFolder:', error);
+      setBuzzerFolderError(error.message || 'Failed to select folder');
+    } finally {
+      setIsSelectingBuzzerFolder(false);
     }
   };
 
@@ -900,11 +1012,42 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
           </div>
 
           <Separator className="bg-border" />
-          <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border">
-            <Label className="text-foreground">Select buzzers folder</Label>
-            <Button variant="outline" className="ml-4">
-              Select Folder
-            </Button>
+          <div className="space-y-3">
+            <Label className="text-foreground">Buzzer Folder Location</Label>
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border">
+              <div className="flex-1 min-w-0 pr-3">
+                {buzzerFolderPath ? (
+                  <div className="space-y-1">
+                    <p className="text-sm text-foreground font-medium">Current Folder:</p>
+                    <p className="text-xs text-muted-foreground break-all">{buzzerFolderPath}</p>
+                  </div>
+                ) : defaultBuzzerPath ? (
+                  <div className="space-y-1">
+                    <p className="text-sm text-foreground font-medium">Default Folder:</p>
+                    <p className="text-xs text-muted-foreground break-all">{defaultBuzzerPath}</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No buzzer folder selected</p>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                className="ml-4 flex-shrink-0"
+                onClick={handleSelectBuzzerFolder}
+                disabled={isSelectingBuzzerFolder || isBuzzerListLoading}
+              >
+                {isSelectingBuzzerFolder ? 'Selecting...' : isBuzzerListLoading ? 'Loading...' : 'Select Folder'}
+              </Button>
+            </div>
+            {buzzerFolderError && (
+              <p className="text-xs text-destructive flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {buzzerFolderError}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Choose a custom folder containing your buzzer sound files. This folder will be used across all quiz sessions.
+            </p>
           </div>
         </CardContent>
       </Card>

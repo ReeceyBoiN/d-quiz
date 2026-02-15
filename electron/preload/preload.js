@@ -43,19 +43,58 @@ contextBridge.exposeInMainWorld('api', {
     openFromFile: () => invoke('app/open-from-file'),
     questionPacksPath: () => invoke('files/question-packs-path'),
     listDirectory: (path) => invoke('files/list-directory', { path }),
+    getDefaultBuzzerPath: async () => {
+      try {
+        const result = await Promise.race([
+          invoke('files/get-default-buzzer-path'),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('IPC timeout')), 5000)
+          )
+        ]);
+        if (!result?.path) {
+          console.warn('[Preload] getDefaultBuzzerPath() - No path in response:', result);
+          return undefined;
+        }
+        console.log('[Preload] getDefaultBuzzerPath() returning:', result.path);
+        return result;
+      } catch (error) {
+        console.error('[Preload] Error getting default buzzer path:', error);
+        return undefined;
+      }
+    },
   },
 
   // --- Backend (Express/WebSocket) info ---
   backend: {
-    url: () => {
-      const url = process.env.BACKEND_URL;
-      console.log('[Preload] backend.url() returning:', url);
-      return url;
+    url: async () => {
+      try {
+        const result = await invoke('app/get-backend-url');
+        if (!result?.ok) {
+          console.error('[Preload] backend.url() - IPC response not ok:', result?.error);
+          return undefined;
+        }
+        const url = result?.data?.url;
+        console.log('[Preload] backend.url() returning:', url);
+        return url;
+      } catch (error) {
+        console.error('[Preload] Error getting backend URL:', error);
+        return undefined;
+      }
     },
-    ws: () => {
-      const ws = process.env.BACKEND_WS;
-      console.log('[Preload] backend.ws() returning:', ws);
-      return ws;
+    ws: async () => {
+      try {
+        const result = await invoke('app/get-backend-ws');
+        if (!result?.ok) {
+          console.error('[Preload] backend.ws() - IPC response not ok:', result?.error);
+          return undefined;
+        }
+        const ws = result?.data?.ws;
+        console.log('[Preload] backend.ws() returning:', ws);
+        return ws;
+      } catch (error) {
+        console.error('[Preload] Error getting backend WebSocket URL:', error);
+        return undefined;
+      }
     },
   },
 
@@ -71,6 +110,7 @@ contextBridge.exposeInMainWorld('api', {
     broadcastQuestion: (data) => invoke('network/broadcast-question', data),
     broadcastReveal: (data) => invoke('network/broadcast-reveal', data),
     broadcastTimeUp: () => invoke('network/broadcast-timeup'),
+    broadcastBuzzerFolderChange: (data) => invoke('network/broadcast-buzzer-folder-change', data),
   },
 
   // --- 🔹 IPC event helpers (for external display, etc.) ---

@@ -8,7 +8,9 @@ import { createIpcRouter } from '../ipc/ipcRouter.js';
 import { startBackend } from '../backend/server.js';
 import { initializePaths, getResourcePaths } from '../backend/pathInitializer.js';
 import { handleGetBuzzerPath } from '../ipc/handlers/audioHandler.js';
+import { handleSelectBuzzerFolder } from '../ipc/handlers/buzzerHandler.js';
 import { GetBuzzerPathSchema } from '../ipc/validators.js';
+import { getDefaultBuzzerFolder } from '../utils/buzzerConfig.js';
 import os from 'os';
 
 let mainWindow;
@@ -61,6 +63,7 @@ async function boot() {
   const localIP = getLocalIPAddress();
 
   try {
+    log.info('[Backend] Attempting to start backend server on port:', port);
     backend = await startBackend({ port });
     process.env.BACKEND_URL = `http://${localIP}:${backend.port}`;
     process.env.BACKEND_WS = `ws://${localIP}:${backend.port}/events`;
@@ -69,30 +72,70 @@ async function boot() {
     log.info(`🌐 Network access URL: http://${localIP}:${backend.port}`);
     log.info(`🔌 WebSocket URL: ws://${localIP}:${backend.port}/events`);
   } catch (err) {
+    log.error('[Backend] Error during startup:', {
+      code: err.code,
+      message: err.message,
+      port: port
+    });
+
     if (err.code === 'EADDRINUSE') {
-      log.warn(`Port ${port} is in use, trying port ${port + 1}`);
+      log.warn(`[Backend] Port ${port} is in use, trying port ${port + 1}`);
       try {
         backend = await startBackend({ port: port + 1 });
         process.env.BACKEND_URL = `http://${localIP}:${backend.port}`;
         process.env.BACKEND_WS = `ws://${localIP}:${backend.port}/events`;
-        log.info(`Backend server started on fallback port ${backend.port}`);
+        log.info(`✅ Backend server started on fallback port ${backend.port}`);
       } catch (err2) {
-        log.error('Failed to start backend server on any port:', err2.message);
+        log.error('[Backend] Failed on fallback port:', {
+          code: err2.code,
+          message: err2.message,
+          port: port + 1
+        });
+        // Set fallback URLs even if backend failed - use localhost with original port
+        process.env.BACKEND_URL = `http://localhost:${port}`;
+        process.env.BACKEND_WS = `ws://localhost:${port}/events`;
+        log.warn(`[Backend] Using localhost fallback URLs - backend may not be available`);
       }
     } else {
-      log.error('Failed to start backend server:', err.message);
+      log.error('[Backend] Backend startup failed (non-EADDRINUSE error):', {
+        code: err.code,
+        message: err.message,
+        stack: err.stack
+      });
+      // Set fallback URLs even if backend failed
+      process.env.BACKEND_URL = `http://localhost:${port}`;
+      process.env.BACKEND_WS = `ws://localhost:${port}/events`;
+      log.warn(`[Backend] Using localhost fallback URLs - backend may not be available`);
     }
   }
 
   // Store backend reference for IPC access
   global.backend = backend;
 
+  // Log backend URL availability before creating window
+  log.info('[Window] Creating main window with backend configuration:', {
+    backendUrl: process.env.BACKEND_URL,
+    backendWs: process.env.BACKEND_WS,
+    backendStarted: !!backend
+  });
+
   // Create window
   mainWindow = createMainWindow();
 
   // IPC router (renderer ↔ main/modules)
   const router = createIpcRouter(ipcMain);
-  
+
+  // Backend URL/WS info handlers
+  router.mount('app/get-backend-url', async () => {
+    log.info('[IPC] app/get-backend-url called, returning:', process.env.BACKEND_URL);
+    return { url: process.env.BACKEND_URL };
+  });
+
+  router.mount('app/get-backend-ws', async () => {
+    log.info('[IPC] app/get-backend-ws called, returning:', process.env.BACKEND_WS);
+    return { ws: process.env.BACKEND_WS };
+  });
+
   // Window control handlers
   router.mount('window/minimize', async () => {
     mainWindow.minimize();
@@ -130,6 +173,35 @@ async function boot() {
 
   // Audio handlers
   router.mount('audio/get-buzzer-path', handleGetBuzzerPath, GetBuzzerPathSchema);
+
+  // Buzzer handlers
+  router.mount('buzzer/select-folder', async () => {
+    return await handleSelectBuzzerFolder(mainWindow);
+  });
+
+  router.mount('buzzer/update-folder-path', async (payload) => {
+    try {
+      log.info('[IPC] buzzer/update-folder-path called with path:', payload?.folderPath);
+
+      if (!backend || !backend.updateBuzzerFolderPath) {
+        log.error('[IPC] Backend not initialized for buzzer/update-folder-path');
+        throw new Error('Backend not initialized');
+      }
+
+      const { folderPath } = payload;
+      const success = backend.updateBuzzerFolderPath(folderPath);
+
+      if (success) {
+        log.info('[IPC] ✅ Successfully updated buzzer folder path:', folderPath);
+        return { ok: true, data: { success: true } };
+      } else {
+        throw new Error('Failed to update buzzer folder path in backend');
+      }
+    } catch (err) {
+      log.error('[IPC] buzzer/update-folder-path error:', err.message);
+      throw err;
+    }
+  });
 
   // Dynamic imports for quiz modules
   const quizEngine = await import('../modules/quizEngine.js');
@@ -296,6 +368,18 @@ async function boot() {
       path: path.join(dirPath, d.name),
     }));
     return { entries };
+  });
+
+  // Get the default buzzer folder path
+  router.mount('files/get-default-buzzer-path', async () => {
+    try {
+      const defaultPath = getDefaultBuzzerFolder();
+      log.info('[IPC] files/get-default-buzzer-path returning:', defaultPath);
+      return { path: defaultPath };
+    } catch (error) {
+      log.error('[IPC] files/get-default-buzzer-path error:', error.message);
+      throw error;
+    }
   });
 
   // Get resource paths for PopQuiz (sounds, images, etc.)
@@ -513,6 +597,38 @@ async function boot() {
       return { broadcasted: true };
     } catch (err) {
       log.error('[IPC] network/broadcast-picture error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
+    }
+  });
+
+  // Broadcast buzzer folder change to player devices
+  router.mount('network/broadcast-buzzer-folder-change', async (payload) => {
+    try {
+      log.info('[IPC] network/broadcast-buzzer-folder-change called with:', { folderPath: payload?.folderPath });
+
+      if (!backend || !backend.broadcastBuzzerFolderChange) {
+        log.error('[IPC] Backend not initialized for broadcast-buzzer-folder-change');
+        throw new Error('Backend not initialized');
+      }
+
+      const { folderPath } = payload;
+      log.info('[IPC] Broadcasting buzzer folder change:', { folderPath });
+
+      try {
+        backend.broadcastBuzzerFolderChange(folderPath);
+        log.info('[IPC] backend.broadcastBuzzerFolderChange completed successfully');
+      } catch (broadcastErr) {
+        log.error('[IPC] backend.broadcastBuzzerFolderChange threw error:', broadcastErr.message);
+        if (broadcastErr.stack) {
+          log.error('[IPC] broadcastBuzzerFolderChange error stack:', broadcastErr.stack);
+        }
+        throw broadcastErr;
+      }
+
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-buzzer-folder-change error:', err.message);
       log.error('[IPC] Error stack:', err.stack);
       throw err;
     }

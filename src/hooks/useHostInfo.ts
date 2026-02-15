@@ -56,29 +56,39 @@ export function useHostInfo() {
 
         if (api?.backend?.url) {
           // Try to get the HTTP URL first
-          const backendUrl = api.backend.url();
+          try {
+            const result = await api.backend.url();
+            console.log('[useHostInfo] backend.url() returned:', result);
 
-          if (backendUrl) {
-            const baseUrl = backendUrl.replace(/\/events$/, ''); // Remove /events if present
-            hostInfoCache = { baseUrl };
-            setHostInfo(hostInfoCache);
-            console.log('[useHostInfo] Successfully retrieved backend URL via IPC:', baseUrl);
-            return;
+            if (result) {
+              const baseUrl = result.replace(/\/events$/, ''); // Remove /events if present
+              hostInfoCache = { baseUrl };
+              setHostInfo(hostInfoCache);
+              console.log('[useHostInfo] Successfully retrieved backend URL via IPC:', baseUrl);
+              return;
+            }
+          } catch (urlError) {
+            console.warn('[useHostInfo] Error getting HTTP backend URL, trying WebSocket URL:', urlError);
           }
         }
 
         // Fallback: try to parse WebSocket URL
         if (api?.backend?.ws) {
-          const wsUrl = api.backend.ws();
+          try {
+            const result = await api.backend.ws();
+            console.log('[useHostInfo] backend.ws() returned:', result);
 
-          if (wsUrl) {
-            const baseUrl = parseWebSocketUrl(wsUrl);
-            if (baseUrl) {
-              hostInfoCache = { baseUrl };
-              setHostInfo(hostInfoCache);
-              console.log('[useHostInfo] Successfully parsed WebSocket URL to get backend URL:', baseUrl);
-              return;
+            if (result) {
+              const baseUrl = parseWebSocketUrl(result);
+              if (baseUrl) {
+                hostInfoCache = { baseUrl };
+                setHostInfo(hostInfoCache);
+                console.log('[useHostInfo] Successfully parsed WebSocket URL to get backend URL:', baseUrl);
+                return;
+              }
             }
+          } catch (wsError) {
+            console.warn('[useHostInfo] Error getting WebSocket URL:', wsError);
           }
         }
 

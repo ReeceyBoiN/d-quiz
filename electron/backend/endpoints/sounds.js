@@ -3,6 +3,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import log from 'electron-log';
 import { getResourcePaths } from '../pathInitializer.js';
+import { getBuzzerFolder } from '../../utils/buzzerConfig.js';
+import { getCurrentBuzzerFolderPath } from '../buzzerFolderManager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,8 +19,22 @@ export default (app) => {
    */
   app.get('/api/buzzers/list', (_req, res) => {
     try {
-      const resourcePaths = getResourcePaths();
-      const buzzerDir = path.join(resourcePaths.sounds, 'Buzzers');
+      let buzzerDir;
+
+      try {
+        const customBuzzerPath = getCurrentBuzzerFolderPath();
+        buzzerDir = getBuzzerFolder(customBuzzerPath);
+      } catch (folderError) {
+        log.warn(`[Buzzers API] Error getting buzzer folder, using default path:`, folderError.message);
+        // Fallback to default directly from pathInitializer
+        try {
+          const resourcePaths = getResourcePaths();
+          buzzerDir = path.join(resourcePaths.sounds, 'Buzzers');
+        } catch (fallbackError) {
+          log.error(`[Buzzers API] Failed to get default buzzer path:`, fallbackError.message);
+          return res.json({ buzzers: [] });
+        }
+      }
 
       log.info(`[Buzzers API] Listing buzzers from: ${buzzerDir}`);
 
@@ -71,8 +87,23 @@ export default (app) => {
         return res.status(400).send('File type not allowed');
       }
 
-      const resourcePaths = getResourcePaths();
-      const buzzerDir = path.join(resourcePaths.sounds, 'Buzzers');
+      let buzzerDir;
+
+      try {
+        const customBuzzerPath = getCurrentBuzzerFolderPath();
+        buzzerDir = getBuzzerFolder(customBuzzerPath);
+      } catch (folderError) {
+        log.warn(`[Buzzers API] Error getting buzzer folder, using default path:`, folderError.message);
+        // Fallback to default directly from pathInitializer
+        try {
+          const resourcePaths = getResourcePaths();
+          buzzerDir = path.join(resourcePaths.sounds, 'Buzzers');
+        } catch (fallbackError) {
+          log.error(`[Buzzers API] Failed to get default buzzer path:`, fallbackError.message);
+          return res.status(500).send('Error resolving buzzer directory');
+        }
+      }
+
       const filePath = path.join(buzzerDir, fileName);
 
       // Additional security: ensure the resolved path is within the buzzers directory

@@ -17,8 +17,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   ?dax - Add the filter for questions so "THE LION KING" answer isnt a "T" as we're ignoring the word "THE" So for questions that may get added in the future, if the answer is "The Cat" then it should be the letter C as the correct answer. - In quiz pack mode, some questions will have the answer pre defined or marked in the question information, so that should also be taken into account, however if it is not already marked, the application should have this understanding built in to fall back on.
 
-  buzzers tab needs to have an ability to open a folder / filepath incase they want to change it.
-
   the Team photos on the bottom navigation bar needs to highlight orange if there is currently a team waiting for a team photo to be approved
 
   change teams layout button on bottom navigation bar changes the size of the navigation bar when toggled. - Visually the boxes and placement and if text changes it shouldnt change location of boxes buttons and interface, unless its font size, that should increase everything all round really.

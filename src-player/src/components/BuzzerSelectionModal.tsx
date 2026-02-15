@@ -57,9 +57,12 @@ export function BuzzerSelectionModal({
 
         setBuzzers(data.buzzers || []);
 
-        // If current selection exists, pre-select it
+        // If current selection exists and is still available, pre-select it
         if (settings.buzzerSound && data.buzzers.includes(settings.buzzerSound)) {
           setSelectedBuzzer(settings.buzzerSound);
+        } else {
+          // Clear selection if buzzer no longer available (e.g., folder changed)
+          setSelectedBuzzer(null);
         }
       } catch (err) {
         console.error('[BuzzerSelectionModal] Error loading buzzers:', err);

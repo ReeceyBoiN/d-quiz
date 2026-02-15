@@ -7,28 +7,46 @@ import path from 'path';
 import fs from 'fs';
 import log from 'electron-log';
 import { getResourcePaths } from '../../backend/pathInitializer.js';
+import { getBuzzerFolder } from '../../utils/buzzerConfig.js';
+import { getCurrentBuzzerFolderPath } from '../../backend/buzzerFolderManager.js';
 
 // Allowed audio file extensions
 const ALLOWED_AUDIO_EXTENSIONS = /\.(mp3|wav|ogg|m4a|flac|webm)$/i;
 
 /**
- * Convert file path to file:// URL
+ * Convert file path to file:// URL with proper encoding for special characters
  * Windows: C:\Users\name\Documents\... -> file:///C:/Users/name/Documents/...
  * macOS/Linux: /home/user/Documents/... -> file:///home/user/Documents/...
+ *
+ * Special characters (spaces, etc.) are percent-encoded in each path component
+ * Example: "My Document.mp3" -> "file:///path/My%20Document.mp3"
  */
 function pathToFileUrl(filePath) {
   // Normalize path separators to forward slashes
   let normalized = filePath.replace(/\\/g, '/');
-  
+
+  // Split by forward slash and encode each component
+  const parts = normalized.split('/');
+  const encodedParts = parts.map(part => {
+    // Encode special characters but preserve the part structure
+    // Skip empty parts (for Windows drive letters like C:)
+    if (part === '' || part.includes(':')) {
+      return part;
+    }
+    return encodeURIComponent(part);
+  });
+
+  const encodedPath = encodedParts.join('/');
+
   // Add file:/// prefix
   // Windows paths like C:/ need to be file:///C:/
   // Unix paths like /home/ need to be file:////home/
-  if (normalized.charAt(1) === ':') {
+  if (encodedPath.charAt(1) === ':') {
     // Windows path
-    return `file:///${normalized}`;
+    return `file:///${encodedPath}`;
   } else {
     // Unix path
-    return `file://${normalized}`;
+    return `file://${encodedPath}`;
   }
 }
 
@@ -62,9 +80,22 @@ export async function handleGetBuzzerPath(payload) {
       throw new Error('File type not allowed - only audio files are supported');
     }
 
-    // Get the buzzers directory
-    const resourcePaths = getResourcePaths();
-    const buzzerDir = path.join(resourcePaths.sounds, 'Buzzers');
+    // Get the buzzers directory (configurable via SettingsContext)
+    let buzzerDir;
+    try {
+      const customBuzzerPath = getCurrentBuzzerFolderPath();
+      buzzerDir = getBuzzerFolder(customBuzzerPath);
+    } catch (folderError) {
+      log.warn(`[Audio IPC] Error getting buzzer folder, using default path:`, folderError.message);
+      // Fallback to default directly from pathInitializer
+      try {
+        const resourcePaths = getResourcePaths();
+        buzzerDir = path.join(resourcePaths.sounds, 'Buzzers');
+      } catch (fallbackError) {
+        log.error(`[Audio IPC] Failed to get default buzzer path:`, fallbackError.message);
+        throw new Error('Unable to determine buzzer directory');
+      }
+    }
     const filePath = path.join(buzzerDir, buzzerName);
 
     // Additional security: ensure the resolved path is within the buzzers directory

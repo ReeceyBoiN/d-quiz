@@ -771,12 +771,41 @@ export default function App() {
         console.log('[Player] AUTO_DISABLE_GO_WIDE message received:', message.data?.disabled);
         setGoWideEnabled(!message.data?.disabled);
         break;
+      case 'BUZZERS_FOLDER_CHANGED':
+        try {
+          console.log('[Player] BUZZERS_FOLDER_CHANGED message received:', message.data?.folderPath);
+
+          // Clear the player's confirmed buzzer selection
+          setConfirmedBuzzer(null);
+
+          // Clear selected buzzers from other players
+          setSelectedBuzzers({});
+
+          // Clear buzzer from local settings
+          updateBuzzerSound(null);
+
+          // If player is in buzzer selection, show notification
+          if (currentScreen === 'buzzer-selection') {
+            console.log('[Player] Already in buzzer selection - buzzer list will auto-reload');
+          } else {
+            // Redirect to buzzer selection if approved
+            if (isApproved && teamName) {
+              console.log('[Player] Redirecting to buzzer selection after folder change');
+              setCurrentScreen('buzzer-selection');
+            }
+          }
+
+          console.log('[Player] ✅ BUZZERS_FOLDER_CHANGED handled - player must re-select buzzer');
+        } catch (folderChangeErr) {
+          console.error('❌ [Player] Error in BUZZERS_FOLDER_CHANGED handler:', folderChangeErr);
+        }
+        break;
       case 'SCORE_UPDATE':
         console.log('[Player] SCORE_UPDATE message received:', message.data);
         // Score updates are handled on display side, just log here
         break;
     }
-  }, [teamName, currentQuestion, currentScreen, submittedAnswer, displayMode, clearTimerLockDelay, pendingApprovalData, shouldIgnoreScreenTransition]);
+  }, [teamName, currentQuestion, currentScreen, submittedAnswer, displayMode, clearTimerLockDelay, pendingApprovalData, shouldIgnoreScreenTransition, isApproved, updateBuzzerSound]);
 
   const { isConnected, error } = useNetworkConnection({
     playerId,

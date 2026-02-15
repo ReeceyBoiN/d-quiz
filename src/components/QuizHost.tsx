@@ -917,7 +917,7 @@ export function QuizHost() {
       return delayMs;
     };
 
-    const connectWebSocket = () => {
+    const connectWebSocket = async () => {
       if (!isComponentMounted) return;
 
       try {
@@ -937,7 +937,8 @@ export function QuizHost() {
         if ((window as any).api?.backend?.ws) {
           // Electron mode - get URL from IPC
           try {
-            backendWs = (window as any).api.backend.ws();
+            // Await the async function to get the WebSocket URL
+            backendWs = await (window as any).api.backend.ws();
             if (backendWs) {
               console.log('✓ WebSocket URL from Electron IPC:', backendWs);
             } else {

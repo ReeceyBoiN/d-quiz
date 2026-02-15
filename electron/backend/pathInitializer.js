@@ -8,6 +8,12 @@ import fs from 'fs';
 import os from 'os';
 import log from 'electron-log';
 
+// ⚠️  IMPORTANT: Path Initialization Safety
+// This initializes the folder structure but NEVER deletes existing files.
+// Once created, these folders (especially Sounds/Buzzers) are owned by the user
+// and their contents are never modified or deleted by the app on updates.
+// Migration logic only copies files if old locations exist, never overwrites.
+
 // Folder structure to create
 const FOLDERS_TO_CREATE = [
   'PopQuiz',
@@ -19,7 +25,7 @@ const FOLDERS_TO_CREATE = [
   'PopQuiz/Resources/Sounds/Countdown',
   'PopQuiz/Resources/Sounds/Applause',
   'PopQuiz/Resources/Sounds/Fail Sounds',
-  'PopQuiz/Resources/Sounds/Buzzers'
+  'PopQuiz/Resources/Sounds/Buzzers' // User's custom buzzers are safe here - never deleted
 ];
 
 /**
@@ -124,7 +130,11 @@ function copyDirectoryRecursive(source, destination) {
 
 /**
  * Migrate existing sounds from old location to new location
- * This is a one-time migration for existing installations
+ * This is a one-time migration for existing installations.
+ *
+ * SAFETY GUARANTEE: This function ONLY copies files, never deletes.
+ * User files in PopQuiz/Resources/Sounds/Buzzers are NEVER touched.
+ * Custom buzzer selections persist across app updates.
  */
 function migrateSoundsIfNeeded() {
   log.info('[PathInitializer] ===== START: migrateSoundsIfNeeded() =====');
