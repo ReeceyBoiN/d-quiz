@@ -2728,7 +2728,19 @@ export function QuizHost() {
         } else {
           // Quiz in progress - require manual approval
           console.log('⏸️ New team requires manual approval (quiz in progress):', { deviceId, teamName });
-          setPendingTeams(prev => [...prev, { deviceId, playerId, teamName, timestamp: Date.now() }]);
+          const normalizedDeviceId = deviceId?.trim();
+          setPendingTeams(prev => {
+            // STRONG DEDUPLICATION: Remove any existing entry with same deviceId, then add new entry
+            // This prevents duplicates even if PLAYER_JOIN is received multiple times
+            const filtered = prev.filter(t => t.deviceId?.trim() !== normalizedDeviceId);
+
+            if (filtered.length < prev.length) {
+              // Team was already in pending list - remove it and re-add with updated timestamp
+              console.log(`[QuizHost] 🔄 Team already pending approval: ${teamName} (${deviceId}) - updating entry with fresh timestamp`);
+            }
+
+            return [...filtered, { deviceId, playerId, teamName, timestamp: Date.now() }];
+          });
         }
       }
     };
@@ -3161,6 +3173,53 @@ export function QuizHost() {
     // Register listener and get unsubscribe function
     const unsubscribe = onNetworkMessage('PLAYER_BUZZER_SELECT', handleNetworkPlayerBuzzerSelect);
     console.log('[QuizHost] 📝 Registered PLAYER_BUZZER_SELECT listener');
+
+    // Clean up listener on unmount
+    return unsubscribe;
+  }, []); // Empty dependency array - register once on mount
+
+  // Listen for photo approval updates from BottomNavigation
+  useEffect(() => {
+    const handlePhotoApprovalUpdated = (data: any) => {
+      const { deviceId, teamName, photoUrl } = data;
+
+      if (!deviceId || !photoUrl) {
+        console.warn('[QuizHost] PHOTO_APPROVAL_UPDATED missing required fields');
+        return;
+      }
+
+      console.log('[QuizHost] 📸 Received PHOTO_APPROVAL_UPDATED from BottomNavigation:');
+      console.log('[QuizHost] - deviceId:', deviceId);
+      console.log('[QuizHost] - teamName:', teamName);
+      console.log('[QuizHost] - photoUrl (first 50 chars):', photoUrl?.substring(0, 50));
+
+      // Check if team exists in quizzes
+      const teamExists = quizzesRef.current.some(q => q.id === deviceId);
+      console.log('[QuizHost] 🔍 Team exists in quizzes:', teamExists);
+
+      if (teamExists) {
+        // Update quizzes state with approved photo URL
+        const beforeQuiz = quizzesRef.current.find(q => q.id === deviceId);
+        console.log('[QuizHost] Before update - Team photo:', beforeQuiz?.photoUrl ? 'present' : 'missing');
+
+        setQuizzes(prev => {
+          const updated = prev.map(q =>
+            q.id === deviceId
+              ? { ...q, photoUrl: photoUrl }
+              : q
+          );
+          console.log('[QuizHost] ✅ Updated quizzes state - team photo now:', updated.find(q => q.id === deviceId)?.photoUrl ? 'present' : 'missing');
+          return updated;
+        });
+        console.log(`✅ Synced approved photo for team "${teamName}": ${photoUrl?.substring(0, 50)}...`);
+      } else {
+        console.log(`⚠️ Team "${teamName}" (${deviceId}) not found in quizzes - photo sync skipped`);
+      }
+    };
+
+    // Register listener and get unsubscribe function
+    const unsubscribe = onNetworkMessage('PHOTO_APPROVAL_UPDATED', handlePhotoApprovalUpdated);
+    console.log('[QuizHost] 📝 Registered PHOTO_APPROVAL_UPDATED listener');
 
     // Clean up listener on unmount
     return unsubscribe;

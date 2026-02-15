@@ -494,8 +494,12 @@ export function StatusBar({
   bottomNavPopupStates = { teamPhotos: false, clearScores: false, emptyLobby: false },
   onBottomNavPopupToggle,
 }: ExtendedStatusBarProps) {
-  // Ref to store the photo refresh timeout ID for cleanup
-  const photoRefreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Refs for timeout management and fetch tracking
+  const photoRefreshTimeoutRef = useRef<number | null>(null);
+  const pendingTimeoutsRef = useRef<number[]>([]);
+  const isFetchingRef = useRef<boolean>(false);
+  const lastFetchTimeRef = useRef<number>(0);
+  const pollingIntervalRef = useRef<number | null>(null);
 
   const {
     goWideEnabled: settingsGoWide,
@@ -519,6 +523,9 @@ export function StatusBar({
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [photoStatuses, setPhotoStatuses] = useState<{ [deviceId: string]: 'pending' | 'approved' | 'declined' }>({});
 
+  // Derived state: check if there are pending team photos
+  const hasPendingTeamPhotos = pendingPhotos.length > 0;
+
   // Fetch pending photos when popup opens
   useEffect(() => {
     if (showTeamPhotosPopup) {
@@ -526,14 +533,46 @@ export function StatusBar({
     }
   }, [showTeamPhotosPopup]);
 
+  // Fetch pending photos on component mount to initialize the state
+  useEffect(() => {
+    fetchPendingPhotos();
+  }, []);
+
   const fetchPendingPhotos = async () => {
+    // Prevent concurrent fetch requests
+    if (isFetchingRef.current) {
+      console.log('[BottomNavigation] Fetch already in progress, skipping...');
+      return;
+    }
+
+    // REDUCED THROTTLING: Allow fetches more frequently (200ms instead of 500ms)
+    // This ensures the orange indicator updates quickly when photos arrive
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < 200) {
+      console.log('[BottomNavigation] Throttling fetch request (200ms window)...');
+      return;
+    }
+    lastFetchTimeRef.current = now;
+
+    isFetchingRef.current = true;
     setLoadingPhotos(true);
     try {
       const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
       if (result?.ok && Array.isArray(result.data)) {
+        // DETAILED LOGGING: Show what we got from backend
+        console.log('[BottomNavigation] 📊 Backend returned', result.data.length, 'players');
+        result.data.forEach((p: any, idx: number) => {
+          console.log(`  [${idx}] ${p.teamName} (${p.deviceId}):`, {
+            hasTeamPhoto: !!p.teamPhoto,
+            photoApprovedAt: p.photoApprovedAt || 'undefined/null',
+            isPending: !!(p.teamPhoto && !p.photoApprovedAt)
+          });
+        });
+
         const photosWithImages = result.data.filter(
-          (p: any) => p.teamPhoto && p.status === 'pending'
+          (p: any) => p.teamPhoto && !p.photoApprovedAt
         );
+        console.log('[BottomNavigation] 🔍 Filtered to', photosWithImages.length, 'pending photos');
         setPendingPhotos(photosWithImages);
 
         // Initialize photo statuses
@@ -546,16 +585,21 @@ export function StatusBar({
     } catch (err) {
       console.error('[BottomNavigation] Error fetching pending photos:', err);
     } finally {
+      isFetchingRef.current = false;
       setLoadingPhotos(false);
     }
   };
 
-  const handleApprovePhoto = async (deviceId: string, teamName: string) => {
+  const handleApprovePhoto = React.useCallback(async (deviceId: string, teamName: string) => {
     try {
-      console.log('[BottomNavigation] Approving photo for team:', teamName);
+      console.log('[BottomNavigation] 📸 handleApprovePhoto called:');
+      console.log('  - deviceId:', deviceId);
+      console.log('  - teamName:', teamName);
 
       if ((window as any).api?.network?.approveTeam) {
-        await (window as any).api.network.approveTeam({ deviceId, teamName });
+        console.log('[BottomNavigation] 📤 Calling api.network.approveTeam with isPhotoApproval: true');
+        await (window as any).api.network.approveTeam({ deviceId, teamName, isPhotoApproval: true });
+        console.log('[BottomNavigation] ✅ Photo approval request completed');
 
         // Update status
         setPhotoStatuses(prev => ({
@@ -563,15 +607,44 @@ export function StatusBar({
           [deviceId]: 'approved'
         }));
 
-        // Refresh pending photos after a short delay
-        setTimeout(() => {
+        // NEW: After photo approval, fetch updated player data and broadcast photo URL to QuizHost
+        // This ensures the photo displays in the team info when the user clicks on the team
+        try {
+          console.log('[BottomNavigation] 📸 Fetching updated player data after photo approval...');
+          const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
+          if (result?.ok && Array.isArray(result.data)) {
+            const updatedPlayer = result.data.find((p: any) => p.deviceId === deviceId);
+            if (updatedPlayer?.teamPhoto) {
+              console.log('[BottomNavigation] 📸 Fetched approved photo URL for team:', teamName);
+              // Broadcast photo update to QuizHost so it can sync the photo URL
+              const { broadcastMessage } = await import('../network/wsHost');
+              broadcastMessage({
+                type: 'PHOTO_APPROVAL_UPDATED',
+                data: {
+                  deviceId,
+                  teamName,
+                  photoUrl: updatedPlayer.teamPhoto,
+                  timestamp: Date.now()
+                }
+              });
+              console.log('[BottomNavigation] ✅ Broadcasted PHOTO_APPROVAL_UPDATED event to QuizHost');
+            }
+          }
+        } catch (err) {
+          console.error('[BottomNavigation] Error syncing approved photo to QuizHost:', err);
+          // This is non-critical - photo refresh will happen anyway
+        }
+
+        // Refresh pending photos after a short delay, store timeout ID for cleanup
+        const timeoutId = window.setTimeout(() => {
           fetchPendingPhotos();
         }, 500);
+        pendingTimeoutsRef.current.push(timeoutId);
       }
     } catch (err) {
       console.error('[BottomNavigation] Error approving photo:', err);
     }
-  };
+  }, []);
 
   const handleDeclinePhoto = async (deviceId: string, teamName: string) => {
     try {
@@ -586,56 +659,161 @@ export function StatusBar({
           [deviceId]: 'declined'
         }));
 
-        // Refresh pending photos after a short delay
-        setTimeout(() => {
+        // Refresh pending photos after a short delay, store timeout ID for cleanup
+        const timeoutId = window.setTimeout(() => {
           fetchPendingPhotos();
         }, 500);
+        pendingTimeoutsRef.current.push(timeoutId);
       }
     } catch (err) {
       console.error('[BottomNavigation] Error declining photo:', err);
     }
   };
 
-  // Listen for team photo updates and refresh the photos list if popup is open
+  // Listen for team photo updates and refresh the pending photos list
   useEffect(() => {
     const handleNetworkTeamPhotoUpdated = (data: any) => {
       try {
         console.log('[BottomNavigation] 📸 TEAM_PHOTO_UPDATED received:', data);
-        // Refresh pending photos if Team Photos popup is open
-        if (showTeamPhotosPopup) {
-          console.log('[BottomNavigation] Team Photos popup is open, refreshing pending photos...');
-          // Clear any pending timeout to avoid duplicate refreshes
-          if (photoRefreshTimeoutRef.current) {
-            clearTimeout(photoRefreshTimeoutRef.current);
-          }
-          // Small delay to ensure backend has processed the update
-          photoRefreshTimeoutRef.current = setTimeout(() => {
-            try {
-              fetchPendingPhotos();
-            } catch (err) {
-              console.error('[BottomNavigation] Error calling fetchPendingPhotos:', err);
-            }
-          }, 500);
+        const { deviceId, teamName } = data;
+
+        // ENHANCED LOGGING: Debug auto-approval setting
+        console.log('[BottomNavigation] 📊 Auto-approval setting check:');
+        console.log('  - teamPhotosAutoApprove value:', teamPhotosAutoApprove);
+        console.log('  - teamPhotosAutoApprove type:', typeof teamPhotosAutoApprove);
+        console.log('  - deviceId:', deviceId, 'present:', !!deviceId);
+        console.log('  - teamName:', teamName, 'present:', !!teamName);
+        console.log('  - Overall condition result:', !!(teamPhotosAutoApprove && deviceId && teamName));
+
+        // AUTO-APPROVE: If setting is enabled, automatically approve the photo
+        if (teamPhotosAutoApprove && deviceId && teamName) {
+          console.log('[BottomNavigation] 🔄 Auto-approval ENABLED - automatically approving photo for:', teamName);
+          console.log('[BottomNavigation] ⚠️  CRITICAL: Auto-approval setting is TRUE, proceeding with auto-approval');
+          handleApprovePhoto(deviceId, teamName);
+          return; // Early return - handleApprovePhoto will trigger refresh
         } else {
-          console.log('[BottomNavigation] Team Photos popup is closed, skipping refresh');
+          console.log('[BottomNavigation] ⏹️  Auto-approval DISABLED or missing data - NOT auto-approving');
+          console.log('  - Reason: ', {
+            settingDisabled: !teamPhotosAutoApprove,
+            noDeviceId: !deviceId,
+            noTeamName: !teamName
+          });
         }
+
+        // ALWAYS refresh pending photos when event arrives (regardless of popup state)
+        // This ensures the button indicator updates even when popup is closed
+        console.log('[BottomNavigation] 🔄 Refreshing pending photos on TEAM_PHOTO_UPDATED event...');
+
+        // Clear any pending timeout to avoid duplicate refreshes
+        if (photoRefreshTimeoutRef.current) {
+          clearTimeout(photoRefreshTimeoutRef.current);
+        }
+
+        // Small delay to ensure backend has processed the update
+        photoRefreshTimeoutRef.current = window.setTimeout(() => {
+          try {
+            fetchPendingPhotos();
+          } catch (err) {
+            console.error('[BottomNavigation] Error calling fetchPendingPhotos:', err);
+          }
+        }, 100);
       } catch (err) {
         console.error('[BottomNavigation] Error handling TEAM_PHOTO_UPDATED:', err);
       }
     };
 
     // Register listener for TEAM_PHOTO_UPDATED messages
-    const unsubscribe = onNetworkMessage('TEAM_PHOTO_UPDATED', handleNetworkTeamPhotoUpdated);
+    const unsubscribeTEAM_PHOTO = onNetworkMessage('TEAM_PHOTO_UPDATED', handleNetworkTeamPhotoUpdated);
 
-    // Clean up listener and timeout on unmount
+    // Clean up listener, timeout, and all pending timeouts on unmount
     return () => {
-      unsubscribe();
+      unsubscribeTEAM_PHOTO();
+
+      // Clear the photo refresh timeout
       if (photoRefreshTimeoutRef.current) {
         clearTimeout(photoRefreshTimeoutRef.current);
         photoRefreshTimeoutRef.current = null;
       }
+
+      // Clear all pending timeouts from approve/decline operations
+      pendingTimeoutsRef.current.forEach(timeoutId => {
+        clearTimeout(timeoutId);
+      });
+      pendingTimeoutsRef.current = [];
     };
-  }, [showTeamPhotosPopup]); // Re-register when popup state changes
+  }, [teamPhotosAutoApprove, handleApprovePhoto]); // Re-register when settings or handler changes
+
+  // NEW: Listen for PLAYER_JOIN events to trigger photo refresh
+  // This helps catch photos that arrive along with new team joins
+  useEffect(() => {
+    const handleNetworkPlayerJoin = (data: any) => {
+      try {
+        const { deviceId, teamName } = data;
+        console.log('[BottomNavigation] 👤 PLAYER_JOIN detected for team:', teamName, '(', deviceId, ')');
+        console.log('[BottomNavigation] 🔍 Checking for pending photos from this new/reconnected team...');
+
+        // Trigger photo refresh after a short delay to ensure backend has processed the join
+        if (photoRefreshTimeoutRef.current) {
+          clearTimeout(photoRefreshTimeoutRef.current);
+        }
+
+        photoRefreshTimeoutRef.current = window.setTimeout(() => {
+          try {
+            fetchPendingPhotos();
+          } catch (err) {
+            console.error('[BottomNavigation] Error calling fetchPendingPhotos on PLAYER_JOIN:', err);
+          }
+        }, 150);
+      } catch (err) {
+        console.error('[BottomNavigation] Error handling PLAYER_JOIN:', err);
+      }
+    };
+
+    // Register listener for PLAYER_JOIN messages
+    const unsubscribePLAYER_JOIN = onNetworkMessage('PLAYER_JOIN', handleNetworkPlayerJoin);
+
+    return () => {
+      unsubscribePLAYER_JOIN();
+    };
+  }, []);
+
+  // NEW: Aggressive polling interval - refresh pending photos every 3 seconds
+  // This ensures the orange indicator appears even if event listeners fail
+  useEffect(() => {
+    console.log('[BottomNavigation] 🕐 Starting aggressive photo polling interval (3 seconds)...');
+
+    // Call fetchPendingPhotos immediately to ensure orange indicator works on load
+    // Using a wrapper to avoid dependency array issues
+    const initialFetch = async () => {
+      try {
+        console.log('[BottomNavigation] 🔄 Calling fetchPendingPhotos on mount');
+        // Re-initialize lastFetchTimeRef to allow immediate fetch
+        lastFetchTimeRef.current = 0;
+        await fetchPendingPhotos();
+      } catch (err) {
+        console.error('[BottomNavigation] Error in initial photo fetch:', err);
+      }
+    };
+
+    initialFetch();
+
+    pollingIntervalRef.current = window.setInterval(() => {
+      try {
+        console.log('[BottomNavigation] 🔄 Periodic photo poll triggered...');
+        fetchPendingPhotos();
+      } catch (err) {
+        console.error('[BottomNavigation] Error in polling interval:', err);
+      }
+    }, 3000);
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      console.log('[BottomNavigation] 🛑 Stopped aggressive photo polling');
+    };
+  }, []);
 
   return (
     <div
@@ -710,9 +888,13 @@ export function StatusBar({
 
           {/* Team Photos */}
           <button
-            className="px-3 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
+            className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${
+              hasPendingTeamPhotos
+                ? 'animate-flash-orange text-white'
+                : 'hover:bg-accent'
+            }`}
             onClick={() => setShowTeamPhotosPopup(true)}
-            title="Team Photos"
+            title={hasPendingTeamPhotos ? "Team photo pending approval! Click to view" : "Team Photos"}
           >
             <Camera className="h-4 w-4" />
             <span className="text-sm text-center">Team Photos</span>
@@ -908,28 +1090,32 @@ export function StatusBar({
       
       {/* Team Photos Popup */}
       {showTeamPhotosPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ WebkitAppRegion: 'no-drag' }}>
           {/* Background overlay with blur */}
-          <div 
+          <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowTeamPhotosPopup(false)}
           />
           
           {/* Popup window */}
-          <div className="relative bg-card border border-border rounded-lg shadow-2xl w-[90vw] h-[85vh] max-w-6xl overflow-hidden">
+          <div
+            className="relative bg-card border border-border rounded-lg shadow-2xl w-[90vw] h-[85vh] max-w-6xl overflow-hidden"
+            style={{ WebkitAppRegion: 'no-drag' }}
+          >
             {/* Close button in top-right corner */}
             <button
               onClick={() => setShowTeamPhotosPopup(false)}
               className="absolute top-4 right-4 z-10 p-2 rounded-full bg-background/80 hover:bg-background transition-colors border border-border shadow-sm"
               title="Close"
+              style={{ WebkitAppRegion: 'no-drag' }}
             >
               <X className="h-5 w-5 text-foreground" />
             </button>
             
             {/* Popup content */}
-            <div className="p-8 h-full">
+            <div className="p-8 h-full" style={{ WebkitAppRegion: 'no-drag' }}>
               <div className="flex flex-col h-full">
-                <div className="mb-6">
+                <div className="mb-6" style={{ WebkitAppRegion: 'no-drag' }}>
                   <h2 className="text-2xl font-semibold text-foreground mb-2">Team Photos</h2>
                   <p className="text-muted-foreground">Manage and view team photos for your quiz participants.</p>
                 </div>
