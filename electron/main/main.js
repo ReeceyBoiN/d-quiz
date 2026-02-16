@@ -245,14 +245,23 @@ async function boot() {
 
   router.mount('network/approve-team', async (payload) => {
     try {
-      log.info('[IPC] network/approve-team called with:', { deviceId: payload?.deviceId, teamName: payload?.teamName, hasDisplayData: !!payload?.displayData });
+      log.info('[IPC] network/approve-team called with:', { deviceId: payload?.deviceId, teamName: payload?.teamName, hasDisplayData: !!payload?.displayData, isPhotoApproval: !!payload?.isPhotoApproval });
+      console.log('[IPC] 📋 DETAILED PARAMETER CHECK:');
+      console.log('  - payload.isPhotoApproval value:', payload?.isPhotoApproval);
+      console.log('  - payload.isPhotoApproval type:', typeof payload?.isPhotoApproval);
+      console.log('  - payload keys:', Object.keys(payload || {}));
 
       if (!backend || !backend.approveTeam) {
         log.error('[IPC] Backend not initialized for network/approve-team');
         throw new Error('Backend not initialized');
       }
 
-      const { deviceId, teamName, displayData } = payload;
+      const { deviceId, teamName, displayData, isPhotoApproval = false } = payload;
+      console.log('[IPC] 📦 After destructuring:');
+      console.log('  - isPhotoApproval:', isPhotoApproval);
+      console.log('  - isPhotoApproval type:', typeof isPhotoApproval);
+      console.log('  - Will pass to backend:', isPhotoApproval);
+
       log.info('[IPC] displayData details:', { hasImages: !!displayData?.images, scoresLength: displayData?.scores?.length, mode: displayData?.mode });
       if (displayData?.images) {
         log.info('[IPC] displayData.images count:', displayData.images.length);
@@ -261,11 +270,13 @@ async function boot() {
         log.info('[IPC] displayData.scores count:', displayData.scores.length);
         log.info('[IPC] displayData.scores sample:', displayData.scores.slice(0, 1));
       }
-      log.info('[IPC] Calling backend.approveTeam...');
+      log.info('[IPC] 🔑 KEY PARAMETER: Calling backend.approveTeam with isPhotoApproval:', isPhotoApproval);
+      console.log('[IPC] 🎯 ABOUT TO CALL BACKEND with approvePhoto parameter:', isPhotoApproval);
+
       let approveSuccess = false;
       try {
         // PHASE 5: Await the new async approveTeam function
-        approveSuccess = await backend.approveTeam(deviceId, teamName, displayData);
+        approveSuccess = await backend.approveTeam(deviceId, teamName, displayData, 0, isPhotoApproval);
         log.info('[IPC] backend.approveTeam returned:', approveSuccess);
         if (!approveSuccess) {
           log.error('[IPC] ❌ backend.approveTeam returned false - message may not have been sent');
@@ -280,7 +291,92 @@ async function boot() {
         throw approveErr;
       }
 
-      return { approved: true };
+      // PHASE 6: Fetch updated player data to return confirmation with photoApprovedAt
+      // Ensure complete response structure for robust frontend handling
+      let confirmationResponse = {
+        approved: true,
+        photoApprovedAt: null,
+        photoUrl: null,
+        timestamp: Date.now()
+      };
+
+      if (isPhotoApproval) {
+        try {
+          console.log('[IPC] 🔄 PHOTO APPROVAL: Fetching confirmation data...');
+          console.log('[IPC] 📋 Looking for deviceId:', deviceId);
+
+          // PHASE 6: Extended delay to ensure backend has fully updated the player object
+          // Using 100ms instead of 50ms to reliably get the photoApprovedAt timestamp
+          await new Promise(res => setTimeout(res, 100));
+
+          const updatedPlayers = backend.getAllNetworkPlayers();
+          console.log('[IPC] 📊 getAllNetworkPlayers returned:', updatedPlayers.length, 'players');
+
+          if (!Array.isArray(updatedPlayers)) {
+            console.error('[IPC] ❌ getAllNetworkPlayers did not return an array:', typeof updatedPlayers);
+            log.error('[IPC] getAllNetworkPlayers did not return an array');
+          }
+
+          const approvedPlayer = updatedPlayers.find(p => (p.deviceId || '').trim() === (deviceId || '').trim());
+
+          console.log('[IPC] 🔍 Player lookup result:', {
+            found: !!approvedPlayer,
+            deviceId: approvedPlayer?.deviceId,
+            teamName: approvedPlayer?.teamName,
+            photoApprovedAt: approvedPlayer?.photoApprovedAt,
+            hasTeamPhoto: !!approvedPlayer?.teamPhoto
+          });
+
+          if (approvedPlayer) {
+            // PHASE 6: Always return complete structure, even if some fields are null
+            // This ensures frontend code doesn't have to check multiple response paths
+            confirmationResponse = {
+              approved: true,
+              photoApprovedAt: approvedPlayer.photoApprovedAt || null,
+              photoUrl: approvedPlayer.teamPhoto || null,
+              timestamp: Date.now()
+            };
+
+            if (approvedPlayer.photoApprovedAt) {
+              console.log('[IPC] ✅ Photo approval confirmed with timestamp - returning complete data');
+              log.info('[IPC] Photo approval confirmation returned:', {
+                photoApprovedAt: approvedPlayer.photoApprovedAt,
+                hasPhotoUrl: !!approvedPlayer.teamPhoto
+              });
+            } else {
+              console.warn('[IPC] ⚠️  Player found but photoApprovedAt is not set yet');
+              console.warn('[IPC] Player object keys:', Object.keys(approvedPlayer || {}));
+              log.warn('[IPC] Player found but photoApprovedAt missing - returning partial data');
+            }
+          } else {
+            console.warn('[IPC] ⚠️  Could not find player with deviceId:', deviceId);
+            const availableIds = updatedPlayers.map(p => p.deviceId);
+            console.warn('[IPC] Available deviceIds:', availableIds);
+            log.warn('[IPC] ⚠️  Player not found in confirmation lookup');
+
+            // Return at least the structure showing approval succeeded (response will have approved: true)
+            // Frontend can use this to know approval went through even if lookup failed
+          }
+        } catch (confirmErr) {
+          console.error('[IPC] ❌ Error retrieving confirmation data:', confirmErr.message);
+          if (confirmErr.stack) {
+            console.error('[IPC] Error stack:', confirmErr.stack);
+          }
+          log.warn('[IPC] Error retrieving confirmation data:', confirmErr.message);
+
+          // PHASE 6: Still return approved: true with complete structure
+          // Approval already succeeded on the backend even if we can't fetch confirmation
+          confirmationResponse = {
+            approved: true,
+            photoApprovedAt: null,
+            photoUrl: null,
+            timestamp: Date.now()
+          };
+        }
+      }
+
+      console.log('[IPC] 📤 Returning confirmation response:', JSON.stringify(confirmationResponse));
+      return confirmationResponse;
     } catch (err) {
       log.error('[IPC] network/approve-team error:', err.message);
       log.error('[IPC] Error stack:', err.stack);
@@ -329,6 +425,28 @@ async function boot() {
       return { success };
     } catch (err) {
       log.error('[IPC] network/cleanup-team-photos error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
+    }
+  });
+
+  router.mount('network/set-team-photos-auto-approve', async (payload) => {
+    try {
+      log.info('[IPC] network/set-team-photos-auto-approve called with:', payload);
+
+      if (!backend || !backend.setAutoApproveTeamPhotos) {
+        log.error('[IPC] Backend not initialized for network/set-team-photos-auto-approve');
+        throw new Error('Backend not initialized');
+      }
+
+      const { enabled } = payload;
+      log.info('[IPC] Calling backend.setAutoApproveTeamPhotos with enabled:', enabled);
+      backend.setAutoApproveTeamPhotos(enabled);
+      log.info('[IPC] backend.setAutoApproveTeamPhotos completed');
+
+      return { success: true, enabled };
+    } catch (err) {
+      log.error('[IPC] network/set-team-photos-auto-approve error:', err.message);
       log.error('[IPC] Error stack:', err.stack);
       throw err;
     }

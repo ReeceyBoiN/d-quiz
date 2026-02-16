@@ -614,3 +614,18 @@ html {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+@keyframes flash-orange {
+  0%, 100% {
+    background-color: transparent;
+    color: inherit;
+  }
+  50% {
+    background-color: #FF8C42;
+    color: white;
+  }
+}
+
+.animate-flash-orange {
+  animation: flash-orange 1s ease-in-out infinite;
+}

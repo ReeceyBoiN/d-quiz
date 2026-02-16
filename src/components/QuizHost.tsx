@@ -2953,20 +2953,27 @@ export function QuizHost() {
 
         console.log('[QuizHost] 📸 Converted photo URL (first 50 chars):', convertedPhotoUrl.substring(0, 50) + '...');
 
-        // Update quizzes if team exists
+        // NOTE: We intentionally do NOT update photoUrl here from TEAM_PHOTO_UPDATED
+        // TEAM_PHOTO_UPDATED is sent immediately when a photo is uploaded (BEFORE approval)
+        // We only display the photo in TeamWindow when PHOTO_APPROVAL_UPDATED is received (AFTER approval)
+        // This prevents pending/unapproved photos from appearing as already-accepted in the team info tab
+
         if (existingTeam) {
-          console.log('[QuizHost] ✅ Updating photoUrl for team:', existingTeam.name);
-          setQuizzes(prev => {
-            return prev.map(q => {
-              if (q.id === existingTeam.id) {
-                console.log('[QuizHost] 📸 Updated photoUrl for team:', q.name);
-                return { ...q, photoUrl: convertedPhotoUrl };
-              }
-              return q;
+          // IMPORTANT: Clear the existing photoUrl if the team has one
+          // This ensures the old photo disappears immediately when a new one is submitted
+          // The team info tab will be empty while the new photo is pending approval
+          if (existingTeam.photoUrl) {
+            console.log('[QuizHost] 📸 Clearing existing photoUrl for team:', existingTeam.name, '(new photo pending approval)');
+            setQuizzes(prev => {
+              const updated = prev.map(q =>
+                q.id === existingTeam.id
+                  ? { ...q, photoUrl: undefined }
+                  : q
+              );
+              return updated;
             });
-          });
-          // Trigger debounced auto-save for crash recovery
-          debouncedSaveGameState();
+          }
+          console.log('[QuizHost] 📸 Ignoring photoUrl update for team:', existingTeam.name, '(pending approval - will display on PHOTO_APPROVAL_UPDATED)');
         } else {
           console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: Team not found by ID or name. deviceId:', deviceId, 'playerId:', playerId, 'teamName:', teamName);
         }
@@ -3213,7 +3220,35 @@ export function QuizHost() {
         });
         console.log(`✅ Synced approved photo for team "${teamName}": ${photoUrl?.substring(0, 50)}...`);
       } else {
-        console.log(`⚠️ Team "${teamName}" (${deviceId}) not found in quizzes - photo sync skipped`);
+        // RACE CONDITION FIX: Team might not be in quizzes yet if auto-approval is still processing
+        // Schedule a retry after a short delay to allow PLAYER_JOIN + auto-approval to complete
+        console.log(`⚠️ Team "${teamName}" (${deviceId}) not found in quizzes yet - scheduling retry...`);
+
+        const retryTimeoutId = setTimeout(() => {
+          const teamNowExists = quizzesRef.current.some(q => q.id === deviceId);
+          console.log(`[QuizHost] 🔄 Retry check: Team now exists in quizzes?`, teamNowExists);
+
+          if (teamNowExists) {
+            // Team is now available, sync the photo
+            setQuizzes(prev => {
+              const updated = prev.map(q =>
+                q.id === deviceId
+                  ? { ...q, photoUrl: photoUrl }
+                  : q
+              );
+              console.log('[QuizHost] ✅ Retried photo sync successful - team photo now present');
+              return updated;
+            });
+            console.log(`✅ Synced approved photo for team "${teamName}" (retry succeeded): ${photoUrl?.substring(0, 50)}...`);
+          } else {
+            // Still not found after retry - log warning but don't fail
+            // The photo will still be saved in backend, user can refresh team info to see it
+            console.warn(`⚠️ Team "${teamName}" (${deviceId}) still not in quizzes after retry - photo saved in backend but display sync delayed`);
+          }
+        }, 300); // 300ms retry delay allows async operations to complete
+
+        // Store retry timeout for cleanup if component unmounts
+        return () => clearTimeout(retryTimeoutId);
       }
     };
 

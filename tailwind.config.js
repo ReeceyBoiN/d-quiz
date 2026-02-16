@@ -9,6 +9,7 @@ export default {
       animation: {
         'flash-green': 'flashGreen 0.5s ease-in-out infinite',
         'flash-red': 'flashRed 0.5s ease-in-out infinite',
+        'flash-orange': 'flashOrange 0.8s ease-in-out infinite',
       },
       keyframes: {
         flashGreen: {
@@ -32,6 +33,18 @@ export default {
           '50%': {
             backgroundColor: 'rgb(220, 38, 38)',
             boxShadow: '0 0 20px rgba(239, 68, 68, 0.9), 0 0 40px rgba(239, 68, 68, 1), 0 0 60px rgba(239, 68, 68, 0.8), inset 0 0 15px rgba(239, 68, 68, 0.5), 0 10px 30px -5px rgba(239, 68, 68, 0.8)',
+            transform: 'scale(1.02)',
+          },
+        },
+        flashOrange: {
+          '0%, 100%': {
+            backgroundColor: 'rgb(249, 115, 22)',
+            boxShadow: '0 0 10px rgba(249, 115, 22, 0.6), 0 0 20px rgba(249, 115, 22, 0.8), 0 0 30px rgba(249, 115, 22, 0.6), inset 0 0 10px rgba(249, 115, 22, 0.3)',
+            transform: 'scale(1)',
+          },
+          '50%': {
+            backgroundColor: 'rgb(234, 88, 12)',
+            boxShadow: '0 0 20px rgba(249, 115, 22, 0.9), 0 0 40px rgba(249, 115, 22, 1), 0 0 60px rgba(249, 115, 22, 0.8), inset 0 0 15px rgba(249, 115, 22, 0.5), 0 10px 30px -5px rgba(249, 115, 22, 0.8)',
             transform: 'scale(1.02)',
           },
         },

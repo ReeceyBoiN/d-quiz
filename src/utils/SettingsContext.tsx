@@ -121,7 +121,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         setCountdownStyle(parsed.countdownStyle || "circular");
         setKeypadDesign(parsed.keypadDesign || "neon-glow");
         setResponseTimesEnabled(parsed.responseTimesEnabled !== undefined ? parsed.responseTimesEnabled : true);
-        setTeamPhotosAutoApprove(parsed.teamPhotosAutoApprove || false);
+        setTeamPhotosAutoApprove(parsed.teamPhotosAutoApprove === true || parsed.teamPhotosAutoApprove === 'true');
         setGoWideEnabled(parsed.goWideEnabled || false);
         setEvilModeEnabled(parsed.evilModeEnabled || false);
         setStaggeredEnabled(parsed.staggeredEnabled || false);
@@ -178,7 +178,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
           }
           setKeypadDesign(parsed.keypadDesign || "neon-glow");
           setResponseTimesEnabled(parsed.responseTimesEnabled !== undefined ? parsed.responseTimesEnabled : true);
-          setTeamPhotosAutoApprove(parsed.teamPhotosAutoApprove || false);
+          setTeamPhotosAutoApprove(parsed.teamPhotosAutoApprove === true || parsed.teamPhotosAutoApprove === 'true');
           setGoWideEnabled(parsed.goWideEnabled || false);
           setEvilModeEnabled(parsed.evilModeEnabled || false);
           setStaggeredEnabled(parsed.staggeredEnabled || false);
@@ -287,6 +287,17 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     const updatedSettings = { ...currentSettings, teamPhotosAutoApprove: enabled };
     localStorage.setItem('quizHostSettings', JSON.stringify(updatedSettings));
     window.dispatchEvent(new Event('settingsUpdated'));
+
+    // Sync with backend via IPC (Electron environment only)
+    if ((window as any).api?.ipc?.invoke) {
+      (window as any).api.ipc.invoke('network/set-team-photos-auto-approve', { enabled })
+        .then(() => {
+          console.log('[SettingsContext] ✅ Successfully synced auto-approve setting to backend:', enabled);
+        })
+        .catch((err: any) => {
+          console.error('[SettingsContext] ❌ Failed to sync auto-approve setting to backend:', err);
+        });
+    }
   };
 
   const updateGoWideEnabled = (enabled?: boolean) => {

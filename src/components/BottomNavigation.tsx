@@ -538,6 +538,22 @@ export function StatusBar({
     fetchPendingPhotos();
   }, []);
 
+  // PHASE 2: Helper function to schedule photo refresh with timeout cancellation
+  // This consolidates all refresh operations into a single place to avoid overlapping fetches
+  const schedulePhotoRefresh = React.useCallback((delayMs: number = 300) => {
+    // Cancel previous timeout if one exists
+    if (photoRefreshTimeoutRef.current) {
+      clearTimeout(photoRefreshTimeoutRef.current);
+      console.log('[BottomNavigation] 🔄 Cancelled previous scheduled refresh');
+    }
+
+    // Schedule new fetch
+    photoRefreshTimeoutRef.current = window.setTimeout(() => {
+      console.log('[BottomNavigation] 🔄 Executing scheduled photo refresh (delay:', delayMs, 'ms)');
+      fetchPendingPhotos();
+    }, delayMs);
+  }, []);
+
   const fetchPendingPhotos = async () => {
     // Prevent concurrent fetch requests
     if (isFetchingRef.current) {
@@ -545,11 +561,11 @@ export function StatusBar({
       return;
     }
 
-    // REDUCED THROTTLING: Allow fetches more frequently (200ms instead of 500ms)
-    // This ensures the orange indicator updates quickly when photos arrive
+    // PHASE 2: Increased throttling window (400ms instead of 200ms) to prevent overlapping fetches
+    // This gives the backend time to process updates before we check again
     const now = Date.now();
-    if (now - lastFetchTimeRef.current < 200) {
-      console.log('[BottomNavigation] Throttling fetch request (200ms window)...');
+    if (now - lastFetchTimeRef.current < 400) {
+      console.log('[BottomNavigation] Throttling fetch request (400ms window)...');
       return;
     }
     lastFetchTimeRef.current = now;
@@ -558,10 +574,24 @@ export function StatusBar({
     setLoadingPhotos(true);
     try {
       const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
-      if (result?.ok && Array.isArray(result.data)) {
+
+      // PHASE 4: Normalize IPC response handling - handle inconsistent shapes gracefully
+      let players = [];
+      if (Array.isArray(result)) {
+        // Response is direct array
+        players = result;
+      } else if (result?.ok && Array.isArray(result.data)) {
+        // Response is wrapped: { ok: true, data: [...] }
+        players = result.data;
+      } else if (result?.data && Array.isArray(result.data)) {
+        // Response is wrapped without ok check: { data: [...] }
+        players = result.data;
+      }
+
+      if (Array.isArray(players) && players.length >= 0) {
         // DETAILED LOGGING: Show what we got from backend
-        console.log('[BottomNavigation] 📊 Backend returned', result.data.length, 'players');
-        result.data.forEach((p: any, idx: number) => {
+        console.log('[BottomNavigation] 📊 Backend returned', players.length, 'players');
+        players.forEach((p: any, idx: number) => {
           console.log(`  [${idx}] ${p.teamName} (${p.deviceId}):`, {
             hasTeamPhoto: !!p.teamPhoto,
             photoApprovedAt: p.photoApprovedAt || 'undefined/null',
@@ -569,18 +599,66 @@ export function StatusBar({
           });
         });
 
-        const photosWithImages = result.data.filter(
-          (p: any) => p.teamPhoto && !p.photoApprovedAt
+        // Check for pending photos: either teamPhotoPending field OR teamPhoto without approval
+        const photosWithImages = players.filter(
+          (p: any) => (p.teamPhotoPending || (p.teamPhoto && !p.photoApprovedAt))
         );
         console.log('[BottomNavigation] 🔍 Filtered to', photosWithImages.length, 'pending photos');
-        setPendingPhotos(photosWithImages);
 
-        // Initialize photo statuses
-        const statuses: { [deviceId: string]: 'pending' | 'approved' | 'declined' } = {};
-        photosWithImages.forEach((p: any) => {
-          statuses[p.deviceId] = 'pending';
+        // PHASE 3: Normalize DeviceId handling - ensure consistent keys throughout
+        // The backend might send multiple events (PLAYER_JOIN, reconnections, photo updates)
+        // We use a Map to ensure uniqueness by normalized deviceId, keeping the most recent entry
+        const uniquePhotos = new Map();
+        photosWithImages.forEach((photo: any) => {
+          const normalizedDeviceId = (photo.deviceId || '').trim();
+          // Ensure photo object has normalized deviceId for consistent lookups
+          photo.normalizedDeviceId = normalizedDeviceId;
+          uniquePhotos.set(normalizedDeviceId, photo);
         });
-        setPhotoStatuses(statuses);
+        const dedupedPhotos = Array.from(uniquePhotos.values());
+
+        console.log('[BottomNavigation] 📦 Deduplication results:');
+        console.log('  - Photos with images:', photosWithImages.length);
+        console.log('  - Unique photos (by deviceId):', dedupedPhotos.length);
+        if (photosWithImages.length !== dedupedPhotos.length) {
+          console.log('  - Duplicates removed:', photosWithImages.length - dedupedPhotos.length);
+          const deviceIds = photosWithImages.map((p: any) => `${p.teamName}(${p.deviceId})`);
+          console.log('  - All entries:', deviceIds);
+          const uniqueDeviceIds = Array.from(new Set(photosWithImages.map((p: any) => p.deviceId)));
+          console.log('  - Unique deviceIds:', uniqueDeviceIds.length);
+        }
+
+        setPendingPhotos(dedupedPhotos);
+
+        // PHASE 1: CRITICAL FIX - Merge photoStatuses instead of resetting
+        // Only set to 'pending' if status doesn't already exist (preserve 'approved'/'declined')
+        // This prevents the UI from flickering back to pending after user clicks approve
+        // PHASE 3: Use normalized deviceIds for consistent key matching
+        setPhotoStatuses(prev => {
+          const newStatuses = { ...prev };
+
+          // Only initialize 'pending' for new deviceIds that don't have a status yet
+          dedupedPhotos.forEach((p: any) => {
+            const deviceId = p.normalizedDeviceId || (p.deviceId || '').trim();
+            if (!(deviceId in newStatuses)) {
+              newStatuses[deviceId] = 'pending';
+              console.log('[BottomNavigation] 📝 Initialized status for new photo:', deviceId, '→ pending');
+            } else {
+              console.log('[BottomNavigation] 📝 Preserving status for existing photo:', deviceId, '→', newStatuses[deviceId]);
+            }
+          });
+
+          // Clean up statuses for devices no longer in pending list
+          const pendingDeviceIds = new Set(dedupedPhotos.map((p: any) => p.normalizedDeviceId || (p.deviceId || '').trim()));
+          Object.keys(newStatuses).forEach(id => {
+            if (!pendingDeviceIds.has(id)) {
+              console.log('[BottomNavigation] 🗑️ Removing status for device no longer pending:', id);
+              delete newStatuses[id];
+            }
+          });
+
+          return newStatuses;
+        });
       }
     } catch (err) {
       console.error('[BottomNavigation] Error fetching pending photos:', err);
@@ -598,8 +676,24 @@ export function StatusBar({
 
       if ((window as any).api?.network?.approveTeam) {
         console.log('[BottomNavigation] 📤 Calling api.network.approveTeam with isPhotoApproval: true');
-        await (window as any).api.network.approveTeam({ deviceId, teamName, isPhotoApproval: true });
-        console.log('[BottomNavigation] ✅ Photo approval request completed');
+
+        // PHASE 1: Wait for approval confirmation from backend
+        const approvalResponse = await (window as any).api.network.approveTeam({ deviceId, teamName, isPhotoApproval: true });
+        console.log('[BottomNavigation] ✅ Photo approval response received:', approvalResponse);
+        console.log('[BottomNavigation] 🔍 Response properties:', {
+          keys: Object.keys(approvalResponse || {}),
+          approved: approvalResponse?.approved,
+          hasPhotoApprovedAt: !!approvalResponse?.photoApprovedAt,
+          photoApprovedAt: approvalResponse?.photoApprovedAt,
+          hasPhotoUrl: !!approvalResponse?.photoUrl,
+          timestamp: approvalResponse?.timestamp
+        });
+
+        // Verify confirmation was successful
+        if (!approvalResponse?.photoApprovedAt) {
+          console.warn('[BottomNavigation] ⚠️  Approval response missing photoApprovedAt confirmation');
+          console.warn('[BottomNavigation] Full response object:', JSON.stringify(approvalResponse, null, 2));
+        }
 
         // Update status
         setPhotoStatuses(prev => ({
@@ -607,39 +701,80 @@ export function StatusBar({
           [deviceId]: 'approved'
         }));
 
-        // NEW: After photo approval, fetch updated player data and broadcast photo URL to QuizHost
-        // This ensures the photo displays in the team info when the user clicks on the team
-        try {
-          console.log('[BottomNavigation] 📸 Fetching updated player data after photo approval...');
-          const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
-          if (result?.ok && Array.isArray(result.data)) {
-            const updatedPlayer = result.data.find((p: any) => p.deviceId === deviceId);
-            if (updatedPlayer?.teamPhoto) {
-              console.log('[BottomNavigation] 📸 Fetched approved photo URL for team:', teamName);
-              // Broadcast photo update to QuizHost so it can sync the photo URL
-              const { broadcastMessage } = await import('../network/wsHost');
-              broadcastMessage({
-                type: 'PHOTO_APPROVAL_UPDATED',
-                data: {
-                  deviceId,
-                  teamName,
-                  photoUrl: updatedPlayer.teamPhoto,
-                  timestamp: Date.now()
-                }
-              });
-              console.log('[BottomNavigation] ✅ Broadcasted PHOTO_APPROVAL_UPDATED event to QuizHost');
+        // PHASE 2: If we have confirmation data from backend, use it directly
+        // Otherwise fetch updated player data
+        let photoUrl = approvalResponse?.photoUrl;
+
+        if (!photoUrl) {
+          try {
+            console.log('[BottomNavigation] 📸 No photoUrl in confirmation response - fetching updated player data');
+            console.log('[BottomNavigation] 🔍 Attempting network/all-players fetch...');
+            const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
+
+            // PHASE 4: Normalize response handling - try multiple response shapes
+            let players = [];
+            if (Array.isArray(result)) {
+              players = result;
+            } else if (result?.ok && Array.isArray(result.data)) {
+              players = result.data;
+            } else if (result?.data && Array.isArray(result.data)) {
+              players = result.data;
             }
+
+            console.log('[BottomNavigation] 📊 network/all-players result:', {
+              hasResult: !!result,
+              playersLength: players.length
+            });
+
+            if (Array.isArray(players) && players.length > 0) {
+              // PHASE 3: Use normalized deviceId for consistent matching
+              const normalizedDeviceId = (deviceId || '').trim();
+              const updatedPlayer = players.find((p: any) => (p.deviceId || '').trim() === normalizedDeviceId);
+              console.log('[BottomNavigation] 🔍 Updated player lookup:', {
+                found: !!updatedPlayer,
+                hasTeamPhoto: !!updatedPlayer?.teamPhoto,
+                hasPhotoApprovedAt: !!updatedPlayer?.photoApprovedAt,
+                photoApprovedAt: updatedPlayer?.photoApprovedAt
+              });
+
+              if (updatedPlayer?.teamPhoto) {
+                photoUrl = updatedPlayer.teamPhoto;
+                console.log('[BottomNavigation] ✅ Fetched approved photo URL for team:', teamName);
+              }
+            } else {
+              console.error('[BottomNavigation] ❌ Invalid response from network/all-players - no players array:', result);
+            }
+          } catch (err) {
+            console.error('[BottomNavigation] ❌ Error fetching updated player data:', err);
+            // This is non-critical - will try refresh anyway
           }
-        } catch (err) {
-          console.error('[BottomNavigation] Error syncing approved photo to QuizHost:', err);
-          // This is non-critical - photo refresh will happen anyway
+        } else {
+          console.log('[BottomNavigation] ✅ Using photoUrl from confirmation response');
         }
 
-        // Refresh pending photos after a short delay, store timeout ID for cleanup
-        const timeoutId = window.setTimeout(() => {
-          fetchPendingPhotos();
-        }, 500);
-        pendingTimeoutsRef.current.push(timeoutId);
+        // PHASE 3: Broadcast photo update to QuizHost
+        if (photoUrl) {
+          try {
+            const { broadcastMessage } = await import('../network/wsHost');
+            broadcastMessage({
+              type: 'PHOTO_APPROVAL_UPDATED',
+              data: {
+                deviceId,
+                teamName,
+                photoUrl,
+                timestamp: Date.now()
+              }
+            });
+            console.log('[BottomNavigation] ✅ Broadcasted PHOTO_APPROVAL_UPDATED event to QuizHost');
+          } catch (err) {
+            console.error('[BottomNavigation] Error broadcasting photo update:', err);
+          }
+        }
+
+        // PHASE 2: Use consolidated refresh scheduling to avoid overlapping fetches
+        // 300ms delay ensures backend has persisted approval before we refresh
+        console.log('[BottomNavigation] 🔄 Scheduling photo refresh after approval (300ms delay)');
+        schedulePhotoRefresh(300);
       }
     } catch (err) {
       console.error('[BottomNavigation] Error approving photo:', err);
@@ -648,7 +783,9 @@ export function StatusBar({
 
   const handleDeclinePhoto = async (deviceId: string, teamName: string) => {
     try {
-      console.log('[BottomNavigation] Declining photo for team:', teamName);
+      console.log('[BottomNavigation] 📸 handleDeclinePhoto called:');
+      console.log('  - deviceId:', deviceId);
+      console.log('  - teamName:', teamName);
 
       if ((window as any).api?.network?.declineTeam) {
         await (window as any).api.network.declineTeam({ deviceId, teamName });
@@ -659,11 +796,10 @@ export function StatusBar({
           [deviceId]: 'declined'
         }));
 
-        // Refresh pending photos after a short delay, store timeout ID for cleanup
-        const timeoutId = window.setTimeout(() => {
-          fetchPendingPhotos();
-        }, 500);
-        pendingTimeoutsRef.current.push(timeoutId);
+        // PHASE 2: Use consolidated refresh scheduling to avoid overlapping fetches
+        // 300ms delay ensures backend has persisted decline before we refresh
+        console.log('[BottomNavigation] 🔄 Scheduling photo refresh after decline (300ms delay)');
+        schedulePhotoRefresh(300);
       }
     } catch (err) {
       console.error('[BottomNavigation] Error declining photo:', err);
@@ -672,7 +808,7 @@ export function StatusBar({
 
   // Listen for team photo updates and refresh the pending photos list
   useEffect(() => {
-    const handleNetworkTeamPhotoUpdated = (data: any) => {
+    const handleNetworkTeamPhotoUpdated = async (data: any) => {
       try {
         console.log('[BottomNavigation] 📸 TEAM_PHOTO_UPDATED received:', data);
         const { deviceId, teamName } = data;
@@ -685,38 +821,61 @@ export function StatusBar({
         console.log('  - teamName:', teamName, 'present:', !!teamName);
         console.log('  - Overall condition result:', !!(teamPhotosAutoApprove && deviceId && teamName));
 
-        // AUTO-APPROVE: If setting is enabled, automatically approve the photo
-        if (teamPhotosAutoApprove && deviceId && teamName) {
-          console.log('[BottomNavigation] 🔄 Auto-approval ENABLED - automatically approving photo for:', teamName);
-          console.log('[BottomNavigation] ⚠️  CRITICAL: Auto-approval setting is TRUE, proceeding with auto-approval');
-          handleApprovePhoto(deviceId, teamName);
-          return; // Early return - handleApprovePhoto will trigger refresh
+        // AUTO-APPROVE: If setting is enabled, automatically approve the photo ONLY if it's actually pending
+        if (teamPhotosAutoApprove === true && deviceId && teamName) { // Explicit === true check
+          console.log('[BottomNavigation] 🔄 Auto-approval ENABLED - validating photo state before approval for:', teamName);
+
+          // VALIDATION CHECK: Verify that the photo is actually pending (not already approved)
+          try {
+            const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
+            if (result?.ok && Array.isArray(result.data)) {
+              const player = result.data.find((p: any) => p.deviceId === deviceId);
+
+              console.log('[BottomNavigation] 🔍 Auto-approval validation results:');
+              console.log('  - Player found:', !!player);
+              if (player) {
+                console.log('  - Has teamPhoto:', !!player.teamPhoto);
+                console.log('  - Has photoApprovedAt:', !!player.photoApprovedAt);
+                console.log('  - Is pending (has photo && NO approval timestamp):', !!(player?.teamPhoto && !player?.photoApprovedAt));
+              }
+
+              // Only auto-approve if: (1) setting is EXPLICITLY TRUE AND (2) photo exists AND (3) photo is NOT already approved
+              if (player?.teamPhoto && !player?.photoApprovedAt) {
+                console.log('[BottomNavigation] ✅ Auto-approving new photo: setting=true + photo is pending + player found');
+                handleApprovePhoto(deviceId, teamName);
+                return; // Early return - handleApprovePhoto will trigger refresh
+              } else if (player?.photoApprovedAt) {
+                console.log('[BottomNavigation] ⚠️ Skipping auto-approve: photo already approved at', new Date(player.photoApprovedAt).toISOString());
+                console.log('[BottomNavigation] ⚠️ New uploads of different photos require manual re-approval');
+                // Don't auto-approve if photo is already approved - requires manual re-approval for new uploads
+              } else if (!player) {
+                console.log('[BottomNavigation] ⚠️ Skipping auto-approve: player not found in backend for deviceId:', deviceId);
+              } else {
+                console.log('[BottomNavigation] ⚠️ Skipping auto-approve: photo not found or invalid state');
+              }
+            } else {
+              console.error('[BottomNavigation] ❌ Invalid response from network/all-players:', result);
+            }
+          } catch (err) {
+            console.error('[BottomNavigation] Error validating photo before auto-approve:', err);
+            // Fail-safe: still refresh to ensure UI updates
+          }
         } else {
           console.log('[BottomNavigation] ⏹️  Auto-approval DISABLED or missing data - NOT auto-approving');
-          console.log('  - Reason: ', {
-            settingDisabled: !teamPhotosAutoApprove,
-            noDeviceId: !deviceId,
-            noTeamName: !teamName
-          });
+          console.log('  - Reasons: {');
+          console.log('    - teamPhotosAutoApprove !== true:', teamPhotosAutoApprove !== true);
+          console.log('    - !deviceId:', !deviceId);
+          console.log('    - !teamName:', !teamName);
+          console.log('  }');
         }
 
         // ALWAYS refresh pending photos when event arrives (regardless of popup state)
         // This ensures the button indicator updates even when popup is closed
         console.log('[BottomNavigation] 🔄 Refreshing pending photos on TEAM_PHOTO_UPDATED event...');
 
-        // Clear any pending timeout to avoid duplicate refreshes
-        if (photoRefreshTimeoutRef.current) {
-          clearTimeout(photoRefreshTimeoutRef.current);
-        }
-
-        // Small delay to ensure backend has processed the update
-        photoRefreshTimeoutRef.current = window.setTimeout(() => {
-          try {
-            fetchPendingPhotos();
-          } catch (err) {
-            console.error('[BottomNavigation] Error calling fetchPendingPhotos:', err);
-          }
-        }, 100);
+        // PHASE 2: Use consolidated refresh scheduling
+        // 300ms delay ensures backend has processed the update before we check
+        schedulePhotoRefresh(300);
       } catch (err) {
         console.error('[BottomNavigation] Error handling TEAM_PHOTO_UPDATED:', err);
       }
@@ -752,18 +911,9 @@ export function StatusBar({
         console.log('[BottomNavigation] 👤 PLAYER_JOIN detected for team:', teamName, '(', deviceId, ')');
         console.log('[BottomNavigation] 🔍 Checking for pending photos from this new/reconnected team...');
 
-        // Trigger photo refresh after a short delay to ensure backend has processed the join
-        if (photoRefreshTimeoutRef.current) {
-          clearTimeout(photoRefreshTimeoutRef.current);
-        }
-
-        photoRefreshTimeoutRef.current = window.setTimeout(() => {
-          try {
-            fetchPendingPhotos();
-          } catch (err) {
-            console.error('[BottomNavigation] Error calling fetchPendingPhotos on PLAYER_JOIN:', err);
-          }
-        }, 150);
+        // PHASE 2: Use consolidated refresh scheduling
+        // 300ms delay ensures backend has processed the join and any photo updates
+        schedulePhotoRefresh(300);
       } catch (err) {
         console.error('[BottomNavigation] Error handling PLAYER_JOIN:', err);
       }
@@ -777,10 +927,11 @@ export function StatusBar({
     };
   }, []);
 
-  // NEW: Aggressive polling interval - refresh pending photos every 3 seconds
-  // This ensures the orange indicator appears even if event listeners fail
+  // PHASE 5: Polling interval - refresh pending photos every 10 seconds
+  // Event-driven refreshes handle real-time updates; polling is safety net only
+  // This reduces backend load compared to previous 3 second interval
   useEffect(() => {
-    console.log('[BottomNavigation] 🕐 Starting aggressive photo polling interval (3 seconds)...');
+    console.log('[BottomNavigation] 🕐 Starting photo polling interval (10 seconds as safety net)...');
 
     // Call fetchPendingPhotos immediately to ensure orange indicator works on load
     // Using a wrapper to avoid dependency array issues
@@ -797,21 +948,24 @@ export function StatusBar({
 
     initialFetch();
 
+    // PHASE 5: Increased interval from 3 seconds to 10 seconds
+    // Event-driven updates (TEAM_PHOTO_UPDATED, PLAYER_JOIN) provide real-time responsiveness
+    // Polling serves as safety net in case events are missed
     pollingIntervalRef.current = window.setInterval(() => {
       try {
-        console.log('[BottomNavigation] 🔄 Periodic photo poll triggered...');
+        console.log('[BottomNavigation] 🔄 Periodic photo poll triggered (safety net)...');
         fetchPendingPhotos();
       } catch (err) {
         console.error('[BottomNavigation] Error in polling interval:', err);
       }
-    }, 3000);
+    }, 10000);
 
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
       }
-      console.log('[BottomNavigation] 🛑 Stopped aggressive photo polling');
+      console.log('[BottomNavigation] 🛑 Stopped photo polling');
     };
   }, []);
 
@@ -1165,14 +1319,14 @@ export function StatusBar({
                             {/* Photo Thumbnail */}
                             <div className="w-full aspect-square rounded-lg overflow-hidden border-2 border-border bg-background shadow-md hover:shadow-lg transition-shadow">
                               <img
-                                src={ensureFileUrl(photo.teamPhoto)}
+                                src={ensureFileUrl(photo.teamPhotoPending || photo.teamPhoto)}
                                 alt={photo.teamName}
                                 className="w-full h-full object-cover"
                                 onLoad={() => {
-                                  console.log('[BottomNavigation] ✅ Successfully loaded team photo:', photo.teamPhoto);
+                                  console.log('[BottomNavigation] ✅ Successfully loaded team photo:', photo.teamPhotoPending || photo.teamPhoto);
                                 }}
                                 onError={(e) => {
-                                  console.error('[BottomNavigation] ❌ Failed to load team photo:', photo.teamPhoto);
+                                  console.error('[BottomNavigation] ❌ Failed to load team photo:', photo.teamPhotoPending || photo.teamPhoto);
                                   e.currentTarget.parentElement!.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-muted text-muted-foreground">Unable to load image</div>';
                                 }}
                               />
@@ -1189,10 +1343,11 @@ export function StatusBar({
                             </div>
 
                             {/* Action Buttons */}
-                            {photoStatuses[photo.deviceId] === 'pending' && (
+                            {/* PHASE 3: Use normalizedDeviceId for consistent key matching */}
+                            {photoStatuses[photo.normalizedDeviceId || photo.deviceId] === 'pending' && (
                               <div className="flex gap-2 w-full">
                                 <button
-                                  onClick={() => handleApprovePhoto(photo.deviceId, photo.teamName)}
+                                  onClick={() => handleApprovePhoto(photo.normalizedDeviceId || photo.deviceId, photo.teamName)}
                                   className="flex-1 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-md font-semibold text-sm transition-colors flex items-center justify-center gap-1"
                                   title="Approve this photo"
                                 >
@@ -1200,7 +1355,7 @@ export function StatusBar({
                                   Approve
                                 </button>
                                 <button
-                                  onClick={() => handleDeclinePhoto(photo.deviceId, photo.teamName)}
+                                  onClick={() => handleDeclinePhoto(photo.normalizedDeviceId || photo.deviceId, photo.teamName)}
                                   className="flex-1 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-md font-semibold text-sm transition-colors flex items-center justify-center gap-1"
                                   title="Decline this photo"
                                 >
@@ -1210,7 +1365,7 @@ export function StatusBar({
                               </div>
                             )}
 
-                            {photoStatuses[photo.deviceId] === 'approved' && (
+                            {photoStatuses[photo.normalizedDeviceId || photo.deviceId] === 'approved' && (
                               <button
                                 disabled
                                 className="w-full px-3 py-2 bg-green-500/50 text-white rounded-md font-semibold text-sm opacity-75 cursor-not-allowed flex items-center justify-center gap-1"
@@ -1220,7 +1375,7 @@ export function StatusBar({
                               </button>
                             )}
 
-                            {photoStatuses[photo.deviceId] === 'declined' && (
+                            {photoStatuses[photo.normalizedDeviceId || photo.deviceId] === 'declined' && (
                               <button
                                 disabled
                                 className="w-full px-3 py-2 bg-red-500/50 text-white rounded-md font-semibold text-sm opacity-75 cursor-not-allowed flex items-center justify-center gap-1"

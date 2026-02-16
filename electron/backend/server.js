@@ -8,10 +8,25 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import os from 'os';
+import crypto from 'crypto';
 import { getTeamPicturesPath } from './pathInitializer.js';
 import { setCurrentBuzzerFolderPath } from './buzzerFolderManager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ========== PHOTO HASH UTILITY ==========
+// Computes a SHA256 hash of photo data to detect when a new photo is submitted
+// This allows us to preserve photo approval status across reconnections when the photo hasn't changed,
+// while resetting approval status when a new photo is submitted
+function hashPhotoData(photoData) {
+  if (!photoData) return null;
+  try {
+    return crypto.createHash('sha256').update(photoData, 'binary').digest('hex');
+  } catch (err) {
+    console.error('[hashPhotoData] Error computing photo hash:', err.message);
+    return null;
+  }
+}
 
 // ...lazy load bus and endpoints...
 async function loadEndpoints(app) {
@@ -97,6 +112,7 @@ async function startBackend({ port = 4310 } = {}) {
 
   const networkPlayers = new Map();
   const recentAnswers = new Map();
+  let autoApproveTeamPhotos = false; // Initialize auto-approve setting (will be synced from frontend)
 
   // Phase 2: Heartbeat configuration
   const HEARTBEAT_INTERVAL = 5000; // Send ping every 5 seconds
@@ -237,6 +253,51 @@ async function startBackend({ port = 4310 } = {}) {
     }
   }
 
+  // Helper function to delete a specific photo file from disk
+  async function deletePhotoFile(photoUrl) {
+    if (!photoUrl) {
+      return { success: true, message: 'No photo URL provided, nothing to delete' };
+    }
+
+    try {
+      // Convert file:// URL to actual file path
+      let filePath;
+      if (photoUrl.startsWith('file://')) {
+        filePath = fileURLToPath(photoUrl);
+      } else {
+        filePath = photoUrl;
+      }
+
+      console.log('[deletePhotoFile] Attempting to delete photo:', filePath.substring(filePath.length - 50)); // Log last 50 chars
+      log.info(`[deletePhotoFile] Deleting photo file: ${filePath}`);
+
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        console.log('[deletePhotoFile] ⚠️  File does not exist:', filePath.substring(filePath.length - 50));
+        log.warn(`[deletePhotoFile] ⚠️  File does not exist, nothing to delete: ${filePath}`);
+        return { success: true, message: 'File does not exist, nothing to delete' };
+      }
+
+      // Delete the file
+      await fsp.unlink(filePath);
+      console.log('[deletePhotoFile] ✅ Successfully deleted photo file');
+      log.info(`[deletePhotoFile] ✅ Successfully deleted photo file: ${filePath}`);
+      return { success: true, message: 'Photo file deleted successfully' };
+    } catch (err) {
+      console.error('[deletePhotoFile] ❌ Error deleting photo file:', err.message);
+      log.error(`[deletePhotoFile] ❌ Error deleting photo file:`, err.message);
+
+      // Don't throw error, just log warning - file deletion should not block the process
+      if (err.code === 'EACCES') {
+        log.warn(`[deletePhotoFile] EACCES: Permission denied when trying to delete photo file`);
+      } else if (err.code === 'ENOENT') {
+        log.warn(`[deletePhotoFile] ENOENT: File not found (may have been already deleted)`);
+      }
+
+      return { success: false, error: err.message };
+    }
+  }
+
   // Helper function to cleanup team photos
   function cleanupTeamPhotos() {
     try {
@@ -327,7 +388,9 @@ async function startBackend({ port = 4310 } = {}) {
 
         if (data.type === 'PLAYER_JOIN') {
           try {
-            deviceId = data.deviceId;
+            // DEFENSIVE FIX: Normalize deviceId to remove leading/trailing whitespace
+            // This prevents Map from having multiple keys for the same logical device (e.g., "id " vs "id")
+            deviceId = (data.deviceId || '').trim();
             playerId = data.playerId;
 
             // PHASE 1: Add comprehensive backend logging to PLAYER_JOIN handler
@@ -366,6 +429,59 @@ async function startBackend({ port = 4310 } = {}) {
               existingPlayer.lastPongAt = Date.now(); // Phase 2: Update heartbeat on reconnection
               log.info(`[WS-${connectionId}] [RECONNECT] Updated lastPongAt from ${oldLastPongAt} to ${existingPlayer.lastPongAt} for device ${deviceId}`);
 
+              // CRITICAL FIX: Enhanced hash-based photo comparison with approval persistence
+              // Once a photo is approved and its hash stored in photoApprovedHash, that approval persists
+              // for that specific photo, even across reconnections
+              const oldPhotoApprovedAt = existingPlayer.photoApprovedAt;
+              const oldPhotoHash = existingPlayer.teamPhotoHash;
+              const approvedPhotoHash = existingPlayer.photoApprovedHash; // Hash of the photo that was approved
+              const newPhotoHash = hashPhotoData(data.teamPhoto);
+
+              console.log('[PLAYER_JOIN] 📸 PHOTO APPROVAL STATUS CHECK:');
+              console.log('  - Current photo hash:', newPhotoHash ? (newPhotoHash.substring(0, 16) + '...') : 'null');
+              console.log('  - Previous photo hash:', oldPhotoHash ? (oldPhotoHash.substring(0, 16) + '...') : 'null');
+              console.log('  - Approved photo hash:', approvedPhotoHash ? (approvedPhotoHash.substring(0, 16) + '...') : 'null');
+              console.log('  - Current photoApprovedAt:', oldPhotoApprovedAt ? new Date(oldPhotoApprovedAt).toISOString() : 'null');
+
+              // Check if the current photo matches the approved photo hash
+              if (newPhotoHash && approvedPhotoHash && newPhotoHash === approvedPhotoHash) {
+                // Current photo matches the approved photo → RESTORE approval status
+                console.log('[PLAYER_JOIN] ✅ RESTORING photoApprovedAt: Current photo matches approved photo hash');
+                console.log('  - Restoring to:', oldPhotoApprovedAt ? new Date(oldPhotoApprovedAt).toISOString() : 'SETTING NEW TIMESTAMP');
+                if (!existingPlayer.photoApprovedAt) {
+                  // If approval timestamp was lost, restore it (this shouldn't normally happen but handle it)
+                  existingPlayer.photoApprovedAt = Date.now();
+                  console.log('[PLAYER_JOIN] ⚠️  photoApprovedAt was null, setting new timestamp');
+                }
+                log.info(`[WS-${connectionId}] ✅ [RECONNECT] RESTORED photoApprovedAt for device ${deviceId}: Photo matches approved hash (${approvedPhotoHash.substring(0, 16)}...)`);
+              } else if (oldPhotoHash && newPhotoHash && oldPhotoHash === newPhotoHash) {
+                // Photo hash unchanged from last time → definitely same photo, preserve all approval status
+                console.log('[PLAYER_JOIN] 📸 PRESERVED photoApprovedAt: Photo hash unchanged');
+                console.log('  - Photo hash:', oldPhotoHash.substring(0, 16) + '...');
+                log.info(`[WS-${connectionId}] 📸 [RECONNECT] PRESERVED photoApprovedAt for device ${deviceId}: Photo hash unchanged (${oldPhotoHash.substring(0, 16)}...)`);
+              } else if (oldPhotoHash && newPhotoHash && oldPhotoHash !== newPhotoHash) {
+                // Hash CHANGED and both hashes exist → NEW photo submitted, reset approval
+                console.log('[PLAYER_JOIN] 📸 RESET photoApprovedAt: New photo detected (hash changed)');
+                console.log('  - Old photo hash:', oldPhotoHash.substring(0, 16) + '...');
+                console.log('  - New photo hash:', newPhotoHash.substring(0, 16) + '...');
+                existingPlayer.photoApprovedAt = null; // Reset approval for new photo
+                log.info(`[WS-${connectionId}] 📸 [RECONNECT] RESET photoApprovedAt for device ${deviceId}: New photo detected (hash changed from ${oldPhotoHash.substring(0, 16)}... to ${newPhotoHash.substring(0, 16)}...)`);
+              } else if (!oldPhotoHash && newPhotoHash) {
+                // No old hash but new hash exists → first time seeing photo data
+                console.log('[PLAYER_JOIN] 📸 RESET photoApprovedAt: No previous photo hash found');
+                existingPlayer.photoApprovedAt = null;
+                log.info(`[WS-${connectionId}] 📸 [RECONNECT] RESET photoApprovedAt for device ${deviceId}: No previous hash for comparison`);
+              } else if (oldPhotoHash && !newPhotoHash) {
+                // Old hash exists but no new hash → photo was removed
+                console.log('[PLAYER_JOIN] 📸 Photo removed in reconnection, keeping approval status');
+                log.info(`[WS-${connectionId}] 📸 [RECONNECT] Photo missing in reconnection for device ${deviceId}, keeping approval status`);
+              }
+
+              // Always update the photo hash for future comparisons
+              if (newPhotoHash) {
+                existingPlayer.teamPhotoHash = newPhotoHash;
+              }
+
               // Handle buzzer in reconnection (update if new buzzer provided)
               if (data.buzzerSound) {
                 const normalizedBuzzer = (data.buzzerSound || '')
@@ -400,14 +516,20 @@ async function startBackend({ port = 4310 } = {}) {
                 console.log('[PLAYER_JOIN] No buzzer sound in PLAYER_JOIN payload');
               }
 
+              // Compute photo hash for new player
+              const initialPhotoHash = hashPhotoData(data.teamPhoto);
+
               const playerEntry = {
                 ws,
                 playerId,
                 teamName: data.teamName,
                 status: 'pending',
                 approvedAt: null,
+                photoApprovedAt: null, // Track photo approval separately from team approval
+                photoApprovedHash: null, // Track which photo hash was approved - this persists approval across reconnections
                 timestamp: createdAt,
                 teamPhoto: null, // Will be set when photo save completes
+                teamPhotoHash: initialPhotoHash, // Track photo hash to detect changes on reconnection
                 buzzerSound: buzzerSound, // Store buzzer if provided (fix for initial buzzer race condition)
                 lastPongAt: createdAt // Phase 2: Track heartbeat timestamp on join
               };
@@ -689,7 +811,9 @@ async function startBackend({ port = 4310 } = {}) {
             console.log('[TEAM_PHOTO_UPDATE] Received message with fields:', Object.keys(data));
             log.info(`[WS-${connectionId}] [TEAM_PHOTO_UPDATE] Received message with fields:`, Object.keys(data).join(', '));
 
-            const updateDeviceId = data.deviceId || deviceId;
+            // DEFENSIVE FIX: Normalize deviceId to remove leading/trailing whitespace
+            // This prevents Map lookups from failing due to whitespace variations
+            const updateDeviceId = ((data.deviceId || deviceId) || '').trim();
             console.log('[TEAM_PHOTO_UPDATE] Photo field present:', !!data.photoData, 'Size:', data.photoData?.length, 'bytes');
             log.info(`[WS-${connectionId}] [TEAM_PHOTO_UPDATE] Photo field present: ${!!data.photoData}, Size: ${data.photoData?.length || 'N/A'} bytes`);
 
@@ -708,6 +832,27 @@ async function startBackend({ port = 4310 } = {}) {
             if (data.photoData) {
               console.log('[TEAM_PHOTO_UPDATE] Team photo found, calling saveTeamPhotoToDisk for device:', updateDeviceId);
               log.info(`[WS-${connectionId}] 📸 Team photo update received for ${data.teamName} (size: ${data.photoData.length} bytes), saving to disk...`);
+
+              // CRITICAL FIX: Delete old photo files before saving new photo
+              // This prevents storage bloat from accumulated old photos
+              if (existingPlayer) {
+                console.log('[TEAM_PHOTO_UPDATE] 🗑️  Cleanup: Checking for old photos to delete');
+
+                // Delete old approved photo if it exists and is different from pending
+                if (existingPlayer.teamPhoto) {
+                  console.log('[TEAM_PHOTO_UPDATE] 🗑️  Deleting old approved photo');
+                  log.info(`[WS-${connectionId}] [TEAM_PHOTO_UPDATE] Deleting old approved photo for ${data.teamName}`);
+                  await deletePhotoFile(existingPlayer.teamPhoto);
+                }
+
+                // Delete old pending photo if it exists
+                if (existingPlayer.teamPhotoPending && existingPlayer.teamPhotoPending !== existingPlayer.teamPhoto) {
+                  console.log('[TEAM_PHOTO_UPDATE] 🗑️  Deleting old pending photo');
+                  log.info(`[WS-${connectionId}] [TEAM_PHOTO_UPDATE] Deleting old pending photo for ${data.teamName}`);
+                  await deletePhotoFile(existingPlayer.teamPhotoPending);
+                }
+              }
+
               const saveResult = await saveTeamPhotoToDisk(data.photoData, updateDeviceId);
               console.log('[TEAM_PHOTO_UPDATE] saveTeamPhotoToDisk returned:', saveResult);
               log.info(`[WS-${connectionId}] [TEAM_PHOTO_UPDATE] saveTeamPhotoToDisk returned:`, saveResult);
@@ -776,15 +921,70 @@ async function startBackend({ port = 4310 } = {}) {
             // Update networkPlayers with new photo path if player exists
             if (existingPlayer) {
               console.log('[TEAM_PHOTO_UPDATE] Before update - teamPhoto:', existingPlayer.teamPhoto ? (existingPlayer.teamPhoto.substring(0, 50) + '...') : 'null');
-              existingPlayer.teamPhoto = photoPath || existingPlayer.teamPhoto;
+
+              // CRITICAL FIX: Store new photo in pending field, NOT in displayed teamPhoto
+              // Only update teamPhoto (displayed photo) if auto-approve is enabled
+              existingPlayer.teamPhotoPending = photoPath;
+              console.log('[TEAM_PHOTO_UPDATE] 📸 New photo stored in teamPhotoPending - awaiting approval');
+
+              // Only update displayed photo if auto-approve setting is enabled
+              if (autoApproveTeamPhotos === true) {
+                existingPlayer.teamPhoto = photoPath;
+                console.log('[TEAM_PHOTO_UPDATE] 🟢 Auto-approve ENABLED - updating displayed teamPhoto immediately');
+              } else {
+                console.log('[TEAM_PHOTO_UPDATE] 🔴 Auto-approve DISABLED - teamPhoto NOT updated (awaiting manual approval)');
+              }
+
+              // Compute and store the hash of the new photo
+              const newPhotoHash = hashPhotoData(data.photoData);
+              const oldPhotoHash = existingPlayer.teamPhotoHash;
+              const approvedPhotoHash = existingPlayer.photoApprovedHash; // Hash of the approved photo
+              existingPlayer.teamPhotoHash = newPhotoHash;
+
+              // CRITICAL FIX: Always reset approval when a new photo is submitted
+              // Per requirements, even identical photos (same hash) require re-approval unless auto-approve is enabled
+              const oldPhotoApprovedAt = existingPlayer.photoApprovedAt;
+
+              console.log('[TEAM_PHOTO_UPDATE] 🔍 APPROVAL CHECK:');
+              console.log('  - Old photo hash:', oldPhotoHash ? (oldPhotoHash.substring(0, 16) + '...') : 'null');
+              console.log('  - New photo hash:', newPhotoHash ? (newPhotoHash.substring(0, 16) + '...') : 'null');
+              console.log('  - Approved photo hash:', approvedPhotoHash ? (approvedPhotoHash.substring(0, 16) + '...') : 'null');
+              console.log('  - Current photoApprovedAt:', oldPhotoApprovedAt ? new Date(oldPhotoApprovedAt).toISOString() : 'null');
+              console.log('  - Auto-approve setting:', autoApproveTeamPhotos);
+
+              // When auto-approve is enabled, mark the photo as approved immediately
+              // Otherwise, reset approval so manual approval is required
+              if (autoApproveTeamPhotos === true) {
+                // Auto-approve is enabled: mark this photo as approved
+                const approvalTimestamp = Date.now();
+                existingPlayer.photoApprovedAt = approvalTimestamp;
+                existingPlayer.photoApprovedHash = newPhotoHash; // Mark this photo hash as approved
+                console.log('[TEAM_PHOTO_UPDATE] 🟢 AUTO-APPROVAL: Photo marked as approved');
+                console.log('[TEAM_PHOTO_UPDATE] photoApprovedAt set to:', new Date(approvalTimestamp).toISOString());
+                console.log('[TEAM_PHOTO_UPDATE] photoApprovedHash set to:', newPhotoHash ? (newPhotoHash.substring(0, 16) + '...') : 'null');
+                log.info(`[WS-${connectionId}] 🟢 [TEAM_PHOTO_UPDATE] AUTO-APPROVED photo for ${data.teamName}: Photo marked approved with timestamp`);
+              } else {
+                // Auto-approve is disabled: reset approval so manual approval is required
+                existingPlayer.photoApprovedAt = null;
+                existingPlayer.photoApprovedHash = null;
+                existingPlayer.teamPhoto = null;
+                console.log('[TEAM_PHOTO_UPDATE] 📸 RESET approval: New photo submitted - manual approval required');
+                console.log('[TEAM_PHOTO_UPDATE] photoApprovedAt set to: null');
+                console.log('[TEAM_PHOTO_UPDATE] photoApprovedHash set to: null');
+                console.log('[TEAM_PHOTO_UPDATE] 📸 CLEARED displayed teamPhoto - new photo awaiting approval');
+                log.info(`[WS-${connectionId}] 📸 [TEAM_PHOTO_UPDATE] RESET approval & cleared teamPhoto for ${data.teamName}: Manual approval required`);
+              }
+
               console.log('[TEAM_PHOTO_UPDATE] After update - teamPhoto:', existingPlayer.teamPhoto ? (existingPlayer.teamPhoto.substring(0, 50) + '...') : 'null');
               console.log('[TEAM_PHOTO_UPDATE] Updated networkPlayers entry for device:', updateDeviceId);
-              log.info(`[WS-${connectionId}] ✅ Updated networkPlayers for ${data.teamName}, teamPhoto is now: ${existingPlayer.teamPhoto || 'null'}`);
 
               // Verify the update was applied
               const verifyPlayer = networkPlayers.get(updateDeviceId);
               if (verifyPlayer?.teamPhoto) {
                 console.log('[TEAM_PHOTO_UPDATE] ✅ Verification passed - photo is stored in networkPlayers');
+                console.log('[TEAM_PHOTO_UPDATE] ✅ Verification passed - current photo hash:', verifyPlayer.teamPhotoHash ? (verifyPlayer.teamPhotoHash.substring(0, 16) + '...') : 'null');
+                console.log('[TEAM_PHOTO_UPDATE] ✅ Verification passed - approved photo hash:', verifyPlayer.photoApprovedHash ? (verifyPlayer.photoApprovedHash.substring(0, 16) + '...') : 'null');
+                console.log('[TEAM_PHOTO_UPDATE] ✅ Verification passed - photoApprovedAt =', verifyPlayer.photoApprovedAt ? new Date(verifyPlayer.photoApprovedAt).toISOString() : 'null');
               } else {
                 console.warn('[TEAM_PHOTO_UPDATE] ⚠️  Verification failed - teamPhoto not in networkPlayers!');
               }
@@ -837,14 +1037,16 @@ async function startBackend({ port = 4310 } = {}) {
           }
         } else if (data.type === 'PLAYER_BUZZER_SELECT') {
           try {
+            // DEFENSIVE FIX: Normalize deviceId to remove leading/trailing whitespace
+            // This ensures consistency with PLAYER_JOIN normalization
+            const buzzerDeviceId = ((data.deviceId || deviceId) || '').trim();
+
             // Normalize buzzer sound value (trim whitespace and ensure .mp3 extension)
             const normalizedBuzzerSound = (data.buzzerSound || '')
               .trim()
               .replace(/\.mp3$/i, '') + '.mp3';
 
-            log.info(`[WS-${connectionId}] 🔊 Player buzzer selection: ${data.teamName} selected "${data.buzzerSound}" → normalized to "${normalizedBuzzerSound}" (device: ${data.deviceId})`);
-
-            const buzzerDeviceId = data.deviceId || deviceId;
+            log.info(`[WS-${connectionId}] 🔊 Player buzzer selection: ${data.teamName} selected "${data.buzzerSound}" → normalized to "${normalizedBuzzerSound}" (device: ${buzzerDeviceId})`);
 
             // Update networkPlayers with normalized buzzer sound
             const existingPlayer = networkPlayers.get(buzzerDeviceId);
@@ -1097,12 +1299,17 @@ async function startBackend({ port = 4310 } = {}) {
 
   // PHASE 5: Convert approveTeam to Promise-based to properly handle retries
   // This fixes the race condition where retries were scheduled but their results were never reported
-  async function approveTeam(deviceId, teamName, displayData = {}, retryCount = 0) {
+  async function approveTeam(deviceId, teamName, displayData = {}, retryCount = 0, approvePhoto = false) {
     try {
       // PHASE 1: ENHANCED DIAGNOSTICS - Log exact function entry
       const callTimestamp = Date.now();
       console.log('[approveTeam] ✅ Called:', { deviceId, teamName, timestamp: new Date(callTimestamp).toISOString() });
-      log.info(`✅ approveTeam called: ${teamName} (${deviceId}) at ${new Date(callTimestamp).toISOString()}`);
+      console.log('[approveTeam] 🔑 CRITICAL PARAMETER CHECK - approvePhoto:');
+      console.log('  - Value:', approvePhoto);
+      console.log('  - Type:', typeof approvePhoto);
+      console.log('  - Strict true?:', approvePhoto === true);
+      console.log('  - Truthy?:', !!approvePhoto);
+      log.info(`✅ approveTeam called: ${teamName} (${deviceId}) with approvePhoto=${approvePhoto} at ${new Date(callTimestamp).toISOString()}`);
 
       // PHASE 1: Detailed deviceId inspection
       console.log('[approveTeam] 🔍 deviceId Inspection:');
@@ -1186,7 +1393,7 @@ async function startBackend({ port = 4310 } = {}) {
           // PHASE 5: Wait for retry to complete before returning
           await new Promise(res => setTimeout(res, delayMs));
           console.log(`[approveTeam] 🔄 Executing retry ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries} for ${deviceId}`);
-          const retryResult = await approveTeam(deviceId, teamName, displayData, retryCount + 1);
+          const retryResult = await approveTeam(deviceId, teamName, displayData, retryCount + 1, approvePhoto);
           return retryResult;
         } else {
           log.error(`❌ approveTeam failed after ${APPROVAL_RETRY_CONFIG.maxRetries} retry attempts - player still not found: ${deviceId}`);
@@ -1220,7 +1427,7 @@ async function startBackend({ port = 4310 } = {}) {
           // PHASE 5: Wait for retry to complete before returning
           await new Promise(res => setTimeout(res, delayMs));
           console.log(`[approveTeam] 🔄 Executing retry ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries} for ${matchedDeviceId} - checking ws`);
-          const retryResult = await approveTeam(deviceId, teamName, displayData, retryCount + 1);
+          const retryResult = await approveTeam(deviceId, teamName, displayData, retryCount + 1, approvePhoto);
           return retryResult;
         } else {
           log.error(`❌ approveTeam failed after ${APPROVAL_RETRY_CONFIG.maxRetries} retry attempts - ws still null: ${matchedDeviceId}`);
@@ -1273,7 +1480,7 @@ async function startBackend({ port = 4310 } = {}) {
           // PHASE 5: Wait for retry to complete before returning
           await new Promise(res => setTimeout(res, delayMs));
           console.log(`[approveTeam] 🔄 Executing retry ${retryCount + 1}/${APPROVAL_RETRY_CONFIG.maxRetries} for ${matchedDeviceId} - checking ws.readyState`);
-          const retryResult = await approveTeam(deviceId, teamName, displayData, retryCount + 1);
+          const retryResult = await approveTeam(deviceId, teamName, displayData, retryCount + 1, approvePhoto);
           return retryResult;
         } else if (ws.readyState === 0) {
           log.error(`❌ approveTeam failed after ${APPROVAL_RETRY_CONFIG.maxRetries} retry attempts - ws still connecting: ${matchedDeviceId}`);
@@ -1283,8 +1490,51 @@ async function startBackend({ port = 4310 } = {}) {
 
       finalPlayer.status = 'approved';
       finalPlayer.approvedAt = Date.now();
+
+      // CRITICAL LOGGING: Track photoApprovedAt assignment
+      console.log('[approveTeam] 🔑 PHOTO APPROVAL CHECK:');
+      console.log('  - approvePhoto parameter value:', approvePhoto);
+      console.log('  - approvePhoto type:', typeof approvePhoto);
+      console.log('  - Condition (approvePhoto) evaluates to:', !!approvePhoto);
+      console.log('  - WILL SET photoApprovedAt:', approvePhoto ? 'YES' : 'NO');
+
+      if (approvePhoto) {
+        console.log('[approveTeam] ✅ approvePhoto is TRUE - SETTING photoApprovedAt');
+        const approvalTimestamp = Date.now();
+
+        // CRITICAL FIX: Move pending photo to displayed photo if there's a pending one
+        if (finalPlayer.teamPhotoPending) {
+          finalPlayer.teamPhoto = finalPlayer.teamPhotoPending;
+          finalPlayer.teamPhotoPending = null;
+          console.log('[approveTeam] 📸 MOVED pending photo to displayed teamPhoto');
+        }
+
+        finalPlayer.photoApprovedAt = approvalTimestamp; // Only approve the photo if explicitly requested
+        console.log('[approveTeam] ✅ ASSIGNMENT COMPLETE: finalPlayer.photoApprovedAt is now:', finalPlayer.photoApprovedAt);
+
+        // CRITICAL FIX: Store the hash of the approved photo so we can restore approval if same photo is resubmitted
+        const currentPhotoHash = finalPlayer.teamPhotoHash; // Get the current photo hash
+        finalPlayer.photoApprovedHash = currentPhotoHash; // Mark THIS photo hash as approved
+        console.log('[approveTeam] 📸 MARKED photo as approved with hash:', currentPhotoHash ? (currentPhotoHash.substring(0, 16) + '...') : 'null');
+
+        // VERIFICATION: Check that the value was actually set
+        console.log('[approveTeam] ✅ VERIFICATION: finalPlayer.photoApprovedAt after assignment:', finalPlayer.photoApprovedAt);
+        console.log('[approveTeam] ✅ VERIFICATION: Is it equal to timestamp?', finalPlayer.photoApprovedAt === approvalTimestamp);
+
+        log.info(`[approveTeam] ✅ photoApprovedAt SET to ${new Date(approvalTimestamp).toISOString()}, photoApprovedHash: ${currentPhotoHash ? (currentPhotoHash.substring(0, 16) + '...') : 'null'}`);
+      } else {
+        console.log('[approveTeam] ⏹️  approvePhoto is FALSE - NOT setting photoApprovedAt');
+        log.info(`[approveTeam] ⏹️  photoApprovedAt NOT set (photo approval not requested)`);
+        // Explicitly log that we're NOT setting it
+        console.log('[approveTeam] 📌 photoApprovedAt remains:', finalPlayer.photoApprovedAt || 'undefined/null');
+      }
+
       finalPlayer.lastPongAt = Date.now(); // CRITICAL FIX: Reset heartbeat timer when approved to prevent false timeouts
-      log.info(`[approveTeam] Set player status to approved for ${matchedDeviceId}, approvedAt: ${new Date(finalPlayer.approvedAt).toISOString()}, lastPongAt reset to ${finalPlayer.lastPongAt}`);
+      const logMsg = approvePhoto
+        ? `[approveTeam] Set player status to approved for ${matchedDeviceId}, approvedAt: ${new Date(finalPlayer.approvedAt).toISOString()}, photoApprovedAt: ${new Date(finalPlayer.photoApprovedAt).toISOString()}, lastPongAt reset to ${finalPlayer.lastPongAt}`
+        : `[approveTeam] Set player status to approved for ${matchedDeviceId}, approvedAt: ${new Date(finalPlayer.approvedAt).toISOString()}, NO photoApprovedAt set (photo approval separate), lastPongAt reset to ${finalPlayer.lastPongAt}`;
+      log.info(logMsg);
+      console.log('[approveTeam] ✅ Final player state:', { approvedAt: finalPlayer.approvedAt, photoApprovedAt: finalPlayer.photoApprovedAt });
 
       // PHASE 1: Log displayData being sent
       console.log('[approveTeam] 📦 displayData Inspection:');
@@ -1440,6 +1690,8 @@ async function startBackend({ port = 4310 } = {}) {
       console.log(`[getAllNetworkPlayers] Processing player: ${deviceId}`);
       console.log(`  - teamName: ${player.teamName}`);
       console.log(`  - status: ${player.status}`);
+      console.log(`  - photoApprovedAt: ${player.photoApprovedAt ? new Date(player.photoApprovedAt).toISOString() : 'null'}`);
+      console.log(`  - photoApprovedHash: ${player.photoApprovedHash ? (player.photoApprovedHash.substring(0, 16) + '...') : 'null'}`);
       console.log(`  - Has teamPhoto: ${!!player.teamPhoto}`);
       if (player.teamPhoto) {
         console.log(`  - teamPhoto value (first 100 chars): ${player.teamPhoto.substring(0, 100)}...`);
@@ -1455,15 +1707,20 @@ async function startBackend({ port = 4310 } = {}) {
         teamName: player.teamName,
         status: player.status,
         timestamp: player.timestamp,
-        teamPhoto: player.teamPhoto || null
+        teamPhoto: player.teamPhoto || null,
+        teamPhotoPending: player.teamPhotoPending || null,
+        photoApprovedAt: player.photoApprovedAt || null
       };
 
       // Log the exact object being returned
       console.log(`[getAllNetworkPlayers] Built object for return:`, {
         deviceId: playerObj.deviceId,
         teamName: playerObj.teamName,
+        photoApprovedAt: playerObj.photoApprovedAt ? new Date(playerObj.photoApprovedAt).toISOString() : 'null',
         hasTeamPhoto: !!playerObj.teamPhoto,
-        teamPhotoValue: playerObj.teamPhoto ? (playerObj.teamPhoto.substring(0, 50) + '...') : 'null'
+        hasTeamPhotoPending: !!playerObj.teamPhotoPending,
+        teamPhotoValue: playerObj.teamPhoto ? (playerObj.teamPhoto.substring(0, 50) + '...') : 'null',
+        teamPhotoPendingValue: playerObj.teamPhotoPending ? (playerObj.teamPhotoPending.substring(0, 50) + '...') : 'null'
       });
 
       players.push(playerObj);
@@ -1890,7 +2147,15 @@ async function startBackend({ port = 4310 } = {}) {
     }
   };
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange };
+  // Setter for auto-approve team photos setting (synced from frontend)
+  const setAutoApproveTeamPhotos = (enabled) => {
+    const previousValue = autoApproveTeamPhotos;
+    autoApproveTeamPhotos = enabled === true;
+    console.log(`[setAutoApproveTeamPhotos] Setting changed from ${previousValue} to ${autoApproveTeamPhotos}`);
+    log.info(`[setAutoApproveTeamPhotos] Auto-approve team photos setting: ${previousValue} → ${autoApproveTeamPhotos}`);
+  };
+
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos };
 }
 
 export { startBackend };
