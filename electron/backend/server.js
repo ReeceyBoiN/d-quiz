@@ -53,6 +53,17 @@ async function startBackend({ port = 4310 } = {}) {
 
   app.use(express.json({ charset: 'utf-8' }));
 
+  // Add CORS headers for all requests (fallback for file:// origin requests)
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   const playerAppPath = path.join(__dirname, '../../dist-player');
 
   if (!fs.existsSync(playerAppPath)) {
@@ -94,6 +105,25 @@ async function startBackend({ port = 4310 } = {}) {
       wsUrl: `${protocol}://${localIP}:${port}/events`,
       httpUrl: `${req.protocol}://${localIP}:${port}`
     });
+  });
+
+  // Endpoint to check current network status
+  app.get('/api/network-status', (req, res) => {
+    const interfaces = os.networkInterfaces();
+    log.info('[NetworkStatus] Checking network interfaces...');
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name] || []) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          log.info(`[NetworkStatus] Found IPv4 interface: ${name} (${iface.address})`);
+          return res.json({
+            hasNetwork: true,
+            localIP: iface.address
+          });
+        }
+      }
+    }
+    log.info('[NetworkStatus] No active network interfaces found');
+    res.json({ hasNetwork: false });
   });
 
   app.use((req, res) => {

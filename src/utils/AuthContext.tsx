@@ -15,6 +15,7 @@ interface AuthContextType {
   isOnline: boolean;
   quizActivated: boolean;
   setQuizActivated: (activated: boolean) => void;
+  networkAvailable: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -35,6 +36,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [quizActivated, setQuizActivated] = useState(false);
+  const [networkAvailable, setNetworkAvailable] = useState(false);
 
   // Monitor internet connection
   useEffect(() => {
@@ -56,6 +58,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       window.removeEventListener('offline', handleOffline);
       clearInterval(interval);
     };
+  }, []);
+
+  // Monitor network availability (WiFi/Ethernet connection on host machine)
+  useEffect(() => {
+    const checkNetworkStatus = async () => {
+      try {
+        // Get backend base URL from preload API (if available)
+        let url = '/api/network-status';
+        if (window.api?.backend?.url) {
+          try {
+            const backendUrl = await window.api.backend.url();
+            if (backendUrl) {
+              url = `${backendUrl}/api/network-status`;
+              console.log('[AuthContext] Using backend URL for network check:', url);
+            }
+          } catch (error) {
+            console.warn('[AuthContext] Failed to get backend URL from preload API, falling back to relative URL:', error);
+          }
+        }
+
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(5000) // 5 second timeout
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setNetworkAvailable(data.hasNetwork === true);
+          console.log('[AuthContext] Network status check succeeded:', { hasNetwork: data.hasNetwork });
+        } else {
+          console.error('[AuthContext] network-status response not ok:', response.status, response.statusText);
+          setNetworkAvailable(false);
+        }
+      } catch (error) {
+        // Network error - assume no network
+        console.error('[AuthContext] Failed to fetch network-status:', error);
+        setNetworkAvailable(false);
+      }
+    };
+
+    // Check immediately on mount
+    checkNetworkStatus();
+
+    // Poll every 5 seconds
+    const interval = setInterval(checkNetworkStatus, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Load user from localStorage on mount
@@ -104,7 +151,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     isOnline,
     quizActivated,
-    setQuizActivated
+    setQuizActivated,
+    networkAvailable
   };
 
   return (

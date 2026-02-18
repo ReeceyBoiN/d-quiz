@@ -4937,6 +4937,7 @@ export function QuizHost() {
             onPlayerDevicesSettings={handlePlayerDevicesSettings}
             playerDevicesDisplayMode={playerDevicesDisplayMode}
             onPlayerDevicesDisplayModeChange={handlePlayerDevicesDisplayModeChange}
+            wsConnected={wsConnected}
           />
 
           {/* Content area with right panel */}

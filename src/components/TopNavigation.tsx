@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import { Settings, Maximize, User, AlertTriangle, Home, Smartphone, Lock } from "lucide-react";
+import { Settings, Maximize, User, AlertTriangle, Home, Smartphone, Lock, Wifi } from "lucide-react";
 import { DisplayModeToggle } from "./DisplayModeToggle";
 import { LoginDialog } from "./LoginDialog";
+import { NetworkTroubleshootingModal } from "./NetworkTroubleshootingModal";
 import { useAuth } from "../utils/AuthContext";
 import { useSettings } from "../utils/SettingsContext";
 
@@ -22,12 +23,13 @@ interface TopNavigationProps {
   onPlayerDevicesSettings?: () => void; // Add player devices settings handler
   playerDevicesDisplayMode?: "basic" | "slideshow" | "scores"; // Player devices display mode
   onPlayerDevicesDisplayModeChange?: (mode: "basic" | "slideshow" | "scores") => void; // Player devices display mode change handler
+  wsConnected?: boolean; // WebSocket connection status
 }
 
-export function TopNavigation({ 
-  activeTab, 
-  onTabChange, 
-  teamCount, 
+export function TopNavigation({
+  activeTab,
+  onTabChange,
+  teamCount,
   displayMode = "basic",
   onDisplayModeChange,
   onHandsetSettings,
@@ -37,11 +39,13 @@ export function TopNavigation({
   onSettingsOpen,
   onPlayerDevicesSettings,
   playerDevicesDisplayMode = "basic",
-  onPlayerDevicesDisplayModeChange
+  onPlayerDevicesDisplayModeChange,
+  wsConnected = false
 }: TopNavigationProps) {
-  const { isLoggedIn, user } = useAuth();
+  const { isLoggedIn, user, networkAvailable } = useAuth();
   const { version } = useSettings();
   const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
 
   const tabs = [
     { id: "home", label: "Home" },
@@ -187,18 +191,35 @@ export function TopNavigation({
               <Button
                 variant="ghost"
                 size="sm"
-                className="flash-warning text-white text-sm px-2.5 py-1.5 h-auto hover:scale-105 transition-transform duration-200"
+                onClick={() => setShowNetworkModal(true)}
+                className={`text-white text-sm px-2.5 py-1.5 h-auto hover:scale-105 transition-all duration-200 ${
+                  networkAvailable
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "flash-warning"
+                }`}
                 style={{ WebkitAppRegion: 'no-drag' }}
               >
-                <AlertTriangle className="w-4 h-4 mr-2" />
-                <div className="text-left">
-                  <div className="font-medium">No Wi-Fi Detected</div>
-                  <div className="text-xs opacity-90">Click for more info</div>
-                </div>
+                {networkAvailable ? (
+                  <>
+                    <Wifi className="w-4 h-4 mr-2" />
+                    <div className="text-left">
+                      <div className="font-medium">Network Connected</div>
+                      <div className="text-xs opacity-90">Click for details</div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-4 h-4 mr-2" />
+                    <div className="text-left">
+                      <div className="font-medium">No Network Detected</div>
+                      <div className="text-xs opacity-90">Click for more info</div>
+                    </div>
+                  </>
+                )}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Wi-Fi Hub Detected?</p>
+              <p>{networkAvailable ? "Connected to network" : "Not connected to network"}</p>
             </TooltipContent>
           </Tooltip>
           
@@ -244,9 +265,16 @@ export function TopNavigation({
         </div>
       </div>
       
-      <LoginDialog 
+      <LoginDialog
         open={showLoginDialog}
         onOpenChange={setShowLoginDialog}
+      />
+
+      <NetworkTroubleshootingModal
+        open={showNetworkModal}
+        onOpenChange={setShowNetworkModal}
+        wsConnected={wsConnected}
+        networkAvailable={networkAvailable}
       />
     </div>
   );

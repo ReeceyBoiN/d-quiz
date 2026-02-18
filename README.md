@@ -29,7 +29,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   clicking on the no wifi connected button should provide troubleshooting steps and tools
 
-  The no wifi button is currently just for visual effect and not connected to anything on the backend
+  --The no wifi button is currently just for visual effect and not connected to anything on the backend
 
   in settings, external screen settings should have individual controlls to increase / decreas the size of the text 
 
