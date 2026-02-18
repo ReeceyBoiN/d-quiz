@@ -17,15 +17,34 @@ interface StorageData {
 class ProjectImageStorage {
   private storageKey = 'quiz-display-images';
   private version = 1;
+  private readonly MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB per image
+  private readonly MAX_TOTAL_STORAGE = 5 * 1024 * 1024; // 5MB total localStorage estimate
 
   async saveImage(file: File, order?: number): Promise<StoredImage> {
     return new Promise((resolve, reject) => {
+      // Validate file size BEFORE reading
+      if (file.size > this.MAX_IMAGE_SIZE) {
+        reject(new Error(`Image size exceeds 2MB limit. File is ${(file.size / 1024 / 1024).toFixed(2)}MB`));
+        return;
+      }
+
+      // Check if adding this image would exceed total storage
+      const storageInfo = this.getStorageInfoSync();
+      if (storageInfo.currentSize + file.size > this.MAX_TOTAL_STORAGE) {
+        reject(new Error(
+          `Adding this image would exceed total storage limit. ` +
+          `Current: ${(storageInfo.currentSize / 1024 / 1024).toFixed(1)}MB, ` +
+          `Available: ${(storageInfo.available / 1024 / 1024).toFixed(1)}MB`
+        ));
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = async () => {
         try {
           const base64 = reader.result as string;
           const id = crypto.randomUUID();
-          
+
           // If no order specified, get the next order number
           const finalOrder = order !== undefined ? order : await this.getNextOrder();
           
@@ -112,25 +131,51 @@ class ProjectImageStorage {
     return images.length > 0 ? Math.max(...images.map(img => img.order || 0)) + 1 : 0;
   }
 
-  async getStorageInfo(): Promise<{ used: number; available: number; imageCount: number }> {
+  private getStorageInfoSync(): { currentSize: number; available: number; imageCount: number } {
+    try {
+      const data = this.loadFromStorage();
+      const currentSize = JSON.stringify(data).length;
+      const available = Math.max(0, this.MAX_TOTAL_STORAGE - currentSize);
+
+      return {
+        currentSize,
+        available,
+        imageCount: data.images.length
+      };
+    } catch (error) {
+      console.error('Failed to get storage info:', error);
+      return { currentSize: 0, available: this.MAX_TOTAL_STORAGE, imageCount: 0 };
+    }
+  }
+
+  async getStorageInfo(): Promise<{ used: number; available: number; imageCount: number; percentUsed: number }> {
     try {
       const images = await this.getAllImages();
       const used = images.reduce((total, img) => total + img.size, 0);
-      
-      // Estimate available storage based on localStorage limits (typically 5-10MB)
+
+      // Get actual current storage size
       const storageString = JSON.stringify(this.loadFromStorage());
       const currentStorageSize = new Blob([storageString]).size;
-      const maxStorage = 5 * 1024 * 1024; // 5MB estimate for localStorage
-      const available = Math.max(0, maxStorage - currentStorageSize);
+      const available = Math.max(0, this.MAX_TOTAL_STORAGE - currentStorageSize);
+      const percentUsed = Math.round((currentStorageSize / this.MAX_TOTAL_STORAGE) * 100);
+
+      // Log warning if approaching quota
+      if (percentUsed > 80) {
+        console.warn(
+          `[ProjectImageStorage] ⚠️  Storage quota warning: ${percentUsed}% used ` +
+          `(${(currentStorageSize / 1024 / 1024).toFixed(1)}MB / ${(this.MAX_TOTAL_STORAGE / 1024 / 1024).toFixed(1)}MB)`
+        );
+      }
 
       return {
         used,
         available,
-        imageCount: images.length
+        imageCount: images.length,
+        percentUsed
       };
     } catch (error) {
       console.error('Failed to get storage info:', error);
-      return { used: 0, available: 5 * 1024 * 1024, imageCount: 0 };
+      return { used: 0, available: this.MAX_TOTAL_STORAGE, imageCount: 0, percentUsed: 0 };
     }
   }
 

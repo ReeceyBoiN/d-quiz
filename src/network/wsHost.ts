@@ -46,6 +46,7 @@ class HostNetwork {
   private port = 8787;
   private listeners: Map<NetworkMessageType, Array<(data: any) => void>> = new Map();
   private networkPlayers: Map<string, { teamName: string; timestamp: number; deviceId?: string }> = new Map();
+  private readonly LISTENER_WARNING_THRESHOLD = 10; // Warn if listener count exceeds this
 
   /**
    * Initialize host network (called once on app start).
@@ -89,7 +90,17 @@ class HostNetwork {
     if (!this.listeners.has(type)) {
       this.listeners.set(type, []);
     }
-    this.listeners.get(type)!.push(callback);
+    const listeners = this.listeners.get(type)!;
+    listeners.push(callback);
+
+    // Warn if listener count grows suspiciously large (possible memory leak)
+    if (listeners.length > this.LISTENER_WARNING_THRESHOLD) {
+      console.warn(
+        `[HostNetwork] ⚠️  Listener accumulation warning for "${type}": ` +
+        `${listeners.length} listeners registered. ` +
+        `This may indicate a memory leak if listeners aren't properly unsubscribed.`
+      );
+    }
 
     // Return an unsubscribe function
     return () => {
@@ -262,6 +273,32 @@ class HostNetwork {
   public isPlayerRegistered(playerId: string): boolean {
     return this.networkPlayers.has(playerId);
   }
+
+  /**
+   * Get listener counts by message type (for debugging memory leaks).
+   */
+  public getListenerCounts(): Record<NetworkMessageType, number> {
+    const counts: Record<string, number> = {};
+    this.listeners.forEach((callbacks, type) => {
+      counts[type] = callbacks.length;
+    });
+    return counts as Record<NetworkMessageType, number>;
+  }
+
+  /**
+   * Log all current listener counts (for debugging).
+   */
+  public debugLogListeners(): void {
+    const counts = this.getListenerCounts();
+    const totalListeners = Object.values(counts).reduce((a, b) => a + b, 0);
+    console.log(`[HostNetwork] Total listeners: ${totalListeners}`);
+    Object.entries(counts).forEach(([type, count]) => {
+      if (count > 0) {
+        const warning = count > this.LISTENER_WARNING_THRESHOLD ? ' ⚠️' : '';
+        console.log(`  - ${type}: ${count}${warning}`);
+      }
+    });
+  }
 }
 
 // Singleton instance
@@ -373,4 +410,13 @@ export function sendBuzzerFolderChangeToPlayers(folderPath: string) {
   } catch (err) {
     console.error('[wsHost] Error calling broadcastBuzzerFolderChange IPC:', err);
   }
+}
+
+/**
+ * Debug function to check for listener accumulation (memory leak detection).
+ * Call this from browser console if you suspect listener leaks.
+ */
+export function debugNetworkListeners() {
+  hostNetwork.debugLogListeners();
+  return hostNetwork.getListenerCounts();
 }

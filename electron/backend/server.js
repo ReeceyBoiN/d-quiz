@@ -115,11 +115,34 @@ async function startBackend({ port = 4310 } = {}) {
   let autoApproveTeamPhotos = false; // Initialize auto-approve setting (will be synced from frontend)
 
   // Phase 2: Heartbeat configuration
-  const HEARTBEAT_INTERVAL = 5000; // Send ping every 5 seconds
-  const HEARTBEAT_TIMEOUT = 8000; // Mark as disconnected if no pong for 8 seconds (must be > INTERVAL)
-  const STALE_CHECK_INTERVAL = 2000; // Check for stale connections every 2 seconds
+  const HEARTBEAT_INTERVAL = 12000; // Send ping every 12 seconds (increased from 5s for scale)
+  const HEARTBEAT_TIMEOUT = 18000; // Mark as disconnected if no pong for 18 seconds (increased from 8s for scale)
+  const STALE_CHECK_INTERVAL = 10000; // Check for stale connections every 10 seconds (reduced frequency)
+  const STALE_PLAYER_TTL = 30 * 60 * 1000; // Remove stale player entries after 30 minutes of inactivity
+  const CLEANUP_INTERVAL = 60000; // Run cleanup every 60 seconds
   let heartbeatIntervalId = null;
   let staleCheckIntervalId = null;
+  let cleanupIntervalId = null;
+
+  // Backpressure handling - prevent buffer overflow when sending large messages
+  const MAX_BUFFER_SIZE = 100 * 1024; // 100KB max buffered amount before warning
+  const CRITICAL_BUFFER_SIZE = 500 * 1024; // 500KB critical level - skip sending if exceeded
+
+  function checkAndLogBackpressure(ws, messageSize) {
+    if (!ws || ws.readyState !== 1) return false;
+
+    const bufferedAmount = ws.bufferedAmount || 0;
+    const totalAmount = bufferedAmount + messageSize;
+
+    if (totalAmount > CRITICAL_BUFFER_SIZE) {
+      log.warn(`[Backpressure] ⚠️  CRITICAL: Skipping message (${(messageSize/1024).toFixed(1)}KB) - buffer already has ${(bufferedAmount/1024).toFixed(1)}KB buffered`);
+      return false; // Don't send
+    } else if (totalAmount > MAX_BUFFER_SIZE) {
+      log.warn(`[Backpressure] ⚠️  HIGH: Message (${(messageSize/1024).toFixed(1)}KB) may cause buffering - current buffer: ${(bufferedAmount/1024).toFixed(1)}KB`);
+    }
+
+    return true; // OK to send
+  }
 
   // Helper function to save team photos to disk (async version) using writable path from pathInitializer
   async function saveTeamPhotoToDisk(base64String, deviceId) {
@@ -829,7 +852,39 @@ async function startBackend({ port = 4310 } = {}) {
 
             // Handle team photo update - save to disk if present
             let photoPath = null;
+            const MAX_PHOTO_SIZE = 200 * 1024; // 200KB limit
             if (data.photoData) {
+              // Validate photo size
+              const photoSize = data.photoData.length;
+              if (photoSize > MAX_PHOTO_SIZE) {
+                console.warn('[TEAM_PHOTO_UPDATE] ⚠️  Photo size exceeds 200KB limit:', photoSize, 'bytes');
+                log.warn(`[WS-${connectionId}] ⚠️  Photo size exceeds 200KB limit: ${photoSize} bytes for ${data.teamName}`);
+
+                // Send error to client
+                const errorMessage = JSON.stringify({
+                  type: 'DEBUG_ERROR',
+                  source: 'TEAM_PHOTO_UPDATE',
+                  error: 'Photo size exceeds 200KB limit',
+                  code: 'PHOTO_SIZE_EXCEEDED',
+                  deviceId: updateDeviceId,
+                  teamName: data.teamName,
+                  photoSize: photoSize,
+                  maxSize: MAX_PHOTO_SIZE,
+                  timestamp: Date.now()
+                });
+
+                wss.clients.forEach(client => {
+                  if (client.readyState === 1) {
+                    try {
+                      client.send(errorMessage);
+                    } catch (sendErr) {
+                      log.error(`[WS-${connectionId}] Failed to send photo size error:`, sendErr.message);
+                    }
+                  }
+                });
+                return;
+              }
+
               console.log('[TEAM_PHOTO_UPDATE] Team photo found, calling saveTeamPhotoToDisk for device:', updateDeviceId);
               log.info(`[WS-${connectionId}] 📸 Team photo update received for ${data.teamName} (size: ${data.photoData.length} bytes), saving to disk...`);
 
@@ -1165,6 +1220,7 @@ async function startBackend({ port = 4310 } = {}) {
 
             // Keep player data in networkPlayers for reconnection, but update the ws reference to null
             player.ws = null;
+            player.disconnectedAt = Date.now();
             log.info(`[WS-${connectionId}] ✅ Kept player data in networkPlayers for potential reconnection. Player status: ${player.status}`);
           } catch (broadcastErr) {
             log.error(`[WS-${connectionId}] ❌ Error broadcasting PLAYER_DISCONNECT:`, broadcastErr.message);
@@ -1253,6 +1309,12 @@ async function startBackend({ port = 4310 } = {}) {
 
         if (checkedCount > 0) {
           log.debug(`[Heartbeat] Stale-check cycle: checked ${checkedCount} players, found ${staleDevices.length} stale`);
+
+          // Detect cascade failures (many disconnections at once)
+          if (staleDevices.length > checkedCount * 0.25) {
+            log.error(`[Heartbeat] ⚠️  CASCADE FAILURE DETECTED: ${staleDevices.length}/${checkedCount} players are stale (${((staleDevices.length/checkedCount)*100).toFixed(1)}%)`);
+            log.error(`[Heartbeat] This may indicate network congestion or server overload. Check buffer sizes and message sizes.`);
+          }
         }
 
         // Close stale connections - the close handler will broadcast PLAYER_DISCONNECT
@@ -1273,6 +1335,57 @@ async function startBackend({ port = 4310 } = {}) {
           }
         });
       }, STALE_CHECK_INTERVAL);
+
+      // Cleanup interval - remove stale player entries that have been disconnected beyond TTL
+      cleanupIntervalId = setInterval(() => {
+        const now = Date.now();
+        const removedDevices = [];
+        let connectedCount = 0;
+        let disconnectedCount = 0;
+        let totalBufferedAmount = 0;
+
+        // Gather metrics while checking for stale entries
+        networkPlayers.forEach((player, deviceId) => {
+          if (player.ws && player.ws.readyState === 1) {
+            connectedCount++;
+            totalBufferedAmount += player.ws.bufferedAmount || 0;
+          } else if (player.ws === null) {
+            disconnectedCount++;
+          }
+
+          // If player is disconnected (ws is null) and TTL has expired, remove the entry
+          if (player.ws === null && player.disconnectedAt) {
+            const timeSinceDisconnect = now - player.disconnectedAt;
+            if (timeSinceDisconnect > STALE_PLAYER_TTL) {
+              removedDevices.push({ deviceId, teamName: player.teamName, timeSinceDisconnect });
+              networkPlayers.delete(deviceId);
+            }
+          }
+        });
+
+        // Log comprehensive metrics for monitoring stability
+        log.info(
+          `[Metrics] Players: ${connectedCount} connected, ${disconnectedCount} disconnected (total: ${networkPlayers.size}) | ` +
+          `Buffer: ${(totalBufferedAmount / 1024).toFixed(1)}KB total | ` +
+          `Heartbeat: ${HEARTBEAT_INTERVAL/1000}s interval, ${HEARTBEAT_TIMEOUT/1000}s timeout`
+        );
+
+        if (removedDevices.length > 0) {
+          log.info(`[Cleanup] ✅ Removed ${removedDevices.length} stale player entries (TTL expired)`);
+          removedDevices.forEach(({ deviceId, teamName, timeSinceDisconnect }) => {
+            log.info(`[Cleanup] - ${teamName} (device: ${deviceId}) disconnected ${(timeSinceDisconnect / 60000).toFixed(1)} minutes ago`);
+          });
+        }
+
+        // Warn if too many disconnected entries are accumulating (indicates potential issue)
+        if (disconnectedCount > 20) {
+          log.warn(`[Metrics] ⚠️  Many disconnected players in memory: ${disconnectedCount}. Check if TTL cleanup is working.`);
+        }
+
+        if (totalBufferedAmount > 1024 * 1024) {
+          log.warn(`[Metrics] ⚠️  HIGH BUFFER: ${(totalBufferedAmount / 1024 / 1024).toFixed(1)}MB buffered across all connections. May indicate slow clients.`);
+        }
+      }, CLEANUP_INTERVAL);
 
       log.info(`[Heartbeat] ✅ Heartbeat mechanism started successfully`);
 
@@ -1795,6 +1908,14 @@ async function startBackend({ port = 4310 } = {}) {
             log.info(`[broadcastDisplayMode] Sending ${displayMode} to ${deviceId}...`);
             log.debug(`[broadcastDisplayMode] Before send: ws.readyState=${player.ws.readyState}, ws.bufferedAmount=${player.ws.bufferedAmount}`);
 
+            // Check backpressure before sending
+            if (!checkAndLogBackpressure(player.ws, message.length)) {
+              log.warn(`[broadcastDisplayMode] Skipping send to ${deviceId} due to backpressure`);
+              failCount++;
+              failedDevices.push(deviceId);
+              return;
+            }
+
             player.ws.send(message, (err) => {
               if (err) {
                 log.error(`❌ [broadcastDisplayMode] ws.send callback error for ${deviceId}:`, err.message);
@@ -1843,6 +1964,13 @@ async function startBackend({ port = 4310 } = {}) {
     networkPlayers.forEach((player, deviceId) => {
       if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
         try {
+          // Check backpressure before sending
+          if (!checkAndLogBackpressure(player.ws, message.length)) {
+            log.warn(`[broadcastDisplayUpdate] Skipping send to ${deviceId} due to backpressure`);
+            failCount++;
+            return;
+          }
+
           player.ws.send(message);
           successCount++;
         } catch (error) {
@@ -2153,6 +2281,11 @@ async function startBackend({ port = 4310 } = {}) {
       clearInterval(staleCheckIntervalId);
       staleCheckIntervalId = null;
       log.info('[Heartbeat] ✅ Stale connection checker stopped');
+    }
+    if (cleanupIntervalId) {
+      clearInterval(cleanupIntervalId);
+      cleanupIntervalId = null;
+      log.info('[Heartbeat] ✅ Cleanup interval stopped');
     }
   };
 

@@ -96,11 +96,11 @@ class AudioStorage {
     return new Promise((resolve) => {
       audio.addEventListener('loadedmetadata', () => {
         resolve(audio.duration);
-      });
-      
+      }, { once: true });
+
       audio.addEventListener('error', () => {
         resolve(0);
-      });
+      }, { once: true });
     });
   }
 
@@ -127,10 +127,10 @@ class AudioStorage {
     return new Promise((resolve, reject) => {
       const audio = new Audio(audioUrl);
       audio.volume = volume;
-      
-      audio.addEventListener('ended', () => resolve());
-      audio.addEventListener('error', () => reject(new Error('Failed to play audio')));
-      
+
+      audio.addEventListener('ended', () => resolve(), { once: true });
+      audio.addEventListener('error', () => reject(new Error('Failed to play audio')), { once: true });
+
       audio.play().catch(reject);
     });
   }

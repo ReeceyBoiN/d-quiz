@@ -3697,8 +3697,8 @@ export function QuizHost() {
     }
   }, [quizzes, playerDevicesDisplayMode, broadcastPlayerDisplayMode]);
 
-  // Periodic heartbeat to sync player display mode - ensures reliability even if messages are missed
-  // Broadcasts every 2 seconds to guarantee devices receive updates (respects the 2s debounce delay for initial broadcast)
+  // Periodic safety-net sync for player display mode - low frequency heartbeat
+  // Broadcasts every 30 seconds as a backup to ensure reliability even if messages are missed
   // IMPORTANT: Paused during active games to prevent display modes from interrupting question screens
   useEffect(() => {
     // Check if any game mode is currently active
@@ -3711,10 +3711,13 @@ export function QuizHost() {
       return;
     }
 
+    // Use longer interval (30s instead of 2s) for safety-net broadcasts only
+    // Primary delivery is via immediate broadcast on mode change (broadcastPlayerDisplayMode)
+    // This reduces network traffic by ~90% while maintaining reliability
     const syncInterval = setInterval(() => {
-      console.log('[QuizHost] Periodic sync (2s) - re-broadcasting current mode:', playerDevicesDisplayMode);
+      console.log('[QuizHost] Periodic safety-net sync (30s) - re-broadcasting current mode:', playerDevicesDisplayMode);
       broadcastPlayerDisplayMode(playerDevicesDisplayMode);
-    }, 2000); // Every 2 seconds for reliable delivery
+    }, 30000); // Every 30 seconds for reliability safety-net (reduced from 2s periodic broadcasts)
 
     return () => clearInterval(syncInterval);
   }, [playerDevicesDisplayMode, broadcastPlayerDisplayMode, showKeypadInterface, showBuzzInInterface, showNearestWinsInterface, showQuizPackDisplay, showWheelSpinnerInterface]);

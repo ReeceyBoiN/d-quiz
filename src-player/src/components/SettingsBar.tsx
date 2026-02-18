@@ -85,10 +85,11 @@ export function SettingsBar() {
     }
 
     console.log('[SettingsBar] File size check:', file.size);
-    // Check file size (500MB max)
-    if (file.size > 500 * 1024 * 1024) {
-      console.error('[SettingsBar] File size exceeds 500MB limit:', file.size);
-      alert('File size exceeds 500MB limit');
+    // Check file size (200KB max)
+    const MAX_PHOTO_SIZE = 200 * 1024; // 200KB
+    if (file.size > MAX_PHOTO_SIZE) {
+      console.error('[SettingsBar] File size exceeds 200KB limit:', file.size);
+      alert(`File size exceeds 200KB limit. Your file is ${(file.size / 1024).toFixed(1)}KB. Please select a smaller image.`);
       return;
     }
 
