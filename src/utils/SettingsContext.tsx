@@ -297,6 +297,44 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         .catch((err: any) => {
           console.error('[SettingsContext] ❌ Failed to sync auto-approve setting to backend:', err);
         });
+
+      // If enabling auto-approval, immediately approve all pending photos
+      if (enabled === true) {
+        console.log('[SettingsContext] 🔄 Auto-approval enabled - fetching pending photos to approve...');
+        (window as any).api.ipc.invoke('network/all-players')
+          .then((result: any) => {
+            let players = Array.isArray(result) ? result : result?.data || [];
+            // Filter for photos that are pending: either marked with teamPhotoPending=true OR have no approval timestamp
+            const pendingPhotos = players.filter((p: any) =>
+              p.teamPhoto && (p.teamPhotoPending === true || !p.photoApprovedAt)
+            );
+
+            if (pendingPhotos.length === 0) {
+              console.log('[SettingsContext] ✅ No pending photos to auto-approve');
+              return;
+            }
+
+            console.log(`[SettingsContext] 📸 Found ${pendingPhotos.length} pending photos - auto-approving...`);
+
+            // Approve each pending photo
+            pendingPhotos.forEach((p: any) => {
+              (window as any).api.network?.approveTeam?.({
+                deviceId: p.deviceId,
+                teamName: p.teamName,
+                isPhotoApproval: true
+              })
+                .then(() => {
+                  console.log(`[SettingsContext] ✅ Auto-approved photo for team: ${p.teamName}`);
+                })
+                .catch((err: any) => {
+                  console.error(`[SettingsContext] ❌ Failed to auto-approve photo for ${p.teamName}:`, err);
+                });
+            });
+          })
+          .catch((err: any) => {
+            console.error('[SettingsContext] ❌ Failed to fetch pending photos for auto-approval:', err);
+          });
+      }
     }
   };
 

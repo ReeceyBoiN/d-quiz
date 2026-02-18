@@ -222,7 +222,8 @@ export function QuizHost() {
     defaultPoints,
     countdownStyle,
     gameModeTimers,
-    voiceCountdown
+    voiceCountdown,
+    teamPhotosAutoApprove
   } = useSettings();
 
   // Quiz data context
@@ -603,6 +604,19 @@ export function QuizHost() {
     };
 
     loadSavedState();
+  }, []);
+
+  // Sync teamPhotosAutoApprove setting to backend on app startup
+  useEffect(() => {
+    if (teamPhotosAutoApprove !== undefined && (window as any).api?.ipc?.invoke) {
+      (window as any).api.ipc.invoke('network/set-team-photos-auto-approve', { enabled: teamPhotosAutoApprove })
+        .then(() => {
+          console.log('[QuizHost] ✅ Synced auto-approve setting to backend on startup:', teamPhotosAutoApprove);
+        })
+        .catch((err: any) => {
+          console.error('[QuizHost] ❌ Failed to sync auto-approve setting on startup:', err);
+        });
+    }
   }, []);
 
   // Periodic auto-save every 30 seconds
@@ -1282,6 +1296,33 @@ export function QuizHost() {
           console.error('  - Total approval flow so far:', ipcCallEndTime - approvalStartTime, 'ms');
         } else {
           console.log('[QuizHost] ✅ approveTeam succeeded after', ipcCallEndTime - approvalStartTime, 'ms total');
+
+          // Broadcast PHOTO_APPROVAL_UPDATED event for auto-approved photos
+          // This ensures the photo gets assigned to the team immediately in quizzes state
+          if (teamPhoto) {
+            try {
+              console.log('[QuizHost] 📸 Broadcasting PHOTO_APPROVAL_UPDATED for auto-approved photo...');
+              console.log('[QuizHost]   - deviceId:', deviceId);
+              console.log('[QuizHost]   - teamName:', teamName);
+              console.log('[QuizHost]   - photoUrl (first 50 chars):', teamPhoto.substring(0, 50) + '...');
+
+              broadcastMessage({
+                type: 'PHOTO_APPROVAL_UPDATED',
+                data: {
+                  deviceId,
+                  teamName,
+                  photoUrl: teamPhoto,
+                  timestamp: Date.now()
+                }
+              });
+
+              console.log('[QuizHost] ✅ Successfully broadcasted PHOTO_APPROVAL_UPDATED event');
+            } catch (broadcastErr) {
+              console.error('[QuizHost] ❌ Error broadcasting PHOTO_APPROVAL_UPDATED:', broadcastErr);
+            }
+          } else {
+            console.log('[QuizHost] ℹ️ No teamPhoto to broadcast for PHOTO_APPROVAL_UPDATED');
+          }
         }
       } else {
         console.warn('⚠️  api.network.approveTeam not available');
@@ -2698,7 +2739,7 @@ export function QuizHost() {
           // Quiz hasn't started - auto approve new team
           console.log('📋 Auto-approving new team (no points yet):', { deviceId, teamName });
 
-          // Add team to quizzes first
+          // Add team to quizzes first (without photo - will be set via PHOTO_APPROVAL_UPDATED broadcast)
           const newTeam: Quiz = {
             id: deviceId,
             name: teamName,
@@ -2886,6 +2927,9 @@ export function QuizHost() {
           return;
         }
 
+        // Will handle auto-approval after we have convertedPhotoUrl
+        const normalizedDeviceId = (deviceId || '').trim();
+
         // Determine team to match - try by deviceId, then playerId, then teamName
         let existingTeam = quizzesRef.current.find(q => q.id === deviceId);
         let matchMethod = '';
@@ -2953,12 +2997,39 @@ export function QuizHost() {
 
         console.log('[QuizHost] 📸 Converted photo URL (first 50 chars):', convertedPhotoUrl.substring(0, 50) + '...');
 
-        // NOTE: We intentionally do NOT update photoUrl here from TEAM_PHOTO_UPDATED
+        // AUTO-APPROVAL: If enabled, immediately broadcast PHOTO_APPROVAL_UPDATED so quizzes state gets updated with the photo
+        // This ensures the photo displays in the team info tab right away
+        if (teamPhotosAutoApprove === true && normalizedDeviceId && teamName && convertedPhotoUrl) {
+          console.log('[QuizHost] 📸 Auto-approval ENABLED - immediately broadcasting PHOTO_APPROVAL_UPDATED for:', teamName);
+
+          // Use async IIFE to broadcast the approval event
+          (async () => {
+            try {
+              // Broadcast the approval event immediately with the converted photoUrl
+              const { broadcastMessage } = await import('../network/wsHost');
+              broadcastMessage({
+                type: 'PHOTO_APPROVAL_UPDATED',
+                data: {
+                  deviceId: normalizedDeviceId,
+                  teamName: teamName,
+                  photoUrl: convertedPhotoUrl
+                }
+              });
+              console.log('[QuizHost] ✅ Auto-approval: broadcasted PHOTO_APPROVAL_UPDATED for team:', teamName);
+            } catch (err) {
+              console.error('[QuizHost] Error broadcasting auto-approved photo:', err);
+            }
+          })();
+        } else if (teamPhotosAutoApprove !== true) {
+          console.log('[QuizHost] 🔴 Auto-approval DISABLED - not auto-approving');
+        }
+
+        // NOTE: We intentionally do NOT update photoUrl here from TEAM_PHOTO_UPDATED (unless auto-approved above)
         // TEAM_PHOTO_UPDATED is sent immediately when a photo is uploaded (BEFORE approval)
         // We only display the photo in TeamWindow when PHOTO_APPROVAL_UPDATED is received (AFTER approval)
         // This prevents pending/unapproved photos from appearing as already-accepted in the team info tab
 
-        if (existingTeam) {
+        if (existingTeam && !teamPhotosAutoApprove) {
           // IMPORTANT: Clear the existing photoUrl if the team has one
           // This ensures the old photo disappears immediately when a new one is submitted
           // The team info tab will be empty while the new photo is pending approval
@@ -2987,7 +3058,7 @@ export function QuizHost() {
 
     // Clean up listener on unmount
     return unsubscribe;
-  }, []); // Empty dependency array - register once on mount
+  }, [teamPhotosAutoApprove, handleApproveTeam]); // Re-register when settings or handler changes
 
   // Listen for player answers via IPC polling
   useEffect(() => {

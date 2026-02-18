@@ -1521,6 +1521,15 @@ async function startBackend({ port = 4310 } = {}) {
         console.log('[approveTeam] ✅ VERIFICATION: finalPlayer.photoApprovedAt after assignment:', finalPlayer.photoApprovedAt);
         console.log('[approveTeam] ✅ VERIFICATION: Is it equal to timestamp?', finalPlayer.photoApprovedAt === approvalTimestamp);
 
+        // DOUBLE-CHECK: Ensure value persists in the Map
+        const mapEntry = networkPlayers.get(matchedDeviceId);
+        if (mapEntry && !mapEntry.photoApprovedAt) {
+          console.warn('[approveTeam] ⚠️  CRITICAL: photoApprovedAt not persisted to Map! Forcing update...');
+          mapEntry.photoApprovedAt = approvalTimestamp;
+          console.log('[approveTeam] ✅ Force-updated Map entry with photoApprovedAt:', mapEntry.photoApprovedAt);
+          log.warn(`[approveTeam] FORCE-UPDATED photoApprovedAt in Map for ${matchedDeviceId}`);
+        }
+
         log.info(`[approveTeam] ✅ photoApprovedAt SET to ${new Date(approvalTimestamp).toISOString()}, photoApprovedHash: ${currentPhotoHash ? (currentPhotoHash.substring(0, 16) + '...') : 'null'}`);
       } else {
         console.log('[approveTeam] ⏹️  approvePhoto is FALSE - NOT setting photoApprovedAt');

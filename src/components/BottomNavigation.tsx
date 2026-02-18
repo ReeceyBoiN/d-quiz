@@ -500,6 +500,12 @@ export function StatusBar({
   const isFetchingRef = useRef<boolean>(false);
   const lastFetchTimeRef = useRef<number>(0);
   const pollingIntervalRef = useRef<number | null>(null);
+  // FIX: Use ref to track photoStatuses in real-time (React state is async)
+  // This ensures the filter uses the latest status even if state hasn't flushed yet
+  const photoStatusesRef = useRef<{ [deviceId: string]: 'pending' | 'approved' | 'declined' }>({});
+  // NEW: Track auto-approve setting in ref for access in event handlers
+  // This ensures we read the current value synchronously in TEAM_PHOTO_UPDATED listener
+  const autoApproveRef = useRef<boolean>(false);
 
   const {
     goWideEnabled: settingsGoWide,
@@ -523,38 +529,39 @@ export function StatusBar({
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [photoStatuses, setPhotoStatuses] = useState<{ [deviceId: string]: 'pending' | 'approved' | 'declined' }>({});
 
+  // Keep ref in sync with state for immediate access in filters
+  useEffect(() => {
+    photoStatusesRef.current = photoStatuses;
+  }, [photoStatuses]);
+
+  // NEW: Keep auto-approve ref in sync with SettingsContext value
+  // This ensures TEAM_PHOTO_UPDATED listener reads the current setting synchronously
+  useEffect(() => {
+    autoApproveRef.current = teamPhotosAutoApprove;
+    console.log('[BottomNavigation] 🔄 Auto-approval setting changed:', teamPhotosAutoApprove);
+  }, [teamPhotosAutoApprove]);
+
   // Derived state: check if there are pending team photos
   const hasPendingTeamPhotos = pendingPhotos.length > 0;
 
-  // Fetch pending photos when popup opens
+  // FIX 2: Log whenever hasPendingTeamPhotos state changes
+  // This helps debug if fetch completes but state doesn't update
   useEffect(() => {
-    if (showTeamPhotosPopup) {
-      fetchPendingPhotos();
+    console.log('[BottomNavigation] 🔔 hasPendingTeamPhotos changed:', hasPendingTeamPhotos);
+    console.log('[BottomNavigation] 📊 Current pending photos count:', pendingPhotos.length);
+    if (hasPendingTeamPhotos) {
+      console.log('[BottomNavigation] ✨ PENDING PHOTOS DETECTED - orange flash should activate');
+      pendingPhotos.forEach(photo => {
+        console.log(`  - ${photo.teamName} (${photo.deviceId}): status=${photoStatuses[photo.normalizedDeviceId || photo.deviceId] || 'unknown'}`);
+      });
+    } else {
+      console.log('[BottomNavigation] ✨ No pending photos - orange flash should be inactive');
     }
-  }, [showTeamPhotosPopup]);
+  }, [hasPendingTeamPhotos, pendingPhotos]);
 
-  // Fetch pending photos on component mount to initialize the state
-  useEffect(() => {
-    fetchPendingPhotos();
-  }, []);
-
-  // PHASE 2: Helper function to schedule photo refresh with timeout cancellation
-  // This consolidates all refresh operations into a single place to avoid overlapping fetches
-  const schedulePhotoRefresh = React.useCallback((delayMs: number = 300) => {
-    // Cancel previous timeout if one exists
-    if (photoRefreshTimeoutRef.current) {
-      clearTimeout(photoRefreshTimeoutRef.current);
-      console.log('[BottomNavigation] 🔄 Cancelled previous scheduled refresh');
-    }
-
-    // Schedule new fetch
-    photoRefreshTimeoutRef.current = window.setTimeout(() => {
-      console.log('[BottomNavigation] 🔄 Executing scheduled photo refresh (delay:', delayMs, 'ms)');
-      fetchPendingPhotos();
-    }, delayMs);
-  }, []);
-
-  const fetchPendingPhotos = async () => {
+  // PART 1: Wrap fetchPendingPhotos in useCallback to avoid stale closure issues
+  // This ensures schedulePhotoRefresh always calls the current version
+  const fetchPendingPhotos = React.useCallback(async () => {
     // Prevent concurrent fetch requests
     if (isFetchingRef.current) {
       console.log('[BottomNavigation] Fetch already in progress, skipping...');
@@ -592,18 +599,33 @@ export function StatusBar({
         // DETAILED LOGGING: Show what we got from backend
         console.log('[BottomNavigation] 📊 Backend returned', players.length, 'players');
         players.forEach((p: any, idx: number) => {
+          const normalizedDeviceId = (p.deviceId || '').trim();
+          const currentStatus = photoStatuses[normalizedDeviceId] || 'unknown';
           console.log(`  [${idx}] ${p.teamName} (${p.deviceId}):`, {
             hasTeamPhoto: !!p.teamPhoto,
+            hasTeamPhotoPending: !!p.teamPhotoPending,
+            teamPhotoPendingValue: p.teamPhotoPending || 'null/undefined',
             photoApprovedAt: p.photoApprovedAt || 'undefined/null',
-            isPending: !!(p.teamPhoto && !p.photoApprovedAt)
+            isPendingByTeamPhotoPending: !!p.teamPhotoPending,
+            isPendingByApprovalStatus: !!(p.teamPhoto && !p.photoApprovedAt),
+            currentUIStatus: currentStatus
           });
         });
 
         // Check for pending photos: either teamPhotoPending field OR teamPhoto without approval
+        // CRITICAL: Only trust backend flags (teamPhotoPending, photoApprovedAt) NOT UI state (photoStatuses)
+        // This ensures new photos from the same team are recognized as pending even if previous photo was approved
         const photosWithImages = players.filter(
-          (p: any) => (p.teamPhotoPending || (p.teamPhoto && !p.photoApprovedAt))
+          (p: any) => {
+            // Trust ONLY the backend flags - if backend says it's pending, it's pending
+            // Don't use photoStatuses here - that's only for UI display
+            return (p.teamPhotoPending || (p.teamPhoto && !p.photoApprovedAt));
+          }
         );
         console.log('[BottomNavigation] 🔍 Filtered to', photosWithImages.length, 'pending photos');
+        console.log('[BottomNavigation] 📋 Breakdown:');
+        console.log('  - Photos with teamPhotoPending=true:', players.filter((p: any) => !!p.teamPhotoPending).length);
+        console.log('  - Photos with teamPhoto+no approval:', players.filter((p: any) => p.teamPhoto && !p.photoApprovedAt).length);
 
         // PHASE 3: Normalize DeviceId handling - ensure consistent keys throughout
         // The backend might send multiple events (PLAYER_JOIN, reconnections, photo updates)
@@ -628,30 +650,50 @@ export function StatusBar({
           console.log('  - Unique deviceIds:', uniqueDeviceIds.length);
         }
 
-        setPendingPhotos(dedupedPhotos);
+        // CRITICAL FIX 1: Filter out photos that have been approved/declined by the user
+        // This prevents approved photos from reappearing when backend sync is delayed
+        // Only show photos that: (1) are not in photoStatuses OR (2) have status === 'pending'
+        // NOTE: Use ref instead of state because state updates are async and might not have flushed yet
+        const filteredPhotos = dedupedPhotos.filter((p: any) => {
+          const deviceId = p.normalizedDeviceId || (p.deviceId || '').trim();
+          const status = photoStatusesRef.current[deviceId];
+          // Show photo if: no status yet (undefined/pending) OR status is explicitly 'pending'
+          // HIDE photo if: status is 'approved' or 'declined'
+          return status === undefined || status === 'pending';
+        });
 
-        // PHASE 1: CRITICAL FIX - Merge photoStatuses instead of resetting
-        // Only set to 'pending' if status doesn't already exist (preserve 'approved'/'declined')
-        // This prevents the UI from flickering back to pending after user clicks approve
-        // PHASE 3: Use normalized deviceIds for consistent key matching
+        console.log('[BottomNavigation] 📊 After filtering by approval status:');
+        console.log('  - Deduped photos from backend:', dedupedPhotos.length);
+        console.log('  - After removing approved/declined:', filteredPhotos.length);
+
+        setPendingPhotos(filteredPhotos);
+
+        // CRITICAL FIX 2: Update status map - preserve approved/declined statuses
+        // Key principle: Status flows FORWARD (undefined → pending → approved/declined) NEVER BACKWARD
+        // If a photo was approved, it stays 'approved' even if backend sync is slow
         setPhotoStatuses(prev => {
           const newStatuses = { ...prev };
 
-          // Only initialize 'pending' for new deviceIds that don't have a status yet
+          // For all photos currently in the deduped list from backend, initialize 'pending' if not seen before
           dedupedPhotos.forEach((p: any) => {
             const deviceId = p.normalizedDeviceId || (p.deviceId || '').trim();
             if (!(deviceId in newStatuses)) {
+              // First time seeing this photo
               newStatuses[deviceId] = 'pending';
               console.log('[BottomNavigation] 📝 Initialized status for new photo:', deviceId, '→ pending');
             } else {
-              console.log('[BottomNavigation] 📝 Preserving status for existing photo:', deviceId, '→', newStatuses[deviceId]);
+              // Photo already known - preserve its current status
+              // This could be 'pending', 'approved', or 'declined'
+              const currentStatus = newStatuses[deviceId];
+              console.log('[BottomNavigation] 📝 Preserving status for existing photo:', deviceId, '→', currentStatus);
             }
           });
 
-          // Clean up statuses for devices no longer in pending list
+          // PART 4: Smart status cleanup - only delete 'pending' statuses for devices no longer in pending list
+          // This preserves 'approved'/'declined' statuses so they don't reappear in the list
           const pendingDeviceIds = new Set(dedupedPhotos.map((p: any) => p.normalizedDeviceId || (p.deviceId || '').trim()));
           Object.keys(newStatuses).forEach(id => {
-            if (!pendingDeviceIds.has(id)) {
+            if (!pendingDeviceIds.has(id) && newStatuses[id] === 'pending') {
               console.log('[BottomNavigation] 🗑️ Removing status for device no longer pending:', id);
               delete newStatuses[id];
             }
@@ -666,7 +708,35 @@ export function StatusBar({
       isFetchingRef.current = false;
       setLoadingPhotos(false);
     }
-  };
+  }, []);
+
+  // PART 2: Helper function to schedule photo refresh with timeout cancellation
+  // This consolidates all refresh operations into a single place to avoid overlapping fetches
+  const schedulePhotoRefresh = React.useCallback((delayMs: number = 500) => {
+    // Cancel previous timeout if one exists
+    if (photoRefreshTimeoutRef.current) {
+      clearTimeout(photoRefreshTimeoutRef.current);
+      console.log('[BottomNavigation] 🔄 Cancelled previous scheduled refresh');
+    }
+
+    // Schedule new fetch
+    photoRefreshTimeoutRef.current = window.setTimeout(() => {
+      console.log('[BottomNavigation] 🔄 Executing scheduled photo refresh (delay:', delayMs, 'ms)');
+      fetchPendingPhotos();
+    }, delayMs);
+  }, [fetchPendingPhotos]);
+
+  // Fetch pending photos when popup opens
+  useEffect(() => {
+    if (showTeamPhotosPopup) {
+      fetchPendingPhotos();
+    }
+  }, [showTeamPhotosPopup, fetchPendingPhotos]);
+
+  // Fetch pending photos on component mount to initialize the state
+  useEffect(() => {
+    fetchPendingPhotos();
+  }, [fetchPendingPhotos]);
 
   const handleApprovePhoto = React.useCallback(async (deviceId: string, teamName: string) => {
     try {
@@ -695,10 +765,23 @@ export function StatusBar({
           console.warn('[BottomNavigation] Full response object:', JSON.stringify(approvalResponse, null, 2));
         }
 
-        // Update status
+        // CRITICAL FIX: Normalize deviceId to match the key used in fetchPendingPhotos
+        // This ensures photoStatuses updates use the same key format as the filter
+        const normalizedStatusKey = (deviceId || '').trim();
+        console.log('[BottomNavigation] 🔑 Normalizing deviceId for photoStatuses key:', {
+          original: deviceId,
+          normalized: normalizedStatusKey
+        });
+
+        // FIX: Update ref IMMEDIATELY (synchronously) so filter sees the approved status
+        // State update is async and might not flush before refresh runs 500ms later
+        photoStatusesRef.current[normalizedStatusKey] = 'approved';
+        console.log('[BottomNavigation] ✅ Updated photoStatusesRef immediately to approved:', normalizedStatusKey);
+
+        // Also update state for rendering
         setPhotoStatuses(prev => ({
           ...prev,
-          [deviceId]: 'approved'
+          [normalizedStatusKey]: 'approved'
         }));
 
         // PHASE 2: If we have confirmation data from backend, use it directly
@@ -771,10 +854,11 @@ export function StatusBar({
           }
         }
 
-        // PHASE 2: Use consolidated refresh scheduling to avoid overlapping fetches
-        // 300ms delay ensures backend has persisted approval before we refresh
-        console.log('[BottomNavigation] 🔄 Scheduling photo refresh after approval (300ms delay)');
-        schedulePhotoRefresh(300);
+        // PART 3: Use consolidated refresh scheduling to avoid overlapping fetches
+        // 500ms delay ensures backend has persisted approval AND the 400ms throttle window has expired
+        // This prevents the refresh from being throttled (which happens with 300ms delay)
+        console.log('[BottomNavigation] 🔄 Scheduling photo refresh after approval (500ms delay)');
+        schedulePhotoRefresh(500);
       }
     } catch (err) {
       console.error('[BottomNavigation] Error approving photo:', err);
@@ -790,16 +874,30 @@ export function StatusBar({
       if ((window as any).api?.network?.declineTeam) {
         await (window as any).api.network.declineTeam({ deviceId, teamName });
 
-        // Update status
+        // CRITICAL FIX: Normalize deviceId to match the key used in fetchPendingPhotos
+        // This ensures photoStatuses updates use the same key format as the filter
+        const normalizedStatusKey = (deviceId || '').trim();
+        console.log('[BottomNavigation] 🔑 Normalizing deviceId for photoStatuses key:', {
+          original: deviceId,
+          normalized: normalizedStatusKey
+        });
+
+        // FIX: Update ref IMMEDIATELY (synchronously) so filter sees the declined status
+        // State update is async and might not flush before refresh runs 500ms later
+        photoStatusesRef.current[normalizedStatusKey] = 'declined';
+        console.log('[BottomNavigation] ✅ Updated photoStatusesRef immediately to declined:', normalizedStatusKey);
+
+        // Also update state for rendering
         setPhotoStatuses(prev => ({
           ...prev,
-          [deviceId]: 'declined'
+          [normalizedStatusKey]: 'declined'
         }));
 
-        // PHASE 2: Use consolidated refresh scheduling to avoid overlapping fetches
-        // 300ms delay ensures backend has persisted decline before we refresh
-        console.log('[BottomNavigation] 🔄 Scheduling photo refresh after decline (300ms delay)');
-        schedulePhotoRefresh(300);
+        // PART 3: Use consolidated refresh scheduling to avoid overlapping fetches
+        // 500ms delay ensures backend has persisted decline AND the 400ms throttle window has expired
+        // This prevents the refresh from being throttled (which happens with 300ms delay)
+        console.log('[BottomNavigation] 🔄 Scheduling photo refresh after decline (500ms delay)');
+        schedulePhotoRefresh(500);
       }
     } catch (err) {
       console.error('[BottomNavigation] Error declining photo:', err);
@@ -812,62 +910,40 @@ export function StatusBar({
       try {
         console.log('[BottomNavigation] 📸 TEAM_PHOTO_UPDATED received:', data);
         const { deviceId, teamName } = data;
+        const normalizedDeviceId = (deviceId || '').trim();
 
-        // ENHANCED LOGGING: Debug auto-approval setting
-        console.log('[BottomNavigation] 📊 Auto-approval setting check:');
-        console.log('  - teamPhotosAutoApprove value:', teamPhotosAutoApprove);
-        console.log('  - teamPhotosAutoApprove type:', typeof teamPhotosAutoApprove);
-        console.log('  - deviceId:', deviceId, 'present:', !!deviceId);
-        console.log('  - teamName:', teamName, 'present:', !!teamName);
-        console.log('  - Overall condition result:', !!(teamPhotosAutoApprove && deviceId && teamName));
-
-        // AUTO-APPROVE: If setting is enabled, automatically approve the photo ONLY if it's actually pending
-        if (teamPhotosAutoApprove === true && deviceId && teamName) { // Explicit === true check
-          console.log('[BottomNavigation] 🔄 Auto-approval ENABLED - validating photo state before approval for:', teamName);
-
-          // VALIDATION CHECK: Verify that the photo is actually pending (not already approved)
-          try {
-            const result = await (window as any).api?.ipc?.invoke?.('network/all-players');
-            if (result?.ok && Array.isArray(result.data)) {
-              const player = result.data.find((p: any) => p.deviceId === deviceId);
-
-              console.log('[BottomNavigation] 🔍 Auto-approval validation results:');
-              console.log('  - Player found:', !!player);
-              if (player) {
-                console.log('  - Has teamPhoto:', !!player.teamPhoto);
-                console.log('  - Has photoApprovedAt:', !!player.photoApprovedAt);
-                console.log('  - Is pending (has photo && NO approval timestamp):', !!(player?.teamPhoto && !player?.photoApprovedAt));
-              }
-
-              // Only auto-approve if: (1) setting is EXPLICITLY TRUE AND (2) photo exists AND (3) photo is NOT already approved
-              if (player?.teamPhoto && !player?.photoApprovedAt) {
-                console.log('[BottomNavigation] ✅ Auto-approving new photo: setting=true + photo is pending + player found');
-                handleApprovePhoto(deviceId, teamName);
-                return; // Early return - handleApprovePhoto will trigger refresh
-              } else if (player?.photoApprovedAt) {
-                console.log('[BottomNavigation] ⚠️ Skipping auto-approve: photo already approved at', new Date(player.photoApprovedAt).toISOString());
-                console.log('[BottomNavigation] ⚠️ New uploads of different photos require manual re-approval');
-                // Don't auto-approve if photo is already approved - requires manual re-approval for new uploads
-              } else if (!player) {
-                console.log('[BottomNavigation] ⚠️ Skipping auto-approve: player not found in backend for deviceId:', deviceId);
-              } else {
-                console.log('[BottomNavigation] ⚠️ Skipping auto-approve: photo not found or invalid state');
-              }
-            } else {
-              console.error('[BottomNavigation] ❌ Invalid response from network/all-players:', result);
-            }
-          } catch (err) {
-            console.error('[BottomNavigation] Error validating photo before auto-approve:', err);
-            // Fail-safe: still refresh to ensure UI updates
-          }
-        } else {
-          console.log('[BottomNavigation] ⏹️  Auto-approval DISABLED or missing data - NOT auto-approving');
-          console.log('  - Reasons: {');
-          console.log('    - teamPhotosAutoApprove !== true:', teamPhotosAutoApprove !== true);
-          console.log('    - !deviceId:', !deviceId);
-          console.log('    - !teamName:', !teamName);
-          console.log('  }');
+        // NEW FIX: Check if auto-approve is enabled
+        // If auto-approve is ON, skip resetting status to pending and let QuizHost auto-approve silently
+        // If auto-approve is OFF, reset status to pending so photo appears in approval dialog
+        if (autoApproveRef.current === true) {
+          console.log('[BottomNavigation] ✅ Auto-approve is ON - skipping pending status reset, letting QuizHost auto-approve silently');
+          // Do NOT reset status, do NOT add photo to pending list
+          // QuizHost will auto-approve it in the background
+          // Schedule a longer refresh to verify final state after QuizHost approves
+          schedulePhotoRefresh(1000); // Longer delay to let QuizHost complete auto-approval
+          return;
         }
+
+        // EXISTING: Only do this if auto-approve is OFF
+        // CRITICAL FIX 3: Reset approval status when new photo arrives
+        // This ensures that if a team uploads a new photo after approval, it shows as pending
+        // Example: User approves photo A (status='approved'), then team uploads photo B
+        // We need to reset status to 'pending' so photo B shows in the list
+        console.log('[BottomNavigation] 🔄 New photo detected - resetting status from approved to pending for:', teamName);
+        setPhotoStatuses(prev => {
+          const currentStatus = prev[normalizedDeviceId];
+          if (currentStatus === 'approved' || currentStatus === 'declined') {
+            return {
+              ...prev,
+              [normalizedDeviceId]: 'pending'
+            };
+          }
+          return prev;
+        });
+
+        // NOTE: Auto-approval is now handled by QuizHost.tsx (always-mounted component)
+        // BottomNavigation only handles UI updates here
+        console.log('[BottomNavigation] 📸 TEAM_PHOTO_UPDATED received - will refresh UI');
 
         // ALWAYS refresh pending photos when event arrives (regardless of popup state)
         // This ensures the button indicator updates even when popup is closed
@@ -900,7 +976,7 @@ export function StatusBar({
       });
       pendingTimeoutsRef.current = [];
     };
-  }, [teamPhotosAutoApprove, handleApprovePhoto]); // Re-register when settings or handler changes
+  }, []); // No dependencies - listener should stay registered
 
   // NEW: Listen for PLAYER_JOIN events to trigger photo refresh
   // This helps catch photos that arrive along with new team joins
@@ -1044,9 +1120,13 @@ export function StatusBar({
           <button
             className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${
               hasPendingTeamPhotos
-                ? 'animate-flash-orange text-white'
+                ? 'bg-[#ea580c] animate-flash-orange text-white shadow-lg'
                 : 'hover:bg-accent'
             }`}
+            style={hasPendingTeamPhotos ? {
+              backgroundColor: 'rgb(234, 88, 12)',
+              color: 'white'
+            } : undefined}
             onClick={() => setShowTeamPhotosPopup(true)}
             title={hasPendingTeamPhotos ? "Team photo pending approval! Click to view" : "Team Photos"}
           >
@@ -1269,9 +1349,25 @@ export function StatusBar({
             {/* Popup content */}
             <div className="p-8 h-full" style={{ WebkitAppRegion: 'no-drag' }}>
               <div className="flex flex-col h-full">
-                <div className="mb-6" style={{ WebkitAppRegion: 'no-drag' }}>
-                  <h2 className="text-2xl font-semibold text-foreground mb-2">Team Photos</h2>
-                  <p className="text-muted-foreground">Manage and view team photos for your quiz participants.</p>
+                <div className="mb-6 flex items-center justify-between" style={{ WebkitAppRegion: 'no-drag' }}>
+                  <div>
+                    <h2 className="text-2xl font-semibold text-foreground mb-2">Team Photos</h2>
+                    <p className="text-muted-foreground">Manage and view team photos for your quiz participants.</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      console.log('[BottomNavigation] 🔄 Manual refresh button clicked');
+                      setLoadingPhotos(true);
+                      lastFetchTimeRef.current = 0; // Reset throttle to allow immediate fetch
+                      fetchPendingPhotos();
+                    }}
+                    disabled={loadingPhotos}
+                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white rounded-md font-semibold text-sm transition-colors flex items-center gap-2 whitespace-nowrap"
+                    title="Manually refresh the pending photos list"
+                  >
+                    <RotateCcw className={`h-4 w-4 ${loadingPhotos ? 'animate-spin' : ''}`} />
+                    {loadingPhotos ? 'Refreshing...' : 'Refresh'}
+                  </button>
                 </div>
                 
                 {/* Settings section */}
@@ -1336,8 +1432,8 @@ export function StatusBar({
                             <div className="text-center">
                               <p className="font-semibold text-foreground truncate w-full">{photo.teamName}</p>
                               <p className="text-xs text-muted-foreground">
-                                {photoStatuses[photo.deviceId] === 'approved' ? '✓ Approved' :
-                                 photoStatuses[photo.deviceId] === 'declined' ? '✗ Declined' :
+                                {photoStatuses[photo.normalizedDeviceId || photo.deviceId] === 'approved' ? '✓ Approved' :
+                                 photoStatuses[photo.normalizedDeviceId || photo.deviceId] === 'declined' ? '✗ Declined' :
                                  'Pending'}
                               </p>
                             </div>

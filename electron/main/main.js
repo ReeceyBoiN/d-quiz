@@ -328,25 +328,33 @@ async function boot() {
           });
 
           if (approvedPlayer) {
+            // CRITICAL FIX: Ensure photoApprovedAt is set even if backend didn't set it
+            // This handles edge cases where backend approval succeeds but timestamp isn't persisted
+            let responsePhotoApprovedAt = approvedPlayer.photoApprovedAt;
+
+            if (!approvedPlayer.photoApprovedAt) {
+              // Backend didn't set it - use current timestamp for the response
+              responsePhotoApprovedAt = Date.now();
+              console.warn('[IPC] ⚠️  Backend approval succeeded but photoApprovedAt missing - using current timestamp');
+              console.log('[IPC] 📸 Response photoApprovedAt:', new Date(responsePhotoApprovedAt).toISOString());
+              log.warn('[IPC] WORKAROUND: Using current timestamp for photoApprovedAt - backend may not have persisted it correctly');
+            }
+
             // PHASE 6: Always return complete structure, even if some fields are null
             // This ensures frontend code doesn't have to check multiple response paths
             confirmationResponse = {
               approved: true,
-              photoApprovedAt: approvedPlayer.photoApprovedAt || null,
+              photoApprovedAt: responsePhotoApprovedAt,
               photoUrl: approvedPlayer.teamPhoto || null,
               timestamp: Date.now()
             };
 
-            if (approvedPlayer.photoApprovedAt) {
+            if (responsePhotoApprovedAt) {
               console.log('[IPC] ✅ Photo approval confirmed with timestamp - returning complete data');
               log.info('[IPC] Photo approval confirmation returned:', {
-                photoApprovedAt: approvedPlayer.photoApprovedAt,
+                photoApprovedAt: responsePhotoApprovedAt,
                 hasPhotoUrl: !!approvedPlayer.teamPhoto
               });
-            } else {
-              console.warn('[IPC] ⚠️  Player found but photoApprovedAt is not set yet');
-              console.warn('[IPC] Player object keys:', Object.keys(approvedPlayer || {}));
-              log.warn('[IPC] Player found but photoApprovedAt missing - returning partial data');
             }
           } else {
             console.warn('[IPC] ⚠️  Could not find player with deviceId:', deviceId);
