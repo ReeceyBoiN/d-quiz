@@ -495,13 +495,13 @@ export function ExternalDisplayWindow() {
                 flexDirection: 'column',
                 justifyContent: 'center',
                 flex: displayData.data?.imageDataUrl ? '0 1 50%' : '0 0 auto',
-                maxWidth: displayData.data?.imageDataUrl ? '50%' : '600px',
+                maxWidth: displayData.data?.imageDataUrl ? '50%' : '85%',
                 overflow: 'auto',
                 paddingRight: displayData.data?.imageDataUrl ? '0' : gapSize,
                 backgroundColor: 'rgba(31, 41, 55, 0.95)',
                 border: `3px solid ${displayData.borderColor}`,
                 borderRadius: '28px',
-                padding: '16px',
+                padding: '32px',
                 boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
               }}>
                 {/* Question Header */}
@@ -512,7 +512,7 @@ export function ExternalDisplayWindow() {
                   {displayData.data?.hidden ? (
                     <div style={{ fontSize: scaleFontSize(isMobileSize ? '64px' : '96px', textSizeMultiplier), fontWeight: 'bold', color: '#9ca3af', textAlign: 'center', marginTop: '20px' }}>?</div>
                   ) : (
-                    <h2 style={{ fontSize: questionFontSize, fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2' }}>
+                    <h2 style={{ fontSize: questionFontSize, fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.4' }}>
                       {displayData.data?.text || 'Loading question...'}
                     </h2>
                   )}
@@ -541,7 +541,7 @@ export function ExternalDisplayWindow() {
                           backgroundColor: '#374151',
                           border: `2px solid ${displayData.borderColor}`,
                           borderRadius: '16px',
-                          padding: isMobileSize ? '10px' : '16px',
+                          padding: isMobileSize ? '14px' : '20px',
                           textAlign: 'center',
                           fontSize: optionFontSize,
                           fontWeight: '600',
@@ -745,16 +745,16 @@ export function ExternalDisplayWindow() {
         const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
         return (
           <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '10px', backgroundColor: displayData.backgroundColor, alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '1200px', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '1400px', gap: '16px' }}>
               {/* Question Header */}
-              <div style={{ marginBottom: '20px', textAlign: 'center', width: '100%', backgroundColor: 'rgba(31, 41, 55, 0.95)', border: `3px solid ${displayData.borderColor}`, borderRadius: '28px', padding: '16px', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)' }}>
+              <div style={{ marginBottom: '20px', textAlign: 'center', width: '100%', backgroundColor: 'rgba(31, 41, 55, 0.95)', border: `3px solid ${displayData.borderColor}`, borderRadius: '28px', padding: '40px', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)' }}>
                 <h1 style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
                   Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
                 </h1>
                 {displayData.data?.hidden ? (
                   <div style={{ fontSize: scaleFontSize('120px', textSizeMultiplier), fontWeight: 'bold', color: '#9ca3af' }}>?</div>
                 ) : (
-                  <h2 style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2', maxWidth: '90vw' }}>
+                  <h2 style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.4', maxWidth: '90vw' }}>
                     {displayData.data?.text || 'Loading question...'}
                   </h2>
                 )}
@@ -765,7 +765,7 @@ export function ExternalDisplayWindow() {
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: `repeat(${getOptimalGridColumns(displayData.data.options.length)}, 1fr)`,
-                  gap: '12px',
+                  gap: '16px',
                   width: '100%',
                   justifyItems: 'center'
                 }}>
@@ -781,7 +781,7 @@ export function ExternalDisplayWindow() {
                       backgroundColor: '#374151',
                       border: `3px solid ${displayData.borderColor}`,
                       borderRadius: '16px',
-                      padding: '12px',
+                      padding: '18px',
                       textAlign: 'center',
                       fontSize: scaleFontSize('28px', textSizeMultiplier),
                       fontWeight: '600',
@@ -1055,8 +1055,8 @@ export function ExternalDisplayWindow() {
               </div>
             </div>
 
-            {/* Results Summary Grid - show stats only after reveal */}
-            {answerData?.revealed === true && (stats.correct !== undefined || stats.wrong !== undefined || stats.noAnswer !== undefined) && (
+            {/* Results Summary Grid - show stats only after reveal in keypad/buzzin modes, not in nearest-wins */}
+            {answerData?.revealed === true && (stats.correct !== undefined || stats.wrong !== undefined || stats.noAnswer !== undefined) && displayData.gameMode !== 'nearestwins' && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', width: '100%', maxWidth: '800px' }}>
                 {/* Correct */}
                 <div style={{
@@ -1212,6 +1212,7 @@ export function ExternalDisplayWindow() {
         );
       }
 
+      case 'fastestTeam':
       case 'fastTrack':
         return (
           <FastestTeamOverlaySimplified

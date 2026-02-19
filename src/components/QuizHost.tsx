@@ -3921,6 +3921,9 @@ export function QuizHost() {
     // Check if this is an Electron window marker
     const isElectronWindow = (displayWindow as any)._isElectronWindow;
 
+    // Determine the correct question index based on whether we're in quiz pack mode
+    const correctQuestionIndex = showQuizPackDisplay ? currentLoadedQuestionIndex : currentQuestionIndex;
+
     const messageData = {
       type: 'DISPLAY_UPDATE',
       mode: mode,
@@ -3936,9 +3939,9 @@ export function QuizHost() {
       gameMode: getCurrentGameMode(),
       gameModeTimers: gameModeTimers,
       questionInfo: data?.questionInfo || {
-        number: currentQuestionIndex + 1,
+        number: correctQuestionIndex + 1,
         type: 'Multiple Choice',
-        total: mockQuestions.length
+        total: showQuizPackDisplay ? loadedQuizQuestions.length : mockQuestions.length
       },
       targetNumber: mode.includes('nearest-wins') ? data?.targetNumber : undefined,
       questionNumber: mode.includes('nearest-wins') ? data?.questionNumber : undefined,
@@ -3985,9 +3988,9 @@ export function QuizHost() {
         gameModeTimers: gameModeTimers,
 
         questionInfo: data?.questionInfo || {
-          number: currentQuestionIndex + 1,
+          number: (showQuizPackDisplay ? currentLoadedQuestionIndex : currentQuestionIndex) + 1,
           type: 'Multiple Choice',
-          total: mockQuestions.length
+          total: showQuizPackDisplay ? loadedQuizQuestions.length : mockQuestions.length
         },
 
         currentMode: content,
