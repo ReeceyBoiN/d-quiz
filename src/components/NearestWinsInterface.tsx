@@ -375,15 +375,15 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
 
 
 
-  // Timer countdown effect
+  // Timer countdown effect - smooth animation with 100ms updates
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isTimerRunning && countdown !== null && countdown >= 0) {
       interval = setInterval(() => {
         setCountdown(prev => {
           if (prev === null) return 0;
-          
-          const newValue = prev - 1;
+
+          const newValue = prev - 0.1;
           
           // Use text-to-speech for countdown - only at 5-second intervals
           // Check newValue instead of prev to stay in sync after initial announcement
@@ -415,7 +415,7 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
           
           return newValue;
         });
-      }, 1000);
+      }, 100);
     }
     return () => clearInterval(interval);
   }, [isTimerRunning, countdown, answerConfirmed, voiceCountdown, nearestWinsTimer]);

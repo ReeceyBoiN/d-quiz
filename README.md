@@ -31,9 +31,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   in settings, external screen settings should have individual controlls to increase / decreas the size of the text 
 
-  in setting, external screen, could do with removing the countdown timer style. easier to base the UI with a fixed timer countdown so 
-  kill all the other timer designs
-
   Multiple choice questions when being displayed on the external display arent showing the options to choose from, only the main question text
 
   in setting, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)

@@ -8,7 +8,7 @@ interface PopoutWindowProps {
 }
 
 export function PopoutWindow({ onClose }: PopoutWindowProps) {
-  const { countdownStyle, gameModeTimers } = useSettings();
+  const { gameModeTimers } = useSettings();
   const [currentStage, setCurrentStage] = useState<QuizStage>("loading");
   const [timerValue, setTimerValue] = useState(30);
 

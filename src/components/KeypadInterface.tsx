@@ -718,6 +718,7 @@ export function KeypadInterface({
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
       onExternalDisplayUpdate('timer', {
         timerValue: timerLength,
+        totalTime: timerLength,
         questionInfo: {
           number: currentQuestion,
           type: questionType === 'letters' ? 'Letters Question' :
@@ -734,12 +735,12 @@ export function KeypadInterface({
       console.error('[Keypad] Error playing countdown audio:', error);
     });
 
-    // Start the countdown
+    // Start the countdown with smooth animation (update every 100ms like useTimer hook)
     const timer = setInterval(() => {
       setCountdown(prev => {
         if (prev === null) return null;
 
-        const newValue = prev - 1;
+        const newValue = prev - 0.1;
 
         // Notify parent about timer state change
         if (onTimerStateChange) {
@@ -749,7 +750,8 @@ export function KeypadInterface({
         // Update external display with new timer value
         if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
           onExternalDisplayUpdate('timer', {
-            timerValue: newValue < 0 ? 0 : newValue,
+            timerValue: newValue < 0 ? 0 : Number(newValue.toFixed(2)),
+            totalTime: gameModeTimers.keypad,
             questionInfo: {
               number: currentQuestion,
               type: questionType === 'letters' ? 'Letters Question' :
@@ -804,7 +806,7 @@ export function KeypadInterface({
 
         return newValue;
       });
-    }, 1000);
+    }, 100);
   }, [gameModeTimers, voiceCountdown, onTimerLockChange, onTimerStateChange, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType, currentScreen, selectedLetter, selectedAnswers]);
 
   const handleShowResults = useCallback(() => {
@@ -863,6 +865,7 @@ export function KeypadInterface({
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
       onExternalDisplayUpdate('timer', {
         timerValue: timerLength,
+        totalTime: timerLength,
         questionInfo: {
           number: currentQuestion,
           type: questionType === 'letters' ? 'Letters Question' :
@@ -879,12 +882,12 @@ export function KeypadInterface({
       console.error('[Keypad] Error playing silent countdown audio:', error);
     });
 
-    // Start the countdown (identical to handleStartTimer)
+    // Start the countdown with smooth animation (update every 100ms like normal timer)
     const timer = setInterval(() => {
       setCountdown(prev => {
         if (prev === null) return null;
 
-        const newValue = prev - 1;
+        const newValue = prev - 0.1;
 
         // Notify parent about timer state change
         if (onTimerStateChange) {
@@ -894,7 +897,8 @@ export function KeypadInterface({
         // Update external display with new timer value
         if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
           onExternalDisplayUpdate('timer', {
-            timerValue: newValue < 0 ? 0 : newValue,
+            timerValue: newValue < 0 ? 0 : Number(newValue.toFixed(2)),
+            totalTime: gameModeTimers.keypad,
             questionInfo: {
               number: currentQuestion,
               type: questionType === 'letters' ? 'Letters Question' :
@@ -984,7 +988,7 @@ export function KeypadInterface({
 
         return newValue;
       });
-    }, 1000);
+    }, 100);
 
     return () => clearInterval(timer);
   }, [gameModeTimers, onTimerStart, onTimerLockChange, onTimerStateChange, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType, currentScreen, selectedLetter, selectedAnswers, numbersAnswer, timerStartTime, onGameTimerFinished, calculateAnswerStats]);

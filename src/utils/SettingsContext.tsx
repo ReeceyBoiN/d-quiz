@@ -13,7 +13,6 @@ interface GameModeTimers {
   nearestwins: number;
 }
 
-type CountdownStyle = "circular" | "digital" | "pulsing" | "progress-bar" | "matrix" | "liquid" | "gradient";
 type KeypadDesign = "neon-glow" | "gaming-beast" | "matrix-green" | "bubble-pop" | "ocean-wave" | "cyber-chrome" | "fire-storm" | "cosmic-space";
 
 interface SettingsContextType {
@@ -23,7 +22,6 @@ interface SettingsContextType {
   gameModePoints: GameModePoints;
   gameModeTimers: GameModeTimers;
   nearestWinsTimer: number;
-  countdownStyle: CountdownStyle;
   keypadDesign: KeypadDesign;
   responseTimesEnabled: boolean;
   teamPhotosAutoApprove: boolean;
@@ -38,7 +36,6 @@ interface SettingsContextType {
   updateGameModePoints: (gameMode: keyof GameModePoints, points: number) => void;
   updateGameModeTimer: (gameMode: keyof GameModeTimers, timer: number) => void;
   updateNearestWinsTimer: (timer: number) => void;
-  updateCountdownStyle: (style: CountdownStyle) => void;
   updateKeypadDesign: (design: KeypadDesign) => void;
   updateResponseTimesEnabled: (enabled: boolean) => void;
   updateTeamPhotosAutoApprove: (enabled: boolean) => void;
@@ -83,7 +80,6 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     nearestwins: 10
   });
   const [nearestWinsTimer, setNearestWinsTimer] = useState(10);
-  const [countdownStyle, setCountdownStyle] = useState<CountdownStyle>("circular");
   const [keypadDesign, setKeypadDesign] = useState<KeypadDesign>("neon-glow"); // Default to Neon Glow
   const [responseTimesEnabled, setResponseTimesEnabled] = useState(true); // Default to true for testing
   const [teamPhotosAutoApprove, setTeamPhotosAutoApprove] = useState(false);
@@ -118,7 +114,6 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         setGameModePoints(newGameModePoints);
         setGameModeTimers(newGameModeTimers);
         setNearestWinsTimer(parsed.nearestWinsTimer || 10);
-        setCountdownStyle(parsed.countdownStyle || "circular");
         setKeypadDesign(parsed.keypadDesign || "neon-glow");
         setResponseTimesEnabled(parsed.responseTimesEnabled !== undefined ? parsed.responseTimesEnabled : true);
         setTeamPhotosAutoApprove(parsed.teamPhotosAutoApprove === true || parsed.teamPhotosAutoApprove === 'true');
@@ -171,11 +166,6 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
             return hasChanged ? newGameModeTimers : current;
           });
           setNearestWinsTimer(parsed.nearestWinsTimer || 10);
-          const newCountdownStyle = parsed.countdownStyle || "circular";
-          if (newCountdownStyle !== countdownStyle) {
-            console.log('SettingsContext: Countdown style changed from', countdownStyle, 'to', newCountdownStyle);
-            setCountdownStyle(newCountdownStyle);
-          }
           setKeypadDesign(parsed.keypadDesign || "neon-glow");
           setResponseTimesEnabled(parsed.responseTimesEnabled !== undefined ? parsed.responseTimesEnabled : true);
           setTeamPhotosAutoApprove(parsed.teamPhotosAutoApprove === true || parsed.teamPhotosAutoApprove === 'true');
@@ -247,19 +237,6 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
   const updateNearestWinsTimer = (timer: number) => {
     setNearestWinsTimer(timer);
-  };
-
-  const updateCountdownStyle = (style: CountdownStyle) => {
-    console.log('SettingsContext: Updating countdown style to', style);
-    setCountdownStyle(style);
-    // Save to localStorage and trigger event
-    const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
-    const updatedSettings = { ...currentSettings, countdownStyle: style };
-    localStorage.setItem('quizHostSettings', JSON.stringify(updatedSettings));
-    window.dispatchEvent(new Event('settingsUpdated'));
-    
-    // Force a re-render by dispatching a custom event
-    window.dispatchEvent(new CustomEvent('countdownStyleChanged', { detail: style }));
   };
 
   const updateKeypadDesign = (design: KeypadDesign) => {
@@ -414,7 +391,6 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         gameModePoints,
         gameModeTimers,
         nearestWinsTimer,
-        countdownStyle,
         keypadDesign,
         responseTimesEnabled,
         teamPhotosAutoApprove,
@@ -429,7 +405,6 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         updateGameModePoints,
         updateGameModeTimer,
         updateNearestWinsTimer,
-        updateCountdownStyle,
         updateKeypadDesign,
         updateResponseTimesEnabled,
         updateTeamPhotosAutoApprove,

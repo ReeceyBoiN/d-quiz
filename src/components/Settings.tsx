@@ -282,7 +282,6 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     fullscreenMode: true,
     screenSaver: false,
     screenSaverDelay: [5],
-    countdownStyle: "circular",
     keypadDesign: "neon-glow",
     
     // Network & WiFi settings
@@ -347,9 +346,6 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
       updateResponseTimesEnabled(value);
     } else if (key === "teamPhotosAutoApprove") {
       updateTeamPhotosAutoApprove(value);
-    } else if (key === "countdownStyle") {
-      console.log('Settings: Updating countdown style via updateSetting:', value);
-      updateCountdownStyle(value);
     } else if (key === "voiceCountdown") {
       updateVoiceCountdown(value);
     } else if (key === "evilModeEnabled") {
@@ -1257,36 +1253,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
             </div>
           </div>
 
-          <Separator className="bg-border" />
-          
-          <div className="space-y-3">
-            <Label className="text-foreground">Countdown Style</Label>
-            <p className="text-sm text-muted-foreground mb-2">
-              Choose the visual style for countdown timers on the external display
-            </p>
-            <Select
-              value={settings.countdownStyle || "circular"}
-              onValueChange={(value) => {
-                updateSetting("countdownStyle", value);
-                updateCountdownStyle(value as "circular" | "digital" | "pulsing" | "progress-bar" | "matrix" | "liquid" | "gradient");
-              }}
-            >
-              <SelectTrigger className="bg-input border-border text-foreground">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="circular">Circular (Default)</SelectItem>
-                <SelectItem value="digital">Digital Clock</SelectItem>
-                <SelectItem value="pulsing">Pulsing</SelectItem>
-                <SelectItem value="progress-bar">Progress Bar</SelectItem>
-                <SelectItem value="matrix">Matrix</SelectItem>
-                <SelectItem value="liquid">Liquid Fill</SelectItem>
-                <SelectItem value="gradient">Gradient</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
-          <Separator className="bg-border" />
           
           <div className="space-y-3">
             <h4 className="text-muted-foreground">Coming Soon</h4>
@@ -1388,74 +1355,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <div>
-              <Label className="text-foreground mb-3 block">
-                Countdown Timer Style
-              </Label>
-              <p className="text-sm text-muted-foreground mb-3">
-                Choose the visual style for countdown timers displayed on the external screen
-              </p>
-              <Select 
-                value={settings.countdownStyle || "circular"} 
-                onValueChange={(value) => updateSetting("countdownStyle", value)}
-              >
-                <SelectTrigger className="bg-input border-border text-foreground">
-                  <SelectValue placeholder="Select countdown style" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="circular">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-blue-500 rounded-full"></div>
-                      Circular Progress
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="digital">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-black border border-green-400 text-green-400 text-xs flex items-center justify-center font-mono">00</div>
-                      Digital Clock
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="pulsing">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-blue-500 rounded animate-pulse"></div>
-                      Pulsing Scale
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="progress-bar">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div className="w-2/3 h-full bg-blue-500"></div>
-                      </div>
-                      Progress Bar
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="matrix">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-black border border-green-400 text-green-400 text-xs flex items-center justify-center font-mono">M</div>
-                      Matrix Style
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="liquid">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-gray-200 rounded-full overflow-hidden relative">
-                        <div className="absolute bottom-0 left-0 right-0 h-2 bg-blue-500"></div>
-                      </div>
-                      Liquid Fill
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="gradient">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-gradient-to-r from-red-500 via-yellow-500 to-blue-500 rounded"></div>
-                      Gradient Wave
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <Separator className="bg-border" />
 
           <div className="space-y-4">
             <div>

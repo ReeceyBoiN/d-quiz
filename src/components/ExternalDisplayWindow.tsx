@@ -16,7 +16,6 @@ declare global {
 const isElectron = Boolean(window.api);
 
 export function ExternalDisplayWindow() {
-  const { countdownStyle } = useSettings();
   const [displayData, setDisplayData] = useState({
     mode: 'basic',
     previousMode: 'basic',
@@ -35,7 +34,6 @@ export function ExternalDisplayWindow() {
     results: null as any,
     nearestWinsData: null as any,
     wheelSpinnerData: null as any,
-    countdownStyle: 'circular',
     gameMode: 'keypad',
     gameModeTimers: { keypad: 30, buzzin: 30, nearestwins: 10 } as any,
     teamName: null as string | null,
@@ -79,7 +77,7 @@ export function ExternalDisplayWindow() {
             slideshowSpeed: event.data.slideshowSpeed || 5,
             leaderboardData: event.data.leaderboardData || null,
             revealedTeams: event.data.revealedTeams || [],
-            timerValue: event.data.timerValue || null,
+            timerValue: event.data.timerValue ?? null,
             correctAnswer: event.data.correctAnswer || null,
             questionInfo: event.data.questionInfo || null,
             fastestTeamData: event.data.fastestTeamData || null,
@@ -89,7 +87,6 @@ export function ExternalDisplayWindow() {
             results: event.data.results || null,
             nearestWinsData: event.data.nearestWinsData || null,
             wheelSpinnerData: event.data.wheelSpinnerData || null,
-            countdownStyle: event.data.countdownStyle || prevData.countdownStyle || 'circular',
             gameMode: event.data.gameMode || prevData.gameMode || 'keypad',
             gameModeTimers: event.data.gameModeTimers || prevData.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 },
             teamName: (event.data.data && event.data.data.teamName) || event.data.teamName || null,
@@ -119,7 +116,7 @@ export function ExternalDisplayWindow() {
             slideshowSpeed: data.slideshowSpeed || 5,
             leaderboardData: data.leaderboardData || null,
             revealedTeams: data.revealedTeams || [],
-            timerValue: data.timerValue || null,
+            timerValue: data.timerValue ?? null,
             correctAnswer: data.correctAnswer || null,
             questionInfo: data.questionInfo || null,
             fastestTeamData: data.fastestTeamData || null,
@@ -129,7 +126,6 @@ export function ExternalDisplayWindow() {
             results: data.results || null,
             nearestWinsData: data.nearestWinsData || null,
             wheelSpinnerData: data.wheelSpinnerData || null,
-            countdownStyle: data.countdownStyle || prevData.countdownStyle || 'circular',
             gameMode: data.gameMode || prevData.gameMode || 'keypad',
             gameModeTimers: data.gameModeTimers || prevData.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 },
             teamName: (data.data && data.data.teamName) || data.teamName || null,
@@ -224,148 +220,6 @@ export function ExternalDisplayWindow() {
 
   const getHSLColor = (hue: number) => {
     return 'hsl(' + hue + ', 85%, 60%)';
-  };
-
-  const renderCountdownTimer = (currentTime: number | null, style: string, totalTime = 30, size = 300) => {
-    // Display full seconds when > 1, show 0 when timer reaches or passes 0
-    const timerNum = currentTime !== null && currentTime !== undefined && currentTime > 0 ? Math.floor(currentTime) : 0;
-    const actualTime = currentTime !== null && currentTime !== undefined ? Math.max(0, currentTime) : 0; // Keep actual time for progress calculations
-
-    switch (style) {
-      case 'digital':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ backgroundColor: 'black', border: '4px solid #22c55e', borderRadius: '8px', padding: '32px', boxShadow: '0 0 20px rgba(34, 197, 94, 0.3)' }}>
-              <div style={{ textAlign: 'center', fontFamily: 'monospace', color: '#22c55e', fontSize: '12rem', fontWeight: 'bold', textShadow: '0 0 10px currentColor' }}>
-                {String(timerNum).padStart(2, '0')}
-              </div>
-            </div>
-            <div style={{ textAlign: 'center', fontSize: '24px', color: '#dcfce7', marginTop: '16px' }}>seconds</div>
-          </div>
-        );
-
-      case 'pulsing':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{
-              backgroundColor: '#3b82f6', borderRadius: '50%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontWeight: 'bold', width: '30rem', height: '30rem',
-              animation: timerNum <= 10 ? 'pulse 0.5s ease-in-out infinite' : 'pulse 2s ease-in-out infinite'
-            }}>
-              <div style={{ fontSize: '12rem' }}>{timerNum}</div>
-              <div style={{ fontSize: '24px', marginTop: '8px' }}>seconds</div>
-            </div>
-          </div>
-        );
-
-      case 'progress-bar':
-        const progress = actualTime / totalTime;
-        const progressTransitionMs = Math.max(800, totalTime * 950); // Dynamic transition in milliseconds
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '32px', width: '100%', maxWidth: '64rem', margin: '0 auto' }}>
-            <div style={{ width: '100%', height: '48px', backgroundColor: '#e5e7eb', borderRadius: '9999px', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', transition: `all ${progressTransitionMs}ms linear`,
-                width: (progress * 100) + '%',
-                background: 'linear-gradient(90deg, #3b82f6, #1d4ed8)'
-              }} />
-            </div>
-            <div style={{ fontSize: '12rem', fontWeight: 'bold', color: '#3b82f6' }}>{timerNum}</div>
-            <div style={{ fontSize: '24px', color: 'white' }}>seconds</div>
-          </div>
-        );
-
-      case 'matrix':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ backgroundColor: 'black', border: '1px solid #22c55e', borderRadius: '8px', position: 'relative', overflow: 'hidden', width: '30rem', height: '30rem' }}>
-              <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e', fontFamily: 'monospace', fontSize: '12rem', fontWeight: 'bold', textShadow: '0 0 10px currentColor' }}>
-                {String(timerNum).padStart(2, '0')}
-              </div>
-            </div>
-            <div style={{ color: '#22c55e', fontSize: '24px', marginTop: '16px' }}>seconds</div>
-          </div>
-        );
-
-      case 'liquid':
-        const liquidProgress = actualTime / totalTime;
-        const liquidTransitionMs = Math.max(800, totalTime * 950); // Dynamic transition in milliseconds
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
-            <div style={{ position: 'relative', borderRadius: '50%', border: '4px solid #d1d5db', overflow: 'hidden', width: '30rem', height: '30rem' }}>
-              <div style={{ position: 'absolute', inset: 0, backgroundColor: '#e5e7eb' }}></div>
-              <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0, transition: `all ${liquidTransitionMs}ms linear`,
-                height: (liquidProgress * 100) + '%',
-                background: 'linear-gradient(180deg, #3b82f6, #1d4ed8)'
-              }} />
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12rem', fontWeight: 'bold', color: 'white', zIndex: 10, textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}>
-                {timerNum}
-              </div>
-            </div>
-            <div style={{ fontSize: '24px', color: 'white' }}>seconds</div>
-          </div>
-        );
-
-      case 'gradient':
-        const hue = (timerNum / totalTime) * 120;
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '32px' }}>
-            <div style={{ position: 'relative', borderRadius: '50%', overflow: 'hidden', width: '30rem', height: '30rem' }}>
-              <div style={{
-                position: 'absolute', inset: 0, borderRadius: '50%',
-                background: 'conic-gradient(from 0deg, hsl(' + hue + ', 70%, 50%) 0%, hsl(60, 70%, 50%) 25%, hsl(30, 70%, 50%) 50%, hsl(0, 70%, 50%) 75%, hsl(' + hue + ', 70%, 50%) 100%)',
-                animation: 'spin 3s linear infinite'
-              }} />
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12rem', fontWeight: 'bold', color: 'white', zIndex: 10, textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>
-                {timerNum}
-              </div>
-            </div>
-            <div style={{ fontSize: '24px', color: 'white' }}>seconds</div>
-          </div>
-        );
-
-      case 'circular':
-      default:
-        const radius = 45;
-        const circumference = 2 * Math.PI * radius;
-        // Ensure progress reaches exactly 1.0 (100%) when timer is 0 or negative
-        const circularProgress = totalTime > 0 ? Math.max(0, Math.min(1, actualTime / totalTime)) : 1;
-        const strokeOffset = circularProgress >= 0.99 ? 0 : circumference * (1 - circularProgress);
-        // Use the actual remaining time for transition duration, not the total time
-        // This ensures the animation completes exactly when the timer reaches 0
-        const transitionDuration = Math.max(0.1, actualTime);
-
-        return (
-          <div style={{ position: 'relative', display: 'inline-block' }}>
-            <svg style={{ width: '30rem', height: '30rem', transform: 'rotate(-90deg)' }} viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r={radius} stroke="rgba(255,255,255,0.1)" strokeWidth="8" fill="none" />
-              <circle
-                cx="50"
-                cy="50"
-                r={radius}
-                stroke="#e74c3c"
-                strokeWidth="8"
-                fill="none"
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={strokeOffset}
-                style={{ transition: `stroke-dashoffset ${transitionDuration}s linear` }}
-              />
-            </svg>
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '12rem', fontWeight: 'bold', color: '#ef4444' }}>
-                  {timerNum}
-                </div>
-                <div style={{ fontSize: '24px', color: 'white', marginTop: '8px' }}>
-                  seconds
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-    }
   };
 
   const renderContent = () => {
@@ -538,25 +392,7 @@ export function ExternalDisplayWindow() {
               </div>
             )}
 
-            {/* Timer at bottom-right - only show while timer is running and NOT using progress-bar style */}
-            {timeRemaining > 0 && (displayData.countdownStyle || displayData.data?.countdownStyle || 'circular') !== 'progress-bar' && (
-              <div style={{
-                position: 'absolute',
-                bottom: isMobileSize ? '12px' : '24px',
-                right: isMobileSize ? '12px' : '24px',
-                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                borderRadius: '16px',
-                padding: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 10,
-                transform: 'scale(0.425)',
-                transformOrigin: 'bottom right'
-              }}>
-                {renderCountdownTimer(timeRemaining, displayData.countdownStyle || displayData.data?.countdownStyle || 'circular', displayData.data?.totalTime || displayData.totalTime || 30, 120)}
-              </div>
-            )}
+
           </div>
         );
       }
@@ -641,7 +477,7 @@ export function ExternalDisplayWindow() {
                   height: '100%',
                   backgroundColor: getProgressBarColor(),
                   width: `${progressPercentage}%`,
-                  transition: 'width 0.05s linear, background-color 0.3s ease',
+                  transition: 'width 0.1s linear, background-color 0.3s ease',
                   boxShadow: `0 0 10px ${getProgressBarColor()}`
                 }}></div>
               </div>
@@ -671,31 +507,14 @@ export function ExternalDisplayWindow() {
                   height: '100%',
                   backgroundColor: getProgressBarColor(),
                   width: `${progressPercentage}%`,
-                  transition: 'width 0.05s linear, background-color 0.3s ease',
+                  transition: 'width 0.1s linear, background-color 0.3s ease',
                   boxShadow: `0 0 10px ${getProgressBarColor()}`
                 }} />
               </div>
             )}
 
-            {/* Timer at bottom-right - show while timer is active and NOT using progress-bar style */}
-            {isTimerActive && displayData.countdownStyle !== 'progress-bar' && (
-              <div style={{
-                position: 'absolute',
-                bottom: window.innerWidth < 1024 ? '12px' : '24px',
-                right: window.innerWidth < 1024 ? '12px' : '24px',
-                backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                borderRadius: '16px',
-                padding: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 10,
-                transform: 'scale(0.355)',
-                transformOrigin: 'bottom right'
-              }}>
-                {renderCountdownTimer(timerValue, displayData.countdownStyle, displayData.totalTime || 30, 120)}
-              </div>
-            )}
+
+
           </div>
         );
 

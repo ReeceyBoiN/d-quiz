@@ -220,7 +220,6 @@ export function QuizHost() {
     defaultSpeedBonus,
     staggeredEnabled,
     defaultPoints,
-    countdownStyle,
     gameModeTimers,
     voiceCountdown,
     teamPhotosAutoApprove
@@ -862,8 +861,7 @@ export function QuizHost() {
             showProgressBar: true,
             imageDataUrl: currentQuestion.imageDataUrl || null
           },
-          totalTime: flowState.totalTime,
-          countdownStyle: countdownStyle
+          totalTime: flowState.totalTime
         });
       }
     }
@@ -1784,12 +1782,10 @@ export function QuizHost() {
                   hidden: hideQuestionMode,
                   timerValue: flowState.totalTime,
                   totalTime: flowState.totalTime,
-                  countdownStyle: countdownStyle,
                   showProgressBar: false,
                   imageDataUrl: currentQuestion.imageDataUrl || null
                 },
-                totalTime: flowState.totalTime,
-                countdownStyle: countdownStyle
+                totalTime: flowState.totalTime
               }
             );
           }
@@ -1833,12 +1829,10 @@ export function QuizHost() {
                   hidden: false,
                   timerValue: flowState.totalTime,
                   totalTime: flowState.totalTime,
-                  countdownStyle: countdownStyle,
                   showProgressBar: false,
                   imageDataUrl: currentQuestion.imageDataUrl || null
                 },
-                totalTime: flowState.totalTime,
-                countdownStyle: countdownStyle
+                totalTime: flowState.totalTime
               }
             );
           }
@@ -1857,12 +1851,10 @@ export function QuizHost() {
                 hidden: true,
                 timerValue: flowState.totalTime,
                 totalTime: flowState.totalTime,
-                countdownStyle: countdownStyle,
                 showProgressBar: false,
                 imageDataUrl: null
               },
-              totalTime: flowState.totalTime,
-              countdownStyle: countdownStyle
+              totalTime: flowState.totalTime
             }
           );
         }
@@ -3866,7 +3858,6 @@ export function QuizHost() {
       timerValue: (mode === 'timer' || mode === 'nearest-wins-timer') ? data?.timerValue : null,
       correctAnswer: mode === 'correctAnswer' ? data : null,
       fastestTeamData: (mode === 'fastestTeam' || mode === 'fastTrack') ? data : null,
-      countdownStyle: countdownStyle,
       gameMode: getCurrentGameMode(),
       gameModeTimers: gameModeTimers,
       questionInfo: data?.questionInfo || {
@@ -3914,7 +3905,6 @@ export function QuizHost() {
         timerValue: (content === 'timer' || content === 'nearest-wins-timer') ? data?.timerValue : null,
         correctAnswer: content === 'correctAnswer' ? data : null,
         fastestTeamData: (content === 'fastestTeam' || content === 'fastTrack') ? data : null,
-        countdownStyle: countdownStyle,
         gameMode: getCurrentGameMode(),
         gameModeTimers: gameModeTimers,
 
@@ -3949,7 +3939,7 @@ export function QuizHost() {
         externalWindow.postMessage(messageData, '*');
       }
     }
-  }, [externalWindow, images, quizzes, slideshowSpeed, leaderboardData, revealedTeams, currentQuestionIndex, getCurrentGameMode, countdownStyle, gameModeTimers]);
+  }, [externalWindow, images, quizzes, slideshowSpeed, leaderboardData, revealedTeams, currentQuestionIndex, getCurrentGameMode, gameModeTimers]);
 
 
 

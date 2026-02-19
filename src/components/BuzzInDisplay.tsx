@@ -24,7 +24,7 @@ interface BuzzInDisplayProps {
 }
 
 export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: BuzzInDisplayProps) {
-  const { countdownStyle, gameModeTimers } = useSettings();
+  const { gameModeTimers } = useSettings();
   const [buzzedTeam, setBuzzedTeam] = useState<Team | null>(null);
   const [state, setState] = useState<BuzzInState>("waiting");
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
