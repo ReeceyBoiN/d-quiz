@@ -882,19 +882,19 @@ async function startBackend({ port = 4310 } = {}) {
 
             // Handle team photo update - save to disk if present
             let photoPath = null;
-            const MAX_PHOTO_SIZE = 200 * 1024; // 200KB limit
+            const MAX_PHOTO_SIZE = 1024 * 1024 * 1024; // 1GB limit
             if (data.photoData) {
               // Validate photo size
               const photoSize = data.photoData.length;
               if (photoSize > MAX_PHOTO_SIZE) {
-                console.warn('[TEAM_PHOTO_UPDATE] ⚠️  Photo size exceeds 200KB limit:', photoSize, 'bytes');
-                log.warn(`[WS-${connectionId}] ⚠️  Photo size exceeds 200KB limit: ${photoSize} bytes for ${data.teamName}`);
+                console.warn('[TEAM_PHOTO_UPDATE] ⚠️  Photo size exceeds 1GB limit:', photoSize, 'bytes');
+                log.warn(`[WS-${connectionId}] ⚠️  Photo size exceeds 1GB limit: ${photoSize} bytes for ${data.teamName}`);
 
                 // Send error to client
                 const errorMessage = JSON.stringify({
                   type: 'DEBUG_ERROR',
                   source: 'TEAM_PHOTO_UPDATE',
-                  error: 'Photo size exceeds 200KB limit',
+                  error: 'Photo size exceeds 1GB limit',
                   code: 'PHOTO_SIZE_EXCEEDED',
                   deviceId: updateDeviceId,
                   teamName: data.teamName,
