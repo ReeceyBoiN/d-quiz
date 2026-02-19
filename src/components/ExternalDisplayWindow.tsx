@@ -15,6 +15,17 @@ declare global {
 
 const isElectron = Boolean(window.api);
 
+// Helper function to calculate optimal grid columns based on option count
+const getOptimalGridColumns = (optionCount: number): string => {
+  if (optionCount === 1 || optionCount === 2) return '2';
+  if (optionCount === 3) return '3';
+  if (optionCount === 4) return '4';
+  if (optionCount === 5) return '3'; // 2-3 layout (2 in first row, 3 in second row)
+  if (optionCount === 6) return '3'; // 3-3 layout (2 rows of 3)
+  if (optionCount <= 9) return '3';
+  return '4';
+};
+
 export function ExternalDisplayWindow() {
   const [displayData, setDisplayData] = useState({
     mode: 'basic',
@@ -321,9 +332,22 @@ export function ExternalDisplayWindow() {
 
                 {/* Options */}
                 {displayData.data?.options && displayData.data.options.length > 0 && !displayData.data?.hidden && (
-                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobileSize ? '120px' : '180px'}, 1fr))`, gap: isMobileSize ? '10px' : '16px', marginTop: isMobileSize ? '10px' : '20px' }}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${getOptimalGridColumns(displayData.data.options.length)}, 1fr)`,
+                    gap: isMobileSize ? '10px' : '16px',
+                    marginTop: isMobileSize ? '10px' : '20px',
+                    justifyItems: 'center',
+                    width: '100%',
+                    maxWidth: '100%'
+                  }}>
                     {displayData.data.options.map((option: string, index: number) => {
                       const letterMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+                      const cols = parseInt(getOptimalGridColumns(displayData.data.options.length));
+                      const isLastRowIncomplete = displayData.data.options.length % cols !== 0;
+                      const itemsInLastRow = displayData.data.options.length % cols;
+                      const isInLastRow = index >= displayData.data.options.length - itemsInLastRow;
+
                       return (
                         <div key={index} style={{
                           backgroundColor: '#374151',
@@ -333,7 +357,8 @@ export function ExternalDisplayWindow() {
                           textAlign: 'center',
                           fontSize: optionFontSize,
                           fontWeight: '600',
-                          color: 'white'
+                          color: 'white',
+                          ...(isLastRowIncomplete && isInLastRow && { justifySelf: 'center' })
                         }}>
                           <div style={{ marginBottom: '8px', fontSize: isMobileSize ? '18px' : '28px', color: '#f97316' }}>{letterMap[index]}</div>
                           <div>{option}</div>
@@ -537,9 +562,21 @@ export function ExternalDisplayWindow() {
 
             {/* Options for Multiple Choice and Sequence */}
             {displayData.data?.options && displayData.data.options.length > 0 && !displayData.data?.hidden && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', width: '100%', maxWidth: '1200px' }}>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${getOptimalGridColumns(displayData.data.options.length)}, 1fr)`,
+                gap: '20px',
+                width: '100%',
+                maxWidth: '1200px',
+                justifyItems: 'center'
+              }}>
                 {displayData.data.options.map((option: string, index: number) => {
                   const letterMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+                  const cols = parseInt(getOptimalGridColumns(displayData.data.options.length));
+                  const isLastRowIncomplete = displayData.data.options.length % cols !== 0;
+                  const itemsInLastRow = displayData.data.options.length % cols;
+                  const isInLastRow = index >= displayData.data.options.length - itemsInLastRow;
+
                   return (
                     <div key={index} style={{
                       backgroundColor: '#374151',
@@ -549,7 +586,8 @@ export function ExternalDisplayWindow() {
                       textAlign: 'center',
                       fontSize: '28px',
                       fontWeight: '600',
-                      color: 'white'
+                      color: 'white',
+                      ...(isLastRowIncomplete && isInLastRow && { justifySelf: 'center' })
                     }}>
                       <div style={{ marginBottom: '10px', fontSize: '36px', color: '#f97316' }}>{letterMap[index]}</div>
                       <div>{option}</div>
@@ -574,7 +612,11 @@ export function ExternalDisplayWindow() {
               </h2>
               <div style={{ fontSize: '42px', fontWeight: 'bold', color: '#10b981', margin: '0 0 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
                 <span style={{ fontSize: '48px' }}>✓</span>
-                <span>{displayData.data?.answer || 'No answer available'}</span>
+                <span>
+                  {displayData.data?.answerText
+                    ? `${displayData.data?.answerLetter || displayData.data?.answer}: ${displayData.data?.answerText}`
+                    : displayData.data?.answer || 'No answer available'}
+                </span>
               </div>
             </div>
 

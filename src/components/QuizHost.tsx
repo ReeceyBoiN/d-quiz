@@ -843,7 +843,8 @@ export function QuizHost() {
     if (externalWindow && flowState.flow === 'running') {
       const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
       if (currentQuestion) {
-        const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
+        const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+        const shouldIncludeOptions = normalizedType === 'sequence' || normalizedType === 'multiple-choice';
         const timeRemaining = Math.max(0, flowState.timeRemaining);
 
         sendToExternalDisplay({
@@ -1768,7 +1769,7 @@ export function QuizHost() {
 
           if (externalWindow) {
             // Only include options for sequence and multiple-choice questions
-            const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
+            const shouldIncludeOptions = normalizedType === 'sequence' || normalizedType === 'multiple-choice';
             sendToExternalDisplay(
               {
                 type: 'DISPLAY_UPDATE',
@@ -1815,7 +1816,7 @@ export function QuizHost() {
 
           if (externalWindow) {
             // Only include options for sequence and multiple-choice questions
-            const shouldIncludeOptions = currentQuestion.type === 'sequence' || currentQuestion.type === 'multiple-choice';
+            const shouldIncludeOptions = normalizedType === 'sequence' || normalizedType === 'multiple-choice';
             sendToExternalDisplay(
               {
                 type: 'DISPLAY_UPDATE',
@@ -1944,15 +1945,30 @@ export function QuizHost() {
             const incorrectCount = Object.values(newStatuses).filter(status => status === 'incorrect').length;
             const noAnswerCount = Object.values(newStatuses).filter(status => status === 'no-answer').length;
 
+            // Get enhanced answer data
+            const answerLetter = getAnswerText(currentQuestion);
+            let answerText = '';
+            let options = undefined;
+
+            if (currentQuestion.type?.toLowerCase() === 'multi' && currentQuestion.options) {
+              answerText = currentQuestion.options[currentQuestion.correctIndex] || '';
+              options = currentQuestion.options;
+            } else if (currentQuestion.type?.toLowerCase() === 'letters') {
+              answerText = currentQuestion.answerText || '';
+            }
+
             sendToExternalDisplay(
               {
                 type: 'DISPLAY_UPDATE',
                 mode: 'resultsSummary',
                 data: {
                   text: currentQuestion.q,
-                  answer: getAnswerText(currentQuestion),
+                  answer: answerLetter,
+                  answerLetter,
+                  answerText,
                   correctIndex: currentQuestion.correctIndex,
                   type: currentQuestion.type,
+                  options,
                   questionNumber: currentLoadedQuestionIndex + 1,
                   totalQuestions: loadedQuizQuestions.length,
                   correctCount,
@@ -3426,18 +3442,33 @@ export function QuizHost() {
     if (isQuizPackMode && externalWindow && loadedQuizQuestions.length > 0) {
       const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
       if (currentQuestion) {
-        sendToExternalDisplay({
-          type: 'DISPLAY_UPDATE',
-          mode: 'resultsSummary',
-          data: {
-            text: currentQuestion.q,
-            answer: getAnswerText(currentQuestion),
-            correctIndex: currentQuestion.correctIndex,
-            type: currentQuestion.type,
-            questionNumber: currentLoadedQuestionIndex + 1,
-            totalQuestions: loadedQuizQuestions.length
-          }
-        });
+        // Get enhanced answer data
+      const answerLetter = getAnswerText(currentQuestion);
+      let answerText = '';
+      let options = undefined;
+
+      if (currentQuestion.type?.toLowerCase() === 'multi' && currentQuestion.options) {
+        answerText = currentQuestion.options[currentQuestion.correctIndex] || '';
+        options = currentQuestion.options;
+      } else if (currentQuestion.type?.toLowerCase() === 'letters') {
+        answerText = currentQuestion.answerText || '';
+      }
+
+      sendToExternalDisplay({
+        type: 'DISPLAY_UPDATE',
+        mode: 'resultsSummary',
+        data: {
+          text: currentQuestion.q,
+          answer: answerLetter,
+          answerLetter,
+          answerText,
+          correctIndex: currentQuestion.correctIndex,
+          type: currentQuestion.type,
+          options,
+          questionNumber: currentLoadedQuestionIndex + 1,
+          totalQuestions: loadedQuizQuestions.length
+        }
+      });
       }
     }
 

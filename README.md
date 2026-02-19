@@ -33,6 +33,8 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   Multiple choice questions when being displayed on the external display arent showing the options to choose from, only the main question text
 
+  External display screen needs to be double clickable anywhere to minimise / maximise, when its minimised it should be made draggable and the window should be resizeable without having any boarder on it. When its maximised it takes over the whole screen its on, infront of the task bar too with no boarder around it.
+
   in setting, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
 
   in settings, waiting room should have the ability to display waiting room images.
