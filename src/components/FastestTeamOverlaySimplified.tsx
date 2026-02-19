@@ -4,6 +4,7 @@ interface FastestTeamOverlaySimplifiedProps {
   teamName?: string;
   teamPhoto?: string;
   teamIcon?: string;
+  textSize?: 'small' | 'medium' | 'large';
 }
 
 /**
@@ -14,12 +15,75 @@ interface FastestTeamOverlaySimplifiedProps {
 export function FastestTeamOverlaySimplified({
   teamName = "No Team",
   teamPhoto,
-  teamIcon = "🎯"
+  teamIcon = "🎯",
+  textSize = 'medium'
 }: FastestTeamOverlaySimplifiedProps) {
+  // Helper function to get text size multiplier
+  const getTextSizeMultiplier = (size: 'small' | 'medium' | 'large'): number => {
+    switch (size) {
+      case 'small':
+        return 0.85;
+      case 'large':
+        return 1.2;
+      case 'medium':
+      default:
+        return 1.0;
+    }
+  };
+
+  // Helper function to scale font size
+  const scaleFontSize = (fontSize: string, multiplier: number): string => {
+    // Handle px values
+    const pxMatch = fontSize.match(/^(\d+(?:\.\d+)?)px$/);
+    if (pxMatch) {
+      const value = parseFloat(pxMatch[1]);
+      return `${Math.round(value * multiplier)}px`;
+    }
+
+    // Handle rem values
+    const remMatch = fontSize.match(/^(\d+(?:\.\d+)?)rem$/);
+    if (remMatch) {
+      const value = parseFloat(remMatch[1]);
+      return `${(value * multiplier).toFixed(2)}rem`;
+    }
+
+    // Handle clamp() expressions - multiply all three values
+    const clampMatch = fontSize.match(/clamp\((.*?),(.*?),(.*?)\)/);
+    if (clampMatch) {
+      const [, min, preferred, max] = clampMatch;
+
+      const scaleValue = (val: string): string => {
+        const trimmed = val.trim();
+        const pxMatch = trimmed.match(/^(\d+(?:\.\d+)?)px$/);
+        if (pxMatch) {
+          const value = parseFloat(pxMatch[1]);
+          return `${Math.round(value * multiplier)}px`;
+        }
+        const remMatch = trimmed.match(/^(\d+(?:\.\d+)?)rem$/);
+        if (remMatch) {
+          const value = parseFloat(remMatch[1]);
+          return `${(value * multiplier).toFixed(2)}rem`;
+        }
+        const vwMatch = trimmed.match(/^(\d+(?:\.\d+)?)vw$/);
+        if (vwMatch) {
+          const value = parseFloat(vwMatch[1]);
+          return `${(value * multiplier).toFixed(2)}vw`;
+        }
+        return trimmed;
+      };
+
+      return `clamp(${scaleValue(min)},${scaleValue(preferred)},${scaleValue(max)})`;
+    }
+
+    return fontSize;
+  };
+
+  const textSizeMultiplier = getTextSizeMultiplier(textSize);
+
   return (
     <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center', gap: '40px' }}>
       {/* Header text */}
-      <div style={{ fontSize: '32px', fontWeight: '600', color: '#9ca3af', textAlign: 'center' }}>
+      <div style={{ fontSize: scaleFontSize('32px', textSizeMultiplier), fontWeight: '600', color: '#9ca3af', textAlign: 'center' }}>
         The fastest correct team was:
       </div>
 
@@ -62,7 +126,7 @@ export function FastestTeamOverlaySimplified({
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            <div style={{ fontSize: '80px' }}>{teamIcon}</div>
+            <div style={{ fontSize: scaleFontSize('80px', textSizeMultiplier) }}>{teamIcon}</div>
           </div>
         )}
 
@@ -77,7 +141,7 @@ export function FastestTeamOverlaySimplified({
           textAlign: 'center'
         }}>
           <div style={{
-            fontSize: 'clamp(3rem, 8vw, 6rem)',
+            fontSize: scaleFontSize('clamp(3rem, 8vw, 6rem)', textSizeMultiplier),
             fontWeight: 'bold',
             color: '#f97316',
             padding: '40px',

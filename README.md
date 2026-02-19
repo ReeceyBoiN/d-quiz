@@ -29,7 +29,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   clicking on the no wifi connected button should provide troubleshooting steps and tools
 
-  in settings, external screen settings should have individual controlls to increase / decreas the size of the text 
+  --in settings, external screen settings should have individual controlls to increase / decreas the size of the text 
 
   in setting, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
 

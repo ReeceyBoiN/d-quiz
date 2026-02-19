@@ -225,6 +225,34 @@ export function QuizHost() {
     teamPhotosAutoApprove
   } = useSettings();
 
+  // Get external display text size from localStorage
+  const [externalDisplayTextSize, setExternalDisplayTextSize] = useState<'small' | 'medium' | 'large'>('medium');
+  useEffect(() => {
+    const loadTextSize = () => {
+      const saved = localStorage.getItem('quizHostSettings');
+      if (saved) {
+        try {
+          const settings = JSON.parse(saved);
+          setExternalDisplayTextSize(settings.externalDisplayTextSize || 'medium');
+        } catch (e) {
+          console.error('Failed to load external display text size:', e);
+        }
+      }
+    };
+
+    loadTextSize();
+
+    // Listen for changes to settings
+    const handleStorageChange = () => loadTextSize();
+    window.addEventListener('settingsUpdated', handleStorageChange);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('settingsUpdated', handleStorageChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
   // Quiz data context
   const { currentQuiz, setCurrentQuiz } = useQuizData();
 
@@ -3917,6 +3945,7 @@ export function QuizHost() {
       results: mode === 'nearest-wins-results' ? data?.results : undefined,
       answerRevealed: mode === 'nearest-wins-results' ? data?.answerRevealed : undefined,
       gameInfo: mode.includes('nearest-wins') ? data?.gameInfo : undefined,
+      textSize: externalDisplayTextSize,
     };
 
     if (isElectronWindow) {
@@ -3973,7 +4002,8 @@ export function QuizHost() {
 
         teamName: content === 'team-welcome' ? data?.teamName : undefined,
 
-        isReset: content === 'basic'
+        isReset: content === 'basic',
+        textSize: externalDisplayTextSize
       };
 
       console.log('QuizHost: Sending message to external display', messageData);
@@ -3986,7 +4016,7 @@ export function QuizHost() {
         externalWindow.postMessage(messageData, '*');
       }
     }
-  }, [externalWindow, images, quizzes, slideshowSpeed, leaderboardData, revealedTeams, currentQuestionIndex, getCurrentGameMode, gameModeTimers]);
+  }, [externalWindow, images, quizzes, slideshowSpeed, leaderboardData, revealedTeams, currentQuestionIndex, getCurrentGameMode, gameModeTimers, externalDisplayTextSize]);
 
 
 

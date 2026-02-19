@@ -55,7 +55,8 @@ export function ExternalDisplayWindow() {
     gameModeTimers: { keypad: 30, buzzin: 30, nearestwins: 10 } as any,
     teamName: null as string | null,
     data: null as any,
-    totalTime: 30
+    totalTime: 30,
+    textSize: 'medium' as 'small' | 'medium' | 'large'
   });
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [currentColorIndex, setCurrentColorIndex] = useState(0);
@@ -77,6 +78,66 @@ export function ExternalDisplayWindow() {
 
   const getRandomDynamicColor = () => {
     return dynamicColors[Math.floor(Math.random() * dynamicColors.length)];
+  };
+
+  // Helper function to get text size multiplier
+  const getTextSizeMultiplier = (textSize: 'small' | 'medium' | 'large'): number => {
+    switch (textSize) {
+      case 'small':
+        return 0.85;
+      case 'large':
+        return 1.2;
+      case 'medium':
+      default:
+        return 1.0;
+    }
+  };
+
+  // Helper function to scale font size
+  const scaleFontSize = (fontSize: string, multiplier: number): string => {
+    // Handle px values
+    const pxMatch = fontSize.match(/^(\d+(?:\.\d+)?)px$/);
+    if (pxMatch) {
+      const value = parseFloat(pxMatch[1]);
+      return `${Math.round(value * multiplier)}px`;
+    }
+
+    // Handle rem values
+    const remMatch = fontSize.match(/^(\d+(?:\.\d+)?)rem$/);
+    if (remMatch) {
+      const value = parseFloat(remMatch[1]);
+      return `${(value * multiplier).toFixed(2)}rem`;
+    }
+
+    // Handle clamp() expressions - multiply all three values
+    const clampMatch = fontSize.match(/clamp\((.*?),(.*?),(.*?)\)/);
+    if (clampMatch) {
+      const [, min, preferred, max] = clampMatch;
+
+      const scaleValue = (val: string): string => {
+        const trimmed = val.trim();
+        const pxMatch = trimmed.match(/^(\d+(?:\.\d+)?)px$/);
+        if (pxMatch) {
+          const value = parseFloat(pxMatch[1]);
+          return `${Math.round(value * multiplier)}px`;
+        }
+        const remMatch = trimmed.match(/^(\d+(?:\.\d+)?)rem$/);
+        if (remMatch) {
+          const value = parseFloat(remMatch[1]);
+          return `${(value * multiplier).toFixed(2)}rem`;
+        }
+        const vwMatch = trimmed.match(/^(\d+(?:\.\d+)?)vw$/);
+        if (vwMatch) {
+          const value = parseFloat(vwMatch[1]);
+          return `${(value * multiplier).toFixed(2)}vw`;
+        }
+        return trimmed;
+      };
+
+      return `clamp(${scaleValue(min)},${scaleValue(preferred)},${scaleValue(max)})`;
+    }
+
+    return fontSize;
   };
 
   useEffect(() => {
@@ -110,7 +171,8 @@ export function ExternalDisplayWindow() {
             gameModeTimers: event.data.gameModeTimers || prevData.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 },
             teamName: (event.data.data && event.data.data.teamName) || event.data.teamName || null,
             data: event.data.data || null,
-            totalTime: event.data.totalTime || (event.data.data && event.data.data.totalTime) || prevData.totalTime || 30
+            totalTime: event.data.totalTime || (event.data.data && event.data.data.totalTime) || prevData.totalTime || 30,
+            textSize: event.data.textSize || prevData.textSize || 'medium'
           };
         });
       }
@@ -149,7 +211,8 @@ export function ExternalDisplayWindow() {
             gameModeTimers: data.gameModeTimers || prevData.gameModeTimers || { keypad: 30, buzzin: 30, nearestwins: 10 },
             teamName: (data.data && data.data.teamName) || data.teamName || null,
             data: data.data || null,
-            totalTime: data.totalTime || (data.data && data.data.totalTime) || prevData.totalTime || 30
+            totalTime: data.totalTime || (data.data && data.data.totalTime) || prevData.totalTime || 30,
+            textSize: data.textSize || prevData.textSize || 'medium'
           };
         });
       });
@@ -328,7 +391,8 @@ export function ExternalDisplayWindow() {
 
   const renderContent = () => {
     switch (displayData.mode) {
-      case 'basic':
+      case 'basic': {
+        const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
         return (
           <div style={{
             height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -339,20 +403,21 @@ export function ExternalDisplayWindow() {
                 backgroundColor: '#f97316', color: 'black', padding: '64px 80px', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
                 border: '6px solid white', transform: 'rotate(3deg)', transition: 'transform 0.3s ease'
               }}>
-                <h1 style={{ fontSize: 'clamp(3rem, 12vw, 10rem)', fontWeight: 900, letterSpacing: '0.05em', margin: 0, color: 'black', textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', lineHeight: 0.9 }}>
+                <h1 style={{ fontSize: scaleFontSize('clamp(3rem, 12vw, 10rem)', textSizeMultiplier), fontWeight: 900, letterSpacing: '0.05em', margin: 0, color: 'black', textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', lineHeight: 0.9 }}>
                   POP
                 </h1>
-                <h2 style={{ fontSize: 'clamp(3rem, 12vw, 10rem)', fontWeight: 900, letterSpacing: '0.05em', margin: 0, color: 'black', textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', lineHeight: 0.9 }}>
+                <h2 style={{ fontSize: scaleFontSize('clamp(3rem, 12vw, 10rem)', textSizeMultiplier), fontWeight: 900, letterSpacing: '0.05em', margin: 0, color: 'black', textShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', lineHeight: 0.9 }}>
                   QUIZ!
                 </h2>
               </div>
-              <div style={{ position: 'absolute', top: '-1rem', left: '-1rem', fontSize: '3rem', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.12))', animation: 'bounce 2s infinite' }}>🎯</div>
-              <div style={{ position: 'absolute', top: '1.5rem', right: '-2rem', fontSize: '2.5rem', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.12))', animation: 'bounce 2s infinite' }}>🌟</div>
-              <div style={{ position: 'absolute', bottom: '3rem', right: '-3rem', fontSize: '2.5rem', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.12))', animation: 'bounce 2s infinite' }}>🏆</div>
-              <div style={{ position: 'absolute', bottom: '-2rem', left: '-2rem', fontSize: '2rem', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.12))', animation: 'bounce 2s infinite' }}>🎵</div>
+              <div style={{ position: 'absolute', top: '-1rem', left: '-1rem', fontSize: scaleFontSize('3rem', textSizeMultiplier), filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.12))', animation: 'bounce 2s infinite' }}>🎯</div>
+              <div style={{ position: 'absolute', top: '1.5rem', right: '-2rem', fontSize: scaleFontSize('2.5rem', textSizeMultiplier), filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.12))', animation: 'bounce 2s infinite' }}>🌟</div>
+              <div style={{ position: 'absolute', bottom: '3rem', right: '-3rem', fontSize: scaleFontSize('2.5rem', textSizeMultiplier), filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.12))', animation: 'bounce 2s infinite' }}>🏆</div>
+              <div style={{ position: 'absolute', bottom: '-2rem', left: '-2rem', fontSize: scaleFontSize('2rem', textSizeMultiplier), filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.12))', animation: 'bounce 2s infinite' }}>🎵</div>
             </div>
           </div>
         );
+      }
 
       case 'question-with-timer':
       case 'timer-with-question': {
@@ -370,9 +435,10 @@ export function ExternalDisplayWindow() {
         // Calculate responsive padding and font sizes
         const containerPadding = isMobileSize ? '20px' : '40px';
         const gapSize = isMobileSize ? '20px' : '40px';
-        const questionFontSize = isMobileSize ? '40px' : '56px';
-        const headerFontSize = isMobileSize ? '32px' : '48px';
-        const optionFontSize = isMobileSize ? '18px' : '24px';
+        const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
+        const questionFontSize = scaleFontSize(isMobileSize ? '40px' : '56px', textSizeMultiplier);
+        const headerFontSize = scaleFontSize(isMobileSize ? '32px' : '48px', textSizeMultiplier);
+        const optionFontSize = scaleFontSize(isMobileSize ? '18px' : '24px', textSizeMultiplier);
         const hasImage = Boolean(displayData.data?.imageDataUrl);
 
         return (
@@ -415,7 +481,7 @@ export function ExternalDisplayWindow() {
                     Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
                   </h1>
                   {displayData.data?.hidden ? (
-                    <div style={{ fontSize: isMobileSize ? '64px' : '96px', fontWeight: 'bold', color: '#9ca3af', textAlign: 'center', marginTop: '20px' }}>?</div>
+                    <div style={{ fontSize: scaleFontSize(isMobileSize ? '64px' : '96px', textSizeMultiplier), fontWeight: 'bold', color: '#9ca3af', textAlign: 'center', marginTop: '20px' }}>?</div>
                   ) : (
                     <h2 style={{ fontSize: questionFontSize, fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2' }}>
                       {displayData.data?.text || 'Loading question...'}
@@ -453,7 +519,7 @@ export function ExternalDisplayWindow() {
                           color: 'white',
                           ...(isLastRowIncomplete && isInLastRow && { justifySelf: 'center' })
                         }}>
-                          <div style={{ marginBottom: '8px', fontSize: isMobileSize ? '18px' : '28px', color: '#f97316' }}>{letterMap[index]}</div>
+                          <div style={{ marginBottom: '8px', fontSize: scaleFontSize(isMobileSize ? '18px' : '28px', textSizeMultiplier), color: '#f97316' }}>{letterMap[index]}</div>
                           <div>{option}</div>
                         </div>
                       );
@@ -567,7 +633,8 @@ export function ExternalDisplayWindow() {
         );
       }
 
-      case 'timer':
+      case 'timer': {
+        const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
         const progressPercentage = displayData.timerValue !== null && displayData.timerValue !== undefined && displayData.totalTime
           ? Math.max(0, Math.min(100, (displayData.timerValue / displayData.totalTime) * 100))
           : 0;
@@ -604,7 +671,7 @@ export function ExternalDisplayWindow() {
             {/* Content area - centered */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '32px', justifyContent: 'center', alignItems: 'center' }}>
               <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                <h1 style={{ fontSize: '48px', fontWeight: 'bold', color: '#1f2937' }}>
+                <h1 style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: '#1f2937' }}>
                   Question {(displayData.questionInfo && displayData.questionInfo.number) || 1}
                 </h1>
               </div>
@@ -635,19 +702,21 @@ export function ExternalDisplayWindow() {
 
           </div>
         );
+      }
 
-      case 'question':
+      case 'question': {
+        const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
         return (
           <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
             {/* Question Header */}
             <div style={{ marginBottom: '40px', textAlign: 'center', width: '100%' }}>
-              <h1 style={{ fontSize: '56px', fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
+              <h1 style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
                 Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
               </h1>
               {displayData.data?.hidden ? (
-                <div style={{ fontSize: '120px', fontWeight: 'bold', color: '#9ca3af' }}>?</div>
+                <div style={{ fontSize: scaleFontSize('120px', textSizeMultiplier), fontWeight: 'bold', color: '#9ca3af' }}>?</div>
               ) : (
-                <h2 style={{ fontSize: '48px', fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2', maxWidth: '90vw' }}>
+                <h2 style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2', maxWidth: '90vw' }}>
                   {displayData.data?.text || 'Loading question...'}
                 </h2>
               )}
@@ -677,12 +746,12 @@ export function ExternalDisplayWindow() {
                       borderRadius: '12px',
                       padding: '20px',
                       textAlign: 'center',
-                      fontSize: '28px',
+                      fontSize: scaleFontSize('28px', textSizeMultiplier),
                       fontWeight: '600',
                       color: 'white',
                       ...(isLastRowIncomplete && isInLastRow && { justifySelf: 'center' })
                     }}>
-                      <div style={{ marginBottom: '10px', fontSize: '36px', color: '#f97316' }}>{letterMap[index]}</div>
+                      <div style={{ marginBottom: '10px', fontSize: scaleFontSize('36px', textSizeMultiplier), color: '#f97316' }}>{letterMap[index]}</div>
                       <div>{option}</div>
                     </div>
                   );
@@ -691,20 +760,22 @@ export function ExternalDisplayWindow() {
             )}
           </div>
         );
+      }
 
-      case 'resultsSummary':
+      case 'resultsSummary': {
+        const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
         return (
           <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}>
             {/* Question and Answer at top */}
             <div style={{ marginBottom: displayData.data?.correctCount !== undefined ? '40px' : '60px', textAlign: 'center', width: '100%' }}>
-              <h1 style={{ fontSize: '48px', fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
+              <h1 style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
                 Question {displayData.data?.questionNumber || 1}
               </h1>
-              <h2 style={{ fontSize: '40px', fontWeight: '600', color: 'white', margin: '0 0 30px 0', lineHeight: '1.3' }}>
+              <h2 style={{ fontSize: scaleFontSize('40px', textSizeMultiplier), fontWeight: '600', color: 'white', margin: '0 0 30px 0', lineHeight: '1.3' }}>
                 {displayData.data?.text || ''}
               </h2>
-              <div style={{ fontSize: '42px', fontWeight: 'bold', color: '#10b981', margin: '0 0 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-                <span style={{ fontSize: '48px' }}>✓</span>
+              <div style={{ fontSize: scaleFontSize('42px', textSizeMultiplier), fontWeight: 'bold', color: '#10b981', margin: '0 0 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+                <span style={{ fontSize: scaleFontSize('48px', textSizeMultiplier) }}>✓</span>
                 <span>
                   {displayData.data?.answerText
                     ? `${displayData.data?.answerLetter || displayData.data?.answer}: ${displayData.data?.answerText}`
@@ -724,8 +795,8 @@ export function ExternalDisplayWindow() {
                 textAlign: 'center',
                 border: '4px solid white'
               }}>
-                <div style={{ fontSize: '24px', fontWeight: '600', color: 'white', marginBottom: '10px' }}>Correct</div>
-                <div style={{ fontSize: '56px', fontWeight: 'bold', color: 'white' }}>{displayData.data?.correctCount || 0}</div>
+                <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>Correct</div>
+                <div style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{displayData.data?.correctCount || 0}</div>
               </div>
 
               {/* Incorrect */}
@@ -736,8 +807,8 @@ export function ExternalDisplayWindow() {
                 textAlign: 'center',
                 border: '4px solid white'
               }}>
-                <div style={{ fontSize: '24px', fontWeight: '600', color: 'white', marginBottom: '10px' }}>Incorrect</div>
-                <div style={{ fontSize: '56px', fontWeight: 'bold', color: 'white' }}>{displayData.data?.incorrectCount || 0}</div>
+                <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>Incorrect</div>
+                <div style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{displayData.data?.incorrectCount || 0}</div>
               </div>
 
               {/* No Answer */}
@@ -748,19 +819,21 @@ export function ExternalDisplayWindow() {
                 textAlign: 'center',
                 border: '4px solid white'
               }}>
-                <div style={{ fontSize: '24px', fontWeight: '600', color: 'white', marginBottom: '10px' }}>No Answer</div>
-                <div style={{ fontSize: '56px', fontWeight: 'bold', color: 'white' }}>{displayData.data?.noAnswerCount || 0}</div>
+                <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>No Answer</div>
+                <div style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{displayData.data?.noAnswerCount || 0}</div>
               </div>
             </div>
             )}
           </div>
         );
+      }
 
       case 'fastestTeam':
         return (
           <FastestTeamOverlaySimplified
             teamName={displayData.data?.teamName || 'No Team'}
             teamPhoto={displayData.data?.teamPhoto || undefined}
+            textSize={displayData.textSize}
           />
         );
 

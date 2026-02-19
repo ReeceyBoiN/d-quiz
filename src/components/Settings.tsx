@@ -283,6 +283,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     screenSaver: false,
     screenSaverDelay: [5],
     keypadDesign: "neon-glow",
+    externalDisplayTextSize: "medium",
     
     // Network & WiFi settings
     networkMode: "local",
@@ -1388,6 +1389,49 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
               checked={settings.fullscreenMode}
               onCheckedChange={(checked) => updateSetting("fullscreenMode", checked)}
             />
+          </div>
+
+          <Separator className="bg-border" />
+
+          <div className="space-y-4">
+            <div>
+              <Label className="text-foreground mb-3 block">External Display Text Size</Label>
+              <p className="text-sm text-muted-foreground mb-3">
+                Adjust the size of text displayed on the external screen
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => updateSetting("externalDisplayTextSize", "small")}
+                  className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                    settings.externalDisplayTextSize === "small"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-input text-foreground border border-border hover:bg-input/80"
+                  }`}
+                >
+                  Small
+                </button>
+                <button
+                  onClick={() => updateSetting("externalDisplayTextSize", "medium")}
+                  className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                    settings.externalDisplayTextSize === "medium"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-input text-foreground border border-border hover:bg-input/80"
+                  }`}
+                >
+                  Medium
+                </button>
+                <button
+                  onClick={() => updateSetting("externalDisplayTextSize", "large")}
+                  className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                    settings.externalDisplayTextSize === "large"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-input text-foreground border border-border hover:bg-input/80"
+                  }`}
+                >
+                  Large
+                </button>
+              </div>
+            </div>
           </div>
 
 
