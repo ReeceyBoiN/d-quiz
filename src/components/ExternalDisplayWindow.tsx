@@ -8,6 +8,12 @@ declare global {
       ipc: {
         send: (channel: string, data?: any) => void;
         on: (channel: string, callback: (data: any) => void) => () => void;
+        invoke: (channel: string, data?: any) => Promise<any>;
+      };
+      externalDisplay?: {
+        toggleState: () => Promise<any>;
+        setBounds: (x: number, y: number, width: number, height: number) => Promise<any>;
+        closeWindow: () => Promise<any>;
       };
     };
   }
@@ -55,6 +61,8 @@ export function ExternalDisplayWindow() {
   const [currentColorIndex, setCurrentColorIndex] = useState(0);
   const [dynamicBackgroundColor, setDynamicBackgroundColor] = useState('#f1c40f');
   const [welcomeColorIndex, setWelcomeColorIndex] = useState(0);
+  const [isMinimized, setIsMinimized] = useState(true);
+  const contentDivRef = React.useRef<HTMLDivElement>(null);
 
   const welcomeColors = [
     '#f39c12', '#e74c3c', '#e91e63', '#9b59b6', '#3498db', '#27ae60', '#f1c40f',
@@ -153,6 +161,89 @@ export function ExternalDisplayWindow() {
     };
   }, []);
 
+  // Handle external display window state changes and double-click
+  useEffect(() => {
+    console.log('[ExternalDisplayWindow] Setting up double-click and IPC listeners, isElectron:', isElectron);
+
+    let stateChangeListener: (() => void) | undefined;
+
+    if (isElectron) {
+      // Listen for state changes from main process
+      console.log('[ExternalDisplayWindow] 📡 Setting up IPC listener for external-display/state-changed');
+      stateChangeListener = window.api?.ipc.on('external-display/state-changed', (data) => {
+        console.log('[ExternalDisplayWindow] ✅ RECEIVED state-changed from IPC:', data);
+        console.log('[ExternalDisplayWindow] Current state before update:', { isMinimized });
+        setIsMinimized(data.isMinimized);
+        console.log('[ExternalDisplayWindow] State update called, new value should be:', data.isMinimized);
+      });
+      console.log('[ExternalDisplayWindow] ✅ IPC listener attached');
+    } else {
+      console.warn('[ExternalDisplayWindow] ⚠️ Not in Electron environment');
+    }
+
+    // Add double-click handler to content area only (not the header)
+    const handleDoubleClick = async (e: MouseEvent) => {
+      console.log('[ExternalDisplayWindow] 🖱️ Double-click detected at:', { x: e.clientX, y: e.clientY });
+
+      if (isElectron && window.api?.externalDisplay) {
+        try {
+          console.log('[ExternalDisplayWindow] 🔄 Calling toggleState via IPC...');
+          const result = await window.api.externalDisplay.toggleState();
+          console.log('[ExternalDisplayWindow] ✅ Toggle state completed with result:', result);
+        } catch (err) {
+          console.error('[ExternalDisplayWindow] ❌ Error toggling state:', err);
+        }
+      } else {
+        console.warn('[ExternalDisplayWindow] ⚠️ Not in Electron or API unavailable. isElectron:', isElectron, 'hasAPI:', !!window.api?.externalDisplay);
+      }
+    };
+
+    // Attach dblclick listener to content div only (not the header)
+    const contentDiv = contentDivRef.current;
+    if (contentDiv) {
+      console.log('[ExternalDisplayWindow] Attaching dblclick event listener to content area');
+      contentDiv.addEventListener('dblclick', handleDoubleClick);
+    }
+
+    return () => {
+      console.log('[ExternalDisplayWindow] Cleaning up listeners');
+      if (contentDiv) {
+        contentDiv.removeEventListener('dblclick', handleDoubleClick);
+      }
+      if (stateChangeListener) stateChangeListener();
+    };
+  }, [isElectron]);
+
+  // Setup Ctrl+V keyboard shortcut to close External Display window
+  useEffect(() => {
+    if (!isElectron || !window.api?.externalDisplay) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check for Ctrl+V (or Cmd+V on Mac)
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+        // Check if the active element is a text input, textarea, or contenteditable
+        const activeElement = document.activeElement as HTMLElement;
+        const isTextInput =
+          activeElement instanceof HTMLInputElement ||
+          activeElement instanceof HTMLTextAreaElement ||
+          (activeElement && activeElement.getAttribute('contenteditable') === 'true');
+
+        // Only trigger shortcut if NOT in a text input
+        if (!isTextInput) {
+          event.preventDefault();
+          console.log('[ExternalDisplayWindow] ⌨️ Ctrl+V shortcut triggered - closing external display window');
+          window.api?.externalDisplay?.closeWindow().catch((err: Error) => {
+            console.error('[ExternalDisplayWindow] ❌ Error closing window via Ctrl+V:', err);
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isElectron]);
+
+
   useEffect(() => {
     if (displayData.mode === 'basic') {
       const startTime = Date.now();
@@ -228,6 +319,8 @@ export function ExternalDisplayWindow() {
       return () => clearInterval(interval);
     }
   }, [displayData.mode]);
+
+
 
   const getHSLColor = (hue: number) => {
     return 'hsl(' + hue + ', 85%, 60%)';
@@ -831,8 +924,18 @@ export function ExternalDisplayWindow() {
   };
 
   return (
-    <div style={{ height: '100vh', width: '100vw', backgroundColor: '#111827', display: 'flex', flexDirection: 'column', border: '8px solid #f97316' }}>
+    <div style={{ height: '100vh', width: '100vw', backgroundColor: '#111827', display: 'flex', flexDirection: 'column', border: isMinimized ? 'none' : 'none' }}>
       <style>{`
+        /* CRITICAL: Ensure full screen coverage for Electron frameless window */
+        html, body, #root {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          background-color: #111827;
+        }
+
         @keyframes fall {
           to { transform: translateY(100vh); opacity: 0; }
         }
@@ -858,22 +961,54 @@ export function ExternalDisplayWindow() {
             transform: scale(1);
           }
         }
+        [data-external-display-header="true"] {
+          -webkit-app-region: drag;
+          -webkit-user-select: none;
+          user-select: none;
+        }
       `}</style>
 
-      <div style={{ backgroundColor: '#374151', padding: '12px', flex: '0 0 auto', borderBottom: '3px solid #f97316', display: 'none' }} data-external-display-header="true">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* Header - ONLY shown when minimized (for dragging and resizing) */}
+      {isMinimized && (
+        <div
+          style={{
+            position: 'relative',
+            backgroundColor: '#374151',
+            padding: '8px 12px',
+            borderBottom: '2px solid #f97316',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'grab',
+            zIndex: 100,
+            width: '100%',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+            minHeight: '36px',
+          }}
+          data-external-display-header="true"
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#f97316', animation: 'pulse 2s ease-in-out infinite' }}></div>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: 'white' }}>EXTERNAL DISPLAY</span>
-            <span style={{ fontSize: '12px', paddingLeft: '8px', paddingRight: '8px', paddingTop: '4px', paddingBottom: '4px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 500, backgroundColor: '#f97316', color: 'white' }}>
-              {displayData.mode}
-            </span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'white' }}>EXTERNAL DISPLAY</span>
           </div>
-          <div style={{ fontSize: '12px', color: '#9ca3af' }}>1920x1080 • 16:9</div>
+          <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+            Drag to move • Double-click content to maximize
+          </div>
         </div>
-      </div>
+      )}
 
-      <div style={{ flex: 1, backgroundColor: 'black', position: 'relative', overflow: 'hidden', border: '8px solid #f97316', boxSizing: 'border-box' }}>
+      <div
+        ref={contentDivRef}
+        style={{
+          flex: 1,
+          backgroundColor: 'black',
+          position: 'relative',
+          overflow: 'hidden',
+          border: 'none',
+          boxSizing: 'border-box',
+          cursor: isMinimized ? 'grab' : 'default'
+        }}
+      >
         {renderContent()}
         <div style={{ position: 'absolute', bottom: '16px', right: '16px', fontSize: '12px', color: 'white', opacity: 0.3, fontFamily: 'monospace' }}>
           EXT-1

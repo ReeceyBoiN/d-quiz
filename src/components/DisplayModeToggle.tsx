@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Monitor, Images, Trophy, Square, Check, Settings } from "lucide-react";
 import { Button } from "./ui/button";
 
@@ -37,6 +37,32 @@ export function DisplayModeToggle({
     const nextIndex = (currentModeIndex + 1) % userModes.length;
     onModeChange(userModes[nextIndex].key);
   };
+
+  // Setup Ctrl+V keyboard shortcut for External Display toggle
+  useEffect(() => {
+    if (!onExternalDisplayToggle) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check for Ctrl+V (or Cmd+V on Mac)
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+        // Check if the active element is a text input, textarea, or contenteditable
+        const activeElement = document.activeElement as HTMLElement;
+        const isTextInput =
+          activeElement instanceof HTMLInputElement ||
+          activeElement instanceof HTMLTextAreaElement ||
+          (activeElement && activeElement.getAttribute('contenteditable') === 'true');
+
+        // Only trigger shortcut if NOT in a text input
+        if (!isTextInput) {
+          event.preventDefault();
+          onExternalDisplayToggle();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onExternalDisplayToggle]);
 
   return (
     <div className={`flex items-center ${className}`}>

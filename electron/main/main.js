@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import log from 'electron-log';
-import { createMainWindow, createExternalWindow } from './windows.js';
+import { createMainWindow, createExternalWindow, toggleExternalWindowState, setExternalWindowBounds, externalWindowState } from './windows.js';
 import { applySecurity } from './security.js';
 import { createIpcRouter } from '../ipc/ipcRouter.js';
 import { startBackend } from '../backend/server.js';
@@ -159,6 +159,81 @@ async function boot() {
   router.mount('app/open-external-display', async () => {
     createExternalWindow();
     return { ok: true };
+  });
+
+  // External display window control handlers
+  router.mount('external-display/toggle-state', async () => {
+    try {
+      log.info('[IPC] external-display/toggle-state called, current state:', externalWindowState.isMinimized ? 'minimized' : 'maximized');
+      const result = await toggleExternalWindowState();
+      log.info('[IPC] external-display/toggle-state completed, new state:', externalWindowState.isMinimized ? 'minimized' : 'maximized');
+
+      // Notify external window of state change AFTER window bounds/z-order are fully applied
+      if (global.externalWindow && global.externalWindow.webContents) {
+        global.externalWindow.webContents.send('external-display/state-changed', {
+          isMinimized: result.isMinimized
+        });
+      }
+
+      return { ok: true, isMinimized: result.isMinimized };
+    } catch (err) {
+      log.error('[IPC] external-display/toggle-state error:', err.message);
+      throw err;
+    }
+  });
+
+  router.mount('external-display/set-bounds', async (payload) => {
+    try {
+      const { x, y, width, height } = payload;
+      log.info('[IPC] external-display/set-bounds called with:', { x, y, width, height });
+
+      const result = setExternalWindowBounds(x, y, width, height);
+      log.info('[IPC] external-display/set-bounds completed:', result);
+
+      return result;
+    } catch (err) {
+      log.error('[IPC] external-display/set-bounds error:', err.message);
+      throw err;
+    }
+  });
+
+  router.mount('get-window-bounds', async () => {
+    try {
+      if (!global.externalWindow || global.externalWindow.isDestroyed()) {
+        log.warn('[IPC] get-window-bounds: externalWindow not available');
+        return { x: 100, y: 100, width: 900, height: 600 };
+      }
+
+      const bounds = global.externalWindow.getBounds();
+      log.info('[IPC] get-window-bounds returning:', bounds);
+      return bounds;
+    } catch (err) {
+      log.error('[IPC] get-window-bounds error:', err.message);
+      throw err;
+    }
+  });
+
+  router.mount('app/close-external-display', async () => {
+    try {
+      log.info('[IPC] app/close-external-display called');
+      if (global.externalWindow && !global.externalWindow.isDestroyed()) {
+        global.externalWindow.close();
+        log.info('[IPC] External window closed successfully');
+
+        // Notify host renderer that external window was closed
+        if (global.mainWindow && global.mainWindow.webContents) {
+          global.mainWindow.webContents.send('external-display/closed', {});
+          log.info('[IPC] Notified main window that external display was closed');
+        }
+
+        return { ok: true };
+      }
+      log.warn('[IPC] External window not found or already destroyed');
+      return { ok: false, error: 'External window not found' };
+    } catch (err) {
+      log.error('[IPC] app/close-external-display error:', err.message);
+      throw err;
+    }
   });
 
   // Forward external display updates from renderer to external window

@@ -285,6 +285,22 @@ export function QuizHost() {
   const [externalWindow, setExternalWindow] = useState<Window | null>(null);
   const [isExternalDisplayOpen, setIsExternalDisplayOpen] = useState(false);
 
+  // Listen for external display window being closed via Ctrl+V
+  useEffect(() => {
+    const isElectron = Boolean((window as any).api?.ipc?.on);
+    if (!isElectron) return;
+
+    const removeListener = (window as any).api?.ipc?.on('external-display/closed', () => {
+      console.log('[QuizHost] 📢 Received external-display/closed event - closing external window');
+      setExternalWindow(null);
+      setIsExternalDisplayOpen(false);
+    });
+
+    return () => {
+      if (removeListener) removeListener();
+    };
+  }, []);
+
   // Helper function to send messages to external display (handles both Electron and browser)
   const sendToExternalDisplay = (messageData: any) => {
     if (!externalWindow) return;

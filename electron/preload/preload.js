@@ -113,6 +113,14 @@ contextBridge.exposeInMainWorld('api', {
     broadcastBuzzerFolderChange: (data) => invoke('network/broadcast-buzzer-folder-change', data),
   },
 
+  // --- External display control ---
+  externalDisplay: {
+    toggleState: () => invoke('external-display/toggle-state'),
+    setBounds: (x, y, width, height) => invoke('external-display/set-bounds', { x, y, width, height }),
+    getWindowBounds: () => invoke('get-window-bounds'),
+    closeWindow: () => invoke('app/close-external-display'),
+  },
+
   // --- 🔹 IPC event helpers (for external display, etc.) ---
   ipc: {
     send,   // fire-and-forget
