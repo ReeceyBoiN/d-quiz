@@ -21,7 +21,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   Instructions graphics need making, how to play, how to connect, how to answer, how to edit team name, add a team pic, letters questions etc etc
 
-  Buzz in mode needs just making in general hahah
+  Buzz in mode needs just making in general hahaha
 
   team grid needs to be smaller when viewing the teams info when clicking on a team from the teams list
 
