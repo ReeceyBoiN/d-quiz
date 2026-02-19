@@ -3984,7 +3984,7 @@ export function QuizHost() {
         gameMode: getCurrentGameMode(),
         gameModeTimers: gameModeTimers,
 
-        questionInfo: content === 'question' ? data?.questionInfo : {
+        questionInfo: data?.questionInfo || {
           number: currentQuestionIndex + 1,
           type: 'Multiple Choice',
           total: mockQuestions.length

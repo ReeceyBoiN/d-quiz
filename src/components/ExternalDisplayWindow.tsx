@@ -56,7 +56,9 @@ export function ExternalDisplayWindow() {
     teamName: null as string | null,
     data: null as any,
     totalTime: 30,
-    textSize: 'medium' as 'small' | 'medium' | 'large'
+    textSize: 'medium' as 'small' | 'medium' | 'large',
+    borderColor: '#f97316' as string,
+    backgroundColor: '#e74c3c' as string
   });
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [currentColorIndex, setCurrentColorIndex] = useState(0);
@@ -77,6 +79,10 @@ export function ExternalDisplayWindow() {
   ];
 
   const getRandomDynamicColor = () => {
+    return dynamicColors[Math.floor(Math.random() * dynamicColors.length)];
+  };
+
+  const getRandomBorderColor = () => {
     return dynamicColors[Math.floor(Math.random() * dynamicColors.length)];
   };
 
@@ -146,6 +152,13 @@ export function ExternalDisplayWindow() {
         const newMode = event.data.mode || 'basic';
         console.log('[ExternalDisplayWindow] Received DISPLAY_UPDATE message with mode:', newMode);
         setDisplayData(prevData => {
+          let newBorderColor = prevData.borderColor;
+          let newBackgroundColor = prevData.backgroundColor;
+          const questionModes = ['question-with-timer', 'timer-with-question', 'timer', 'question', 'resultsSummary'];
+          if (questionModes.includes(newMode) && prevData.mode !== newMode) {
+            newBorderColor = getRandomBorderColor();
+            newBackgroundColor = getRandomDynamicColor();
+          }
           if ((newMode === 'timer' || newMode === 'correctAnswer' || newMode === 'questionWaiting') && prevData.mode !== newMode) {
             setDynamicBackgroundColor(getRandomDynamicColor());
           }
@@ -172,7 +185,9 @@ export function ExternalDisplayWindow() {
             teamName: (event.data.data && event.data.data.teamName) || event.data.teamName || null,
             data: event.data.data || null,
             totalTime: event.data.totalTime || (event.data.data && event.data.data.totalTime) || prevData.totalTime || 30,
-            textSize: event.data.textSize || prevData.textSize || 'medium'
+            textSize: event.data.textSize || prevData.textSize || 'medium',
+            borderColor: newBorderColor,
+            backgroundColor: newBackgroundColor
           };
         });
       }
@@ -186,6 +201,13 @@ export function ExternalDisplayWindow() {
         const newMode = data.mode || 'basic';
         console.log('[ExternalDisplayWindow] Received IPC external-display/update message with mode:', newMode);
         setDisplayData(prevData => {
+          let newBorderColor = prevData.borderColor;
+          let newBackgroundColor = prevData.backgroundColor;
+          const questionModes = ['question-with-timer', 'timer-with-question', 'timer', 'question', 'resultsSummary'];
+          if (questionModes.includes(newMode) && prevData.mode !== newMode) {
+            newBorderColor = getRandomBorderColor();
+            newBackgroundColor = getRandomDynamicColor();
+          }
           if ((newMode === 'timer' || newMode === 'correctAnswer' || newMode === 'questionWaiting') && prevData.mode !== newMode) {
             setDynamicBackgroundColor(getRandomDynamicColor());
           }
@@ -212,7 +234,9 @@ export function ExternalDisplayWindow() {
             teamName: (data.data && data.data.teamName) || data.teamName || null,
             data: data.data || null,
             totalTime: data.totalTime || (data.data && data.data.totalTime) || prevData.totalTime || 30,
-            textSize: data.textSize || prevData.textSize || 'medium'
+            textSize: data.textSize || prevData.textSize || 'medium',
+            borderColor: newBorderColor,
+            backgroundColor: newBackgroundColor
           };
         });
       });
@@ -442,12 +466,12 @@ export function ExternalDisplayWindow() {
         const hasImage = Boolean(displayData.data?.imageDataUrl);
 
         return (
-          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1f2937', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: displayData.backgroundColor, position: 'relative', overflow: 'hidden' }}>
             {/* Progress bar at top - show only if timer is actively running */}
             {showProgressBar && (
               <div style={{
                 height: '12px',
-                backgroundColor: '#374151',
+                backgroundColor: 'rgba(0, 0, 0, 0.2)',
                 width: '100%',
                 position: 'relative',
                 flexShrink: 0,
@@ -464,19 +488,24 @@ export function ExternalDisplayWindow() {
             )}
 
             {/* Main content area with question on left, image on right (if present) */}
-            <div style={{ flex: 1, display: 'flex', padding: containerPadding, gap: gapSize, alignItems: hasImage ? 'stretch' : 'flex-start', justifyContent: 'flex-start', overflow: 'hidden' }}>
+            <div style={{ flex: 1, display: 'flex', padding: containerPadding, gap: gapSize, alignItems: hasImage ? 'stretch' : 'center', justifyContent: 'center', overflow: 'hidden' }}>
               {/* Question and Options on Left - takes up left portion, shrinks if image present */}
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: hasImage ? 'center' : 'flex-start',
-                flex: displayData.data?.imageDataUrl ? '0 1 50%' : '1',
-                maxWidth: displayData.data?.imageDataUrl ? '50%' : '100%',
+                justifyContent: 'center',
+                flex: displayData.data?.imageDataUrl ? '0 1 50%' : '0 0 auto',
+                maxWidth: displayData.data?.imageDataUrl ? '50%' : '600px',
                 overflow: 'auto',
-                paddingRight: displayData.data?.imageDataUrl ? '0' : gapSize
+                paddingRight: displayData.data?.imageDataUrl ? '0' : gapSize,
+                backgroundColor: 'rgba(31, 41, 55, 0.95)',
+                border: `3px solid ${displayData.borderColor}`,
+                borderRadius: '28px',
+                padding: '16px',
+                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
               }}>
                 {/* Question Header */}
-                <div style={{ marginBottom: isMobileSize ? '20px' : '30px' }}>
+                <div style={{ marginBottom: isMobileSize ? '10px' : '15px' }}>
                   <h1 style={{ fontSize: headerFontSize, fontWeight: 'bold', color: '#f97316', margin: '0 0 15px 0' }}>
                     Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
                   </h1>
@@ -510,16 +539,17 @@ export function ExternalDisplayWindow() {
                       return (
                         <div key={index} style={{
                           backgroundColor: '#374151',
-                          border: '2px solid #f97316',
-                          borderRadius: '8px',
+                          border: `2px solid ${displayData.borderColor}`,
+                          borderRadius: '16px',
                           padding: isMobileSize ? '10px' : '16px',
                           textAlign: 'center',
                           fontSize: optionFontSize,
                           fontWeight: '600',
                           color: 'white',
+                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                           ...(isLastRowIncomplete && isInLastRow && { justifySelf: 'center' })
                         }}>
-                          <div style={{ marginBottom: '8px', fontSize: scaleFontSize(isMobileSize ? '18px' : '28px', textSizeMultiplier), color: '#f97316' }}>{letterMap[index]}</div>
+                          <div style={{ marginBottom: '8px', fontSize: scaleFontSize(isMobileSize ? '18px' : '28px', textSizeMultiplier), color: displayData.borderColor }}>{letterMap[index]}</div>
                           <div>{option}</div>
                         </div>
                       );
@@ -563,7 +593,7 @@ export function ExternalDisplayWindow() {
                 left: 0,
                 right: 0,
                 height: '12px',
-                backgroundColor: '#1f2937',
+                backgroundColor: 'rgba(0, 0, 0, 0.2)',
                 overflow: 'hidden',
                 flexShrink: 0
               }}>
@@ -590,7 +620,7 @@ export function ExternalDisplayWindow() {
         const gapSize = isMobileSize ? '6px' : '12px';
 
         return (
-          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#1f2937', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: displayData.backgroundColor, position: 'relative', overflow: 'hidden' }}>
             {/* Main content area with empty left and image on right */}
             <div style={{ flex: 1, display: 'flex', padding: containerPadding, gap: gapSize, alignItems: 'stretch', justifyContent: 'flex-start', overflow: 'hidden' }}>
               {/* Empty left side (where question text will appear later) */}
@@ -670,8 +700,15 @@ export function ExternalDisplayWindow() {
 
             {/* Content area - centered */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '32px', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                <h1 style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: '#1f2937' }}>
+              <div style={{
+                textAlign: 'center',
+                backgroundColor: 'rgba(31, 41, 55, 0.95)',
+                border: `3px solid ${displayData.borderColor}`,
+                borderRadius: '28px',
+                padding: '40px 60px',
+                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+              }}>
+                <h1 style={{ fontSize: scaleFontSize('72px', textSizeMultiplier), fontWeight: 'bold', color: '#f97316', margin: '0' }}>
                   Question {(displayData.questionInfo && displayData.questionInfo.number) || 1}
                 </h1>
               </div>
@@ -707,31 +744,31 @@ export function ExternalDisplayWindow() {
       case 'question': {
         const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
         return (
-          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center' }}>
-            {/* Question Header */}
-            <div style={{ marginBottom: '40px', textAlign: 'center', width: '100%' }}>
-              <h1 style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
-                Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
-              </h1>
-              {displayData.data?.hidden ? (
-                <div style={{ fontSize: scaleFontSize('120px', textSizeMultiplier), fontWeight: 'bold', color: '#9ca3af' }}>?</div>
-              ) : (
-                <h2 style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2', maxWidth: '90vw' }}>
-                  {displayData.data?.text || 'Loading question...'}
-                </h2>
-              )}
-            </div>
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '10px', backgroundColor: displayData.backgroundColor, alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '1200px', gap: '12px' }}>
+              {/* Question Header */}
+              <div style={{ marginBottom: '20px', textAlign: 'center', width: '100%', backgroundColor: 'rgba(31, 41, 55, 0.95)', border: `3px solid ${displayData.borderColor}`, borderRadius: '28px', padding: '16px', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)' }}>
+                <h1 style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
+                  Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
+                </h1>
+                {displayData.data?.hidden ? (
+                  <div style={{ fontSize: scaleFontSize('120px', textSizeMultiplier), fontWeight: 'bold', color: '#9ca3af' }}>?</div>
+                ) : (
+                  <h2 style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: '600', color: 'white', margin: '0', lineHeight: '1.2', maxWidth: '90vw' }}>
+                    {displayData.data?.text || 'Loading question...'}
+                  </h2>
+                )}
+              </div>
 
-            {/* Options for Multiple Choice and Sequence */}
-            {displayData.data?.options && displayData.data.options.length > 0 && !displayData.data?.hidden && (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: `repeat(${getOptimalGridColumns(displayData.data.options.length)}, 1fr)`,
-                gap: '20px',
-                width: '100%',
-                maxWidth: '1200px',
-                justifyItems: 'center'
-              }}>
+              {/* Options for Multiple Choice and Sequence */}
+              {displayData.data?.options && displayData.data.options.length > 0 && !displayData.data?.hidden && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${getOptimalGridColumns(displayData.data.options.length)}, 1fr)`,
+                  gap: '12px',
+                  width: '100%',
+                  justifyItems: 'center'
+                }}>
                 {displayData.data.options.map((option: string, index: number) => {
                   const letterMap = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
                   const cols = parseInt(getOptimalGridColumns(displayData.data.options.length));
@@ -742,22 +779,24 @@ export function ExternalDisplayWindow() {
                   return (
                     <div key={index} style={{
                       backgroundColor: '#374151',
-                      border: '3px solid #f97316',
-                      borderRadius: '12px',
-                      padding: '20px',
+                      border: `3px solid ${displayData.borderColor}`,
+                      borderRadius: '16px',
+                      padding: '12px',
                       textAlign: 'center',
                       fontSize: scaleFontSize('28px', textSizeMultiplier),
                       fontWeight: '600',
                       color: 'white',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                       ...(isLastRowIncomplete && isInLastRow && { justifySelf: 'center' })
                     }}>
-                      <div style={{ marginBottom: '10px', fontSize: scaleFontSize('36px', textSizeMultiplier), color: '#f97316' }}>{letterMap[index]}</div>
+                      <div style={{ marginBottom: '10px', fontSize: scaleFontSize('36px', textSizeMultiplier), color: displayData.borderColor }}>{letterMap[index]}</div>
                       <div>{option}</div>
                     </div>
                   );
                 })}
               </div>
-            )}
+              )}
+            </div>
           </div>
         );
       }
@@ -765,10 +804,10 @@ export function ExternalDisplayWindow() {
       case 'resultsSummary': {
         const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
         return (
-          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '40px', backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}>
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '10px', backgroundColor: displayData.backgroundColor, alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}>
             {/* Question and Answer at top */}
-            <div style={{ marginBottom: displayData.data?.correctCount !== undefined ? '40px' : '60px', textAlign: 'center', width: '100%' }}>
-              <h1 style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
+            <div style={{ marginBottom: displayData.data?.correctCount !== undefined ? '20px' : '30px', textAlign: 'center', width: '100%', backgroundColor: 'rgba(31, 41, 55, 0.95)', border: `3px solid ${displayData.borderColor}`, borderRadius: '28px', padding: '16px', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)' }}>
+              <h1 style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: displayData.borderColor, margin: '0 0 20px 0' }}>
                 Question {displayData.data?.questionNumber || 1}
               </h1>
               <h2 style={{ fontSize: scaleFontSize('40px', textSizeMultiplier), fontWeight: '600', color: 'white', margin: '0 0 30px 0', lineHeight: '1.3' }}>
@@ -786,14 +825,15 @@ export function ExternalDisplayWindow() {
 
             {/* Results Summary Grid - only show if team answer counts exist */}
             {displayData.data?.correctCount !== undefined && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', width: '100%', maxWidth: '800px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', width: '100%', maxWidth: '800px' }}>
               {/* Correct */}
               <div style={{
                 backgroundColor: '#10b981',
-                borderRadius: '16px',
+                borderRadius: '24px',
                 padding: '30px',
                 textAlign: 'center',
-                border: '4px solid white'
+                border: `4px solid ${displayData.borderColor}`,
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
               }}>
                 <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>Correct</div>
                 <div style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{displayData.data?.correctCount || 0}</div>
@@ -802,10 +842,11 @@ export function ExternalDisplayWindow() {
               {/* Incorrect */}
               <div style={{
                 backgroundColor: '#ef4444',
-                borderRadius: '16px',
+                borderRadius: '24px',
                 padding: '30px',
                 textAlign: 'center',
-                border: '4px solid white'
+                border: `4px solid ${displayData.borderColor}`,
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
               }}>
                 <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>Incorrect</div>
                 <div style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{displayData.data?.incorrectCount || 0}</div>
@@ -814,10 +855,11 @@ export function ExternalDisplayWindow() {
               {/* No Answer */}
               <div style={{
                 backgroundColor: '#6b7280',
-                borderRadius: '16px',
+                borderRadius: '24px',
                 padding: '30px',
                 textAlign: 'center',
-                border: '4px solid white'
+                border: `4px solid ${displayData.borderColor}`,
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
               }}>
                 <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>No Answer</div>
                 <div style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{displayData.data?.noAnswerCount || 0}</div>
@@ -983,6 +1025,200 @@ export function ExternalDisplayWindow() {
               </div>
             </div>
           </div>
+        );
+
+      case 'correctAnswer': {
+        const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
+        const answerData = displayData.correctAnswer;
+
+        // Extract stats from either the answerData.stats object or individual properties
+        const stats = answerData?.stats || {
+          correct: answerData?.correctCount ?? displayData.data?.correctCount ?? 0,
+          wrong: answerData?.incorrectCount ?? displayData.data?.incorrectCount ?? 0,
+          noAnswer: answerData?.noAnswerCount ?? displayData.data?.noAnswerCount ?? 0
+        };
+
+        return (
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '10px', backgroundColor: displayData.backgroundColor, alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}>
+            {/* Answer bubble - centered */}
+            <div style={{ marginBottom: '30px', textAlign: 'center', width: '100%', backgroundColor: 'rgba(31, 41, 55, 0.95)', border: `3px solid ${displayData.borderColor}`, borderRadius: '28px', padding: '20px', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)' }}>
+              <h2 style={{ fontSize: scaleFontSize('36px', textSizeMultiplier), fontWeight: '600', color: 'white', margin: '0 0 20px 0', lineHeight: '1.2' }}>
+                Correct Answer
+              </h2>
+              <div style={{ fontSize: scaleFontSize('42px', textSizeMultiplier), fontWeight: 'bold', color: '#10b981', margin: '0 0 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+                <span style={{ fontSize: scaleFontSize('48px', textSizeMultiplier) }}>✓</span>
+                <span>
+                  {answerData?.answerText
+                    ? `${answerData?.answerLetter || answerData?.answer}: ${answerData?.answerText}`
+                    : answerData?.correctAnswer || answerData?.answer || 'No answer available'}
+                </span>
+              </div>
+            </div>
+
+            {/* Results Summary Grid - show stats only after reveal */}
+            {answerData?.revealed === true && (stats.correct !== undefined || stats.wrong !== undefined || stats.noAnswer !== undefined) && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', width: '100%', maxWidth: '800px' }}>
+                {/* Correct */}
+                <div style={{
+                  backgroundColor: '#10b981',
+                  borderRadius: '24px',
+                  padding: '30px',
+                  textAlign: 'center',
+                  border: `4px solid ${displayData.borderColor}`,
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+                }}>
+                  <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>Correct</div>
+                  <div style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{stats.correct ?? 0}</div>
+                </div>
+
+                {/* Incorrect */}
+                <div style={{
+                  backgroundColor: '#ef4444',
+                  borderRadius: '24px',
+                  padding: '30px',
+                  textAlign: 'center',
+                  border: `4px solid ${displayData.borderColor}`,
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+                }}>
+                  <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>Incorrect</div>
+                  <div style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{stats.wrong ?? 0}</div>
+                </div>
+
+                {/* No Answer */}
+                <div style={{
+                  backgroundColor: '#6b7280',
+                  borderRadius: '24px',
+                  padding: '30px',
+                  textAlign: 'center',
+                  border: `4px solid ${displayData.borderColor}`,
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+                }}>
+                  <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>No Answer</div>
+                  <div style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{stats.noAnswer ?? 0}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Fastest Team info if available */}
+            {answerData?.fastestTeam && (
+              <div style={{ marginTop: '30px', textAlign: 'center', width: '100%', backgroundColor: 'rgba(31, 41, 55, 0.95)', border: `3px solid ${displayData.borderColor}`, borderRadius: '28px', padding: '16px', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)' }}>
+                <h3 style={{ fontSize: scaleFontSize('28px', textSizeMultiplier), fontWeight: '600', color: '#f97316', margin: '0 0 10px 0' }}>⚡ Fastest Team</h3>
+                <div style={{ fontSize: scaleFontSize('32px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{answerData.fastestTeam?.name || answerData.fastestTeam?.team?.name || 'N/A'}</div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      case 'questionWaiting': {
+        const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
+        const questionInfo = displayData.questionInfo || {};
+
+        return (
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: dynamicBackgroundColor, alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+            <div style={{
+              textAlign: 'center',
+              backgroundColor: 'rgba(31, 41, 55, 0.95)',
+              border: `3px solid ${displayData.borderColor}`,
+              borderRadius: '28px',
+              padding: '40px 60px',
+              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+            }}>
+              <h1 style={{ fontSize: scaleFontSize('72px', textSizeMultiplier), fontWeight: 'bold', color: '#f97316', margin: '0' }}>
+                Question {questionInfo.number || 1}
+              </h1>
+            </div>
+          </div>
+        );
+      }
+
+      case 'nearest-wins-question': {
+        const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
+
+        return (
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: displayData.backgroundColor, alignItems: 'center', justifyContent: 'center', padding: '32px' }}>
+            <div style={{ textAlign: 'center', backgroundColor: 'rgba(31, 41, 55, 0.95)', border: `3px solid ${displayData.borderColor}`, borderRadius: '28px', padding: '40px', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)' }}>
+              <h2 style={{ fontSize: scaleFontSize('36px', textSizeMultiplier), fontWeight: '600', color: 'white', margin: '0 0 30px 0' }}>
+                Get as close as you can to...
+              </h2>
+              <div style={{ fontSize: scaleFontSize('120px', textSizeMultiplier), fontWeight: 'bold', color: '#f97316', margin: '0' }}>
+                {displayData.targetNumber !== null && displayData.targetNumber !== undefined ? displayData.targetNumber : '?'}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      case 'nearest-wins-results': {
+        const textSizeMultiplier = getTextSizeMultiplier(displayData.textSize);
+        const resultsData = displayData.results || {};
+
+        return (
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', padding: '10px', backgroundColor: displayData.backgroundColor, alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}>
+            {/* Answer reveal bubble */}
+            <div style={{ marginBottom: '30px', textAlign: 'center', width: '100%', backgroundColor: 'rgba(31, 41, 55, 0.95)', border: `3px solid ${displayData.borderColor}`, borderRadius: '28px', padding: '20px', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)' }}>
+              <h2 style={{ fontSize: scaleFontSize('36px', textSizeMultiplier), fontWeight: '600', color: 'white', margin: '0 0 20px 0', lineHeight: '1.2' }}>
+                The Answer is...
+              </h2>
+              <div style={{ fontSize: scaleFontSize('96px', textSizeMultiplier), fontWeight: 'bold', color: '#10b981', margin: '0' }}>
+                {displayData.answerRevealed && displayData.correctAnswer ? displayData.correctAnswer : '?'}
+              </div>
+            </div>
+
+            {/* Results stats if available */}
+            {resultsData && Object.keys(resultsData).length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', width: '100%', maxWidth: '800px' }}>
+                {/* 1st Place */}
+                <div style={{
+                  backgroundColor: '#f59e0b',
+                  borderRadius: '24px',
+                  padding: '30px',
+                  textAlign: 'center',
+                  border: `4px solid ${displayData.borderColor}`,
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+                }}>
+                  <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>🥇 Closest</div>
+                  <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{resultsData.closest?.name || 'N/A'}</div>
+                </div>
+
+                {/* 2nd Place */}
+                <div style={{
+                  backgroundColor: '#8b8b8b',
+                  borderRadius: '24px',
+                  padding: '30px',
+                  textAlign: 'center',
+                  border: `4px solid ${displayData.borderColor}`,
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+                }}>
+                  <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>🥈 2nd Close</div>
+                  <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{resultsData.secondClosest?.name || 'N/A'}</div>
+                </div>
+
+                {/* 3rd Place */}
+                <div style={{
+                  backgroundColor: '#cd7f32',
+                  borderRadius: '24px',
+                  padding: '30px',
+                  textAlign: 'center',
+                  border: `4px solid ${displayData.borderColor}`,
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+                }}>
+                  <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>🥉 3rd Close</div>
+                  <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{resultsData.thirdClosest?.name || 'N/A'}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      case 'fastTrack':
+        return (
+          <FastestTeamOverlaySimplified
+            teamName={displayData.fastestTeamData?.teamName || 'No Team'}
+            teamPhoto={displayData.fastestTeamData?.teamPhoto || undefined}
+            textSize={displayData.textSize}
+          />
         );
 
       default:
