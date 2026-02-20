@@ -19,7 +19,10 @@ export type HostMessageType =
   | 'DISPLAY_UPDATE'
   | 'LEADERBOARD_UPDATE'
   | 'SLIDESHOW_UPDATE'
-  | 'GO_WIDE';
+  | 'GO_WIDE'
+  | 'CONTROLLER_AUTH_SUCCESS'
+  | 'CONTROLLER_AUTH_FAILED'
+  | 'ADMIN_RESPONSE';
 
 export interface HostMessage {
   type: HostMessageType;
@@ -212,4 +215,31 @@ export interface PlayerBuzzerSelectMessage {
   timestamp?: number;
 }
 
-export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage | PlayerAwayMessage | PlayerActiveMessage | PlayerBuzzerSelectMessage;
+export interface AdminCommandMessage {
+  type: 'ADMIN_COMMAND';
+  playerId: string;
+  deviceId: string;
+  teamName: string;
+  commandType: string; // e.g., 'reveal-answer', 'next-question', 'adjust-score', etc.
+  commandData?: any;
+  timestamp?: number;
+}
+
+export interface ControllerAuthMessage {
+  type: 'CONTROLLER_AUTH_SUCCESS' | 'CONTROLLER_AUTH_FAILED';
+  playerId?: string;
+  deviceId?: string;
+  message?: string;
+  timestamp?: number;
+}
+
+export interface AdminResponseMessage {
+  type: 'ADMIN_RESPONSE';
+  commandType: string;
+  success: boolean;
+  message?: string;
+  data?: any;
+  timestamp?: number;
+}
+
+export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage | PlayerAwayMessage | PlayerActiveMessage | PlayerBuzzerSelectMessage | AdminCommandMessage;

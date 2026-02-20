@@ -29,7 +29,12 @@ export type NetworkMessageType =
   | 'PLAYER_ACTIVE'  // incoming from players when they return to active state
   | 'TEAM_PHOTO_UPDATED'  // incoming from backend when player updates photo
   | 'PLAYER_BUZZER_SELECT'  // incoming from players when they select a buzzer
-  | 'BUZZERS_FOLDER_CHANGED';  // broadcast to players when buzzer folder changes
+  | 'BUZZERS_FOLDER_CHANGED'  // broadcast to players when buzzer folder changes
+  | 'CONTROLLER_AUTH_SUCCESS'  // sent to player when PIN is authenticated
+  | 'CONTROLLER_AUTH_FAILED'   // sent to player when PIN authentication fails
+  | 'ADMIN_COMMAND'  // incoming from controller player
+  | 'ADMIN_RESPONSE'  // sent to controller confirming command execution
+  | 'FLOW_STATE';  // broadcast to controller with current flow state
 
 export interface NetworkPayload {
   type: NetworkMessageType;
@@ -234,6 +239,24 @@ class HostNetwork {
   }
 
   /**
+   * Helper to broadcast current flow state to host controller.
+   * Now includes question data for remote controller preview
+   */
+  public sendFlowState(flow: string, isQuestionMode: boolean, questionData?: any) {
+    this.broadcast({
+      type: 'FLOW_STATE',
+      data: {
+        flow,
+        isQuestionMode,
+        currentQuestion: questionData?.currentQuestion,
+        currentLoadedQuestionIndex: questionData?.currentLoadedQuestionIndex,
+        loadedQuizQuestions: questionData?.loadedQuizQuestions,
+        isQuizPackMode: questionData?.isQuizPackMode,
+      },
+    });
+  }
+
+  /**
    * Register a player from the network.
    */
   public registerNetworkPlayer(playerId: string, teamName: string, deviceId?: string) {
@@ -409,6 +432,261 @@ export function sendBuzzerFolderChangeToPlayers(folderPath: string) {
     }
   } catch (err) {
     console.error('[wsHost] Error calling broadcastBuzzerFolderChange IPC:', err);
+  }
+}
+
+/**
+ * Send current flow state to host controller
+ * This sends the current game flow state so the controller knows what action comes next
+ * Also includes question data for remote controller preview
+ *
+ * IMPORTANT: Uses HTTP API fallback to send to remote controller via WebSocket
+ * not the in-process broadcast which only works for local listeners
+ *
+ * @param flow - Current flow state (e.g., 'question', 'timer', 'reveal')
+ * @param isQuestionMode - Whether in question mode
+ * @param questionData - Optional question data to include
+ * @param deviceId - Target controller device ID
+ * @param backendUrl - Backend URL for HTTP API calls (REQUIRED for proper delivery)
+ */
+export async function sendFlowStateToController(flow: string, isQuestionMode: boolean, questionData?: any, deviceId?: string, backendUrl?: string) {
+  console.log('[wsHost] Sending FLOW_STATE to controller:', { flow, isQuestionMode, hasQuestionData: !!questionData, deviceId, hasBackendUrl: !!backendUrl });
+
+  if (!deviceId) {
+    console.warn('[wsHost] sendFlowStateToController called without deviceId - message will not reach remote controller');
+    return;
+  }
+
+  const payload = {
+    type: 'FLOW_STATE',
+    data: {
+      flow,
+      isQuestionMode,
+      currentQuestion: questionData?.currentQuestion,
+      currentLoadedQuestionIndex: questionData?.currentLoadedQuestionIndex,
+      loadedQuizQuestions: questionData?.loadedQuizQuestions,
+      isQuizPackMode: questionData?.isQuizPackMode,
+    },
+    timestamp: Date.now()
+  };
+
+  // Try IPC method first (Electron)
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.sendToPlayer) {
+      console.log('[wsHost] Attempting to send FLOW_STATE via IPC...');
+      try {
+        await api.network.sendToPlayer({
+          deviceId,
+          message: payload
+        });
+        console.log('[wsHost] ✅ FLOW_STATE sent via IPC');
+        return;
+      } catch (ipcErr) {
+        console.error('[wsHost] IPC sendToPlayer failed for FLOW_STATE:', ipcErr);
+        console.log('[wsHost] Falling back to HTTP API...');
+      }
+    } else {
+      console.log('[wsHost] sendToPlayer IPC not available (browser mode or dev) - using HTTP API');
+    }
+  } catch (err) {
+    console.error('[wsHost] Error attempting IPC send:', err);
+  }
+
+  // Fallback to HTTP API (like sendControllerAuthToPlayer does)
+  try {
+    console.log('[wsHost] 📤 Attempting to send FLOW_STATE via HTTP API...');
+
+    // Use provided backendUrl, otherwise try to get from window
+    let resolvedBackendUrl = backendUrl;
+    if (!resolvedBackendUrl) {
+      resolvedBackendUrl = (window as any).__BACKEND_URL__;
+      if (!resolvedBackendUrl) {
+        console.warn('[wsHost] No backendUrl provided and __BACKEND_URL__ not set - FLOW_STATE may not reach remote controller');
+        return;
+      }
+    }
+
+    console.log('[wsHost] Using backend URL:', resolvedBackendUrl);
+
+    const response = await fetch(`${resolvedBackendUrl}/api/send-to-player`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId,
+        message: payload
+      })
+    });
+
+    if (!response.ok) {
+      console.error('[wsHost] HTTP API error:', response.status, response.statusText);
+      return;
+    }
+
+    const result = await response.json();
+    console.log('[wsHost] ✅ FLOW_STATE sent via HTTP API:', result);
+  } catch (err) {
+    console.error('[wsHost] Error sending FLOW_STATE via HTTP API:', err);
+  }
+}
+
+/**
+ * Send controller authentication success message to a specific player
+ * This is called when a player authenticates with the correct PIN
+ */
+export function sendControllerAuthSuccess(deviceId: string, message?: string) {
+  console.log('[wsHost] Sending CONTROLLER_AUTH_SUCCESS to device:', deviceId);
+
+  // Send via IPC to backend for remote player delivery
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.sendToPlayer) {
+      api.network.sendToPlayer({
+        deviceId,
+        message: {
+          type: 'CONTROLLER_AUTH_SUCCESS',
+          message: message || 'Controller authenticated',
+          timestamp: Date.now()
+        }
+      }).catch((err: any) => {
+        console.error('[wsHost] IPC sendToPlayer error:', err);
+      });
+    } else {
+      console.log('[wsHost] sendToPlayer IPC not available, using fallback broadcast');
+      // Fallback: broadcast to all (less ideal but works)
+      hostNetwork.broadcast({
+        type: 'CONTROLLER_AUTH_SUCCESS',
+        data: { deviceId, message: message || 'Controller authenticated' }
+      });
+    }
+  } catch (err) {
+    console.error('[wsHost] Error sending controller auth success:', err);
+  }
+}
+
+/**
+ * Send controller authentication failure message to a specific player
+ */
+export function sendControllerAuthFailed(deviceId: string, message?: string) {
+  console.log('[wsHost] Sending CONTROLLER_AUTH_FAILED to device:', deviceId);
+
+  // Send via IPC to backend for remote player delivery
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.sendToPlayer) {
+      api.network.sendToPlayer({
+        deviceId,
+        message: {
+          type: 'CONTROLLER_AUTH_FAILED',
+          message: message || 'Controller authentication failed',
+          timestamp: Date.now()
+        }
+      }).catch((err: any) => {
+        console.error('[wsHost] IPC sendToPlayer error:', err);
+      });
+    } else {
+      console.log('[wsHost] sendToPlayer IPC not available, using fallback broadcast');
+      hostNetwork.broadcast({
+        type: 'CONTROLLER_AUTH_FAILED',
+        data: { deviceId, message: message || 'Controller authentication failed' }
+      });
+    }
+  } catch (err) {
+    console.error('[wsHost] Error sending controller auth failed:', err);
+  }
+}
+
+/**
+ * Register a listener for admin commands from controllers
+ * This allows QuizHost to receive and process admin commands from remote controllers
+ */
+export function onAdminCommand(
+  callback: (data: any) => void
+): (() => void) {
+  console.log('[wsHost] Registering admin command listener');
+  return hostNetwork.on('ADMIN_COMMAND' as any, callback);
+}
+
+/**
+ * Send admin response back to the controller
+ * This confirms that the admin command was processed
+ *
+ * @param deviceId - Target controller device ID
+ * @param commandType - Type of command that was executed
+ * @param success - Whether the command succeeded
+ * @param message - Optional message about the command result
+ * @param data - Optional additional data to send back
+ * @param backendUrl - Backend URL for HTTP API calls
+ */
+export function sendAdminResponse(
+  deviceId: string,
+  commandType: string,
+  success: boolean,
+  message?: string,
+  data?: any,
+  backendUrl?: string
+) {
+  console.log('[wsHost] Sending ADMIN_RESPONSE to device:', deviceId, 'command:', commandType, 'hasBackendUrl:', !!backendUrl);
+
+  const payload = {
+    type: 'ADMIN_RESPONSE',
+    commandType,
+    success,
+    message: message || (success ? 'Command executed' : 'Command failed'),
+    data,
+    timestamp: Date.now()
+  };
+
+  // Try IPC method first (Electron)
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.sendToPlayer) {
+      api.network.sendToPlayer({
+        deviceId,
+        message: payload
+      }).catch((err: any) => {
+        console.error('[wsHost] IPC sendToPlayer error:', err);
+        console.log('[wsHost] Falling back to HTTP API for ADMIN_RESPONSE...');
+      });
+      return; // IPC attempted, don't continue to HTTP
+    } else {
+      console.log('[wsHost] sendToPlayer IPC not available, will use HTTP API');
+    }
+  } catch (err) {
+    console.error('[wsHost] Error attempting IPC send:', err);
+  }
+
+  // Fallback to HTTP API
+  try {
+    let resolvedBackendUrl = backendUrl;
+    if (!resolvedBackendUrl) {
+      resolvedBackendUrl = (window as any).__BACKEND_URL__;
+      if (!resolvedBackendUrl) {
+        console.warn('[wsHost] No backendUrl provided and __BACKEND_URL__ not set - ADMIN_RESPONSE may not reach remote controller');
+        return;
+      }
+    }
+
+    console.log('[wsHost] Sending ADMIN_RESPONSE via HTTP API to:', resolvedBackendUrl);
+
+    fetch(`${resolvedBackendUrl}/api/send-to-player`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId,
+        message: payload
+      })
+    }).then(response => {
+      if (!response.ok) {
+        console.error('[wsHost] HTTP API error for ADMIN_RESPONSE:', response.status, response.statusText);
+      } else {
+        console.log('[wsHost] ✅ ADMIN_RESPONSE sent via HTTP API');
+      }
+    }).catch((err: any) => {
+      console.error('[wsHost] Error sending ADMIN_RESPONSE via HTTP API:', err);
+    });
+  } catch (err) {
+    console.error('[wsHost] Error in sendAdminResponse fallback:', err);
   }
 }
 

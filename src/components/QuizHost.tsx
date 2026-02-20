@@ -35,9 +35,10 @@ import { ensureFileUrl } from "../utils/photoUrlConverter";
 import { useSettings } from "../utils/SettingsContext";
 import { useQuizData } from "../utils/QuizDataContext";
 import { useTimer } from "../hooks/useTimer";
+import { useHostInfo } from "../hooks/useHostInfo";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage } from "../state/flowState";
-import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage } from "../network/wsHost";
+import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { playApplauseSound, playFailSound } from "../utils/audioUtils";
 import { calculateTeamPoints, rankCorrectTeams, shouldAutoDisableGoWide, type ScoringConfig } from "../utils/scoringEngine";
@@ -256,6 +257,9 @@ export function QuizHost() {
   // Quiz data context
   const { currentQuiz, setCurrentQuiz } = useQuizData();
 
+  // Host info (backend URL for API calls)
+  const { hostInfo } = useHostInfo();
+
   // Current round scores (for temporary modifications during a round)
   const [currentRoundPoints, setCurrentRoundPoints] = useState<number | null>(null);
   const [currentRoundSpeedBonus, setCurrentRoundSpeedBonus] = useState<number | null>(null);
@@ -296,6 +300,7 @@ export function QuizHost() {
   const [showHostControllerCode, setShowHostControllerCode] = useState(false);
   const [hostControllerCode, setHostControllerCode] = useState<string>("");
   const [hostControllerEnabled, setHostControllerEnabled] = useState(false);
+  const [authenticatedControllerId, setAuthenticatedControllerId] = useState<string | null>(null); // Tracks the device ID of the authenticated controller
 
   const [showDisplaySettings, setShowDisplaySettings] = useState(false);
   const [slideshowSpeed, setSlideshowSpeed] = useState(5); // seconds
@@ -377,6 +382,80 @@ export function QuizHost() {
       }
     } catch (err) {
       console.error('[QuizHost] Error broadcasting picture:', err);
+    }
+  };
+
+  // Helper function to send controller authentication message to specific player
+  const sendControllerAuthToPlayer = async (deviceId: string, success: boolean, message?: string) => {
+    const authMessage = message || (success ? 'Controller authenticated' : 'Controller authentication failed');
+    console.log('[QuizHost] sendControllerAuthToPlayer called:', { deviceId, success, authMessage });
+
+    try {
+      if ((window as any).api?.network?.sendToPlayer) {
+        console.log('[QuizHost] 📤 Sending controller auth message to player via IPC:', { deviceId, success });
+        try {
+          const result = await (window as any).api.network.sendToPlayer({
+            deviceId,
+            message: {
+              type: success ? 'CONTROLLER_AUTH_SUCCESS' : 'CONTROLLER_AUTH_FAILED',
+              message: authMessage,
+              timestamp: Date.now()
+            }
+          });
+          console.log('[QuizHost] ✅ IPC send successful:', result);
+          return;
+        } catch (ipcErr) {
+          console.error('[QuizHost] ❌ IPC send failed:', ipcErr);
+          console.log('[QuizHost] Falling back to HTTP API...');
+        }
+      } else {
+        console.warn('[QuizHost] ℹ️  api.network.sendToPlayer not available (expected in browser mode) - using HTTP API fallback');
+      }
+
+      // Try HTTP API fallback
+      console.log('[QuizHost] 📤 Attempting to send via HTTP API...');
+      const backendUrl = hostInfo?.baseUrl || `${window.location.protocol}//${window.location.hostname}:4310`;
+      console.log('[QuizHost] Using backend URL:', backendUrl);
+
+      const requestPayload = {
+        deviceId,
+        messageType: success ? 'CONTROLLER_AUTH_SUCCESS' : 'CONTROLLER_AUTH_FAILED',
+        data: {
+          message: authMessage
+        }
+      };
+
+      console.log('[QuizHost] HTTP Request payload:', JSON.stringify(requestPayload, null, 2));
+
+      const response = await fetch(`${backendUrl}/api/send-to-player`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[QuizHost] ❌ HTTP API error:', response.status, errorText);
+        console.log('[QuizHost] Falling back to broadcast...');
+      } else {
+        const result = await response.json();
+        console.log('[QuizHost] ✅ Controller auth sent via HTTP API:', result);
+        return;
+      }
+    } catch (err) {
+      console.error('[QuizHost] ❌ Error in HTTP API send:', err);
+    }
+
+    // Fallback to local broadcast as last resort
+    console.warn('[QuizHost] 📤 Falling back to local broadcast');
+    try {
+      broadcastMessage({
+        type: success ? 'CONTROLLER_AUTH_SUCCESS' : 'CONTROLLER_AUTH_FAILED',
+        data: { deviceId, message: authMessage }
+      });
+      console.log('[QuizHost] ✅ Broadcast fallback sent');
+    } catch (broadcastErr) {
+      console.error('[QuizHost] ❌ Broadcast fallback failed:', broadcastErr);
     }
   };
 
@@ -609,6 +688,35 @@ export function QuizHost() {
       }
     }, 2000); // 2 second debounce on team changes
   }, [quizzes, currentRoundPoints, defaultPoints, currentRoundSpeedBonus, defaultSpeedBonus, evilModeEnabled, punishmentEnabled, staggeredEnabled, goWideEnabled]);
+
+  // Ref to keep latest debouncedSaveGameState function available in admin command handler
+  const debouncedSaveGameStateRef = useRef(debouncedSaveGameState);
+
+  // Update ref whenever debouncedSaveGameState changes (has its own deps)
+  useEffect(() => {
+    debouncedSaveGameStateRef.current = debouncedSaveGameState;
+  }, [debouncedSaveGameState]);
+
+  // Refs for admin listener dependencies - prevents infinite listener re-registration
+  // These values are needed inside the admin command handler, but storing them in refs
+  // allows us to register the listener ONCE on mount (empty deps array) instead of
+  // re-registering every time a dependency changes
+  const adminListenerDepsRef = useRef({
+    authenticatedControllerId,
+    hostControllerEnabled,
+    hostControllerCode,
+    baseUrl: hostInfo?.baseUrl,
+  });
+
+  // Update the refs whenever dependencies change, but DON'T trigger listener re-registration
+  useEffect(() => {
+    adminListenerDepsRef.current = {
+      authenticatedControllerId,
+      hostControllerEnabled,
+      hostControllerCode,
+      baseUrl: hostInfo?.baseUrl,
+    };
+  }, [authenticatedControllerId, hostControllerEnabled, hostControllerCode, hostInfo?.baseUrl]);
 
   // Auto-load on component mount
   useEffect(() => {
@@ -2770,6 +2878,51 @@ export function QuizHost() {
         console.log('[QuizHost] - teamPhoto length:', data.teamPhoto.length);
       }
 
+      // PIN VALIDATION: Check if this player is trying to authenticate as host controller
+      console.log('[QuizHost] 🔐 PIN Validation Status:');
+      console.log('[QuizHost] - hostControllerEnabled:', hostControllerEnabled, `(type: ${typeof hostControllerEnabled})`);
+      console.log('[QuizHost] - hostControllerCode:', hostControllerCode, `(type: ${typeof hostControllerCode}, length: ${hostControllerCode?.length})`);
+      console.log('[QuizHost] - teamName:', teamName, `(type: ${typeof teamName}, length: ${teamName?.length})`);
+      console.log('[QuizHost] - PIN Match (teamName === hostControllerCode):', teamName === hostControllerCode);
+
+      // Detailed comparison for debugging
+      if (teamName !== hostControllerCode && hostControllerCode) {
+        console.log('[QuizHost] - Character-by-character comparison:');
+        console.log('[QuizHost]   - teamName chars:', teamName.split('').map((c, i) => `${i}:"${c}(${c.charCodeAt(0)})`).join(', '));
+        console.log('[QuizHost]   - code chars:', hostControllerCode.split('').map((c, i) => `${i}:"${c}(${c.charCodeAt(0)})`).join(', '));
+      }
+
+      if (hostControllerEnabled && hostControllerCode && teamName === hostControllerCode) {
+        console.log('[QuizHost] 🔐 ✅ Controller authentication attempt detected!');
+        console.log('[QuizHost] - PIN match: team name matches controller code');
+        console.log('[QuizHost] - Setting as authenticated controller for deviceId:', deviceId);
+
+        // Send authentication success message to the player
+        console.log('[QuizHost] 📤 Sending CONTROLLER_AUTH_SUCCESS to device:', deviceId);
+        sendControllerAuthToPlayer(deviceId, true, 'Host controller PIN accepted');
+
+        // Set the authenticated controller ID
+        setAuthenticatedControllerId(deviceId);
+
+        // Send initial flow state to the controller via IPC
+        console.log('[QuizHost] 📤 Sending initial flow state to controller:', { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode, deviceId });
+        sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
+          currentQuestion,
+          currentLoadedQuestionIndex,
+          loadedQuizQuestions,
+          isQuizPackMode,
+        }, deviceId, hostInfo?.baseUrl);
+
+        // Do not add controller to quizzes list - they are not a regular team
+        console.log('[QuizHost] ✨ Controller authenticated, will not add to regular teams list');
+        return;
+      } else {
+        console.log('[QuizHost] ⚠️ Controller authentication failed - conditions not met:');
+        if (!hostControllerEnabled) console.log('[QuizHost]   - hostControllerEnabled is false');
+        if (!hostControllerCode) console.log('[QuizHost]   - hostControllerCode is empty');
+        if (teamName !== hostControllerCode) console.log('[QuizHost]   - teamName does not match hostControllerCode');
+      }
+
       // Check if team with this deviceId already exists (reconnection case)
       const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
 
@@ -2843,7 +2996,7 @@ export function QuizHost() {
 
     // Clean up listener on unmount
     return unsubscribe;
-  }, []); // Empty dependency array - register once on mount
+  }, [hostControllerEnabled, hostControllerCode, flowState, setAuthenticatedControllerId, handleApproveTeam, debouncedSaveGameState]); // Re-register when these values change
 
   // Listen for network player disconnections
   useEffect(() => {
@@ -2859,6 +3012,12 @@ export function QuizHost() {
       console.log('[QuizHost] 📨 Received PLAYER_DISCONNECT from backend:');
       console.log('[QuizHost] - deviceId:', deviceId);
       console.log('[QuizHost] - playerId:', playerId);
+
+      // Check if this was the authenticated controller and clear it
+      if (deviceId === authenticatedControllerId) {
+        console.log('[QuizHost] 🔓 Authenticated controller disconnected, clearing controller status');
+        setAuthenticatedControllerId(null);
+      }
 
       // Check if team with this deviceId exists
       const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
@@ -2883,7 +3042,7 @@ export function QuizHost() {
 
     // Clean up listener on unmount
     return unsubscribe;
-  }, []); // Empty dependency array - register once on mount
+  }, [authenticatedControllerId]); // Include authenticatedControllerId in dependency array
 
   // Listen for player away state (tab switch, window blur, etc)
   useEffect(() => {
@@ -2966,6 +3125,394 @@ export function QuizHost() {
     // Clean up listener on unmount
     return unsubscribe;
   }, []); // Empty dependency array - register once on mount
+
+  // Listen for admin commands from host controller
+  // CRITICAL: This effect registers the listener ONCE on mount with empty deps array.
+  // It uses refs (adminListenerDepsRef) to access current dependency values inside the handler,
+  // instead of including dependencies in the effect deps array.
+  // This prevents infinite listener re-registration when dependencies change.
+  // The refs are updated by a separate useEffect whenever dependencies change.
+  useEffect(() => {
+    console.log('[QuizHost] 🔌 Registering admin command listener (ONCE on mount)');
+
+    const handleAdminCommand = (data: any) => {
+      const { deviceId, playerId, commandType, commandData } = data;
+      const deps = adminListenerDepsRef.current;
+
+      console.log('[QuizHost] 🎮 Admin command received:');
+      console.log('[QuizHost] - deviceId:', deviceId);
+      console.log('[QuizHost] - commandType:', commandType);
+      console.log('[QuizHost] - commandData:', commandData);
+
+      // SECURITY: Verify that this command is from the authenticated controller
+      if (deviceId !== deps.authenticatedControllerId) {
+        console.warn('[QuizHost] ⚠️  SECURITY: Admin command from non-authenticated device:', deviceId);
+        console.warn('[QuizHost] ⚠️  Expected controller:', deps.authenticatedControllerId);
+        sendAdminResponse(deviceId, commandType, false, 'Not authenticated as controller', undefined, deps.baseUrl);
+        return;
+      }
+
+      // SECURITY: Verify commandType is a valid string
+      if (typeof commandType !== 'string' || !commandType.trim()) {
+        console.warn('[QuizHost] ⚠️  SECURITY: Invalid commandType received:', commandType);
+        sendAdminResponse(deviceId, commandType, false, 'Invalid command type', undefined, deps.baseUrl);
+        return;
+      }
+
+      try {
+        let success = false;
+        let responseData: any = null;
+
+        // Route to appropriate handler based on command type
+        switch (commandType) {
+          // Universal question controls
+          case 'send-question':
+            console.log('[QuizHost] Executing: Send Question');
+            // Call the primary action handler which manages game flow progression
+            handlePrimaryAction();
+            success = true;
+            break;
+
+          case 'next-question':
+            console.log('[QuizHost] Executing: Next Question');
+            // Trigger next question - this will depend on current game mode
+            // For now, we'll just broadcast the NEXT message
+            sendNextQuestion();
+            success = true;
+            break;
+
+          case 'reveal-answer':
+            console.log('[QuizHost] Executing: Reveal Answer');
+            // Trigger reveal answer
+            handleRevealAnswer();
+            success = true;
+            break;
+
+          case 'show-fastest':
+            console.log('[QuizHost] Executing: Show Fastest Team');
+            // Trigger showing fastest team - call primary action to progress game state
+            handlePrimaryAction();
+            success = true;
+            break;
+
+          case 'skip-question':
+            console.log('[QuizHost] Executing: Skip Question');
+            sendNextQuestion(); // Skip by going to next
+            success = true;
+            break;
+
+          case 'end-round':
+            console.log('[QuizHost] Executing: End Round');
+            sendEndRound();
+            success = true;
+            break;
+
+          // Timer controls
+          case 'start-silent-timer':
+            console.log('[QuizHost] Executing: Start Silent Timer');
+            // SECURITY: Validate timer duration
+            let silentDuration = commandData?.seconds;
+            if (typeof silentDuration !== 'number' || !Number.isFinite(silentDuration)) {
+              silentDuration = 30; // Use default
+              console.warn('[QuizHost] ⚠️  SECURITY: Invalid timer duration for silent timer, using default 30s');
+            }
+            // SECURITY: Clamp timer duration to reasonable bounds (1 second to 10 minutes)
+            silentDuration = Math.max(1, Math.min(600, Math.floor(silentDuration)));
+            console.log('[QuizHost] Validated timer duration:', silentDuration);
+            sendTimerToPlayers(silentDuration, true);
+            success = true;
+            break;
+
+          case 'start-normal-timer':
+            console.log('[QuizHost] Executing: Start Normal Timer');
+            // SECURITY: Validate timer duration
+            let normalDuration = commandData?.seconds;
+            if (typeof normalDuration !== 'number' || !Number.isFinite(normalDuration)) {
+              normalDuration = flowState.totalTime || 30; // Use current flow state time or default
+              console.warn('[QuizHost] ⚠️  SECURITY: Invalid timer duration for normal timer, using', normalDuration);
+            }
+            // SECURITY: Clamp timer duration to reasonable bounds (1 second to 10 minutes)
+            normalDuration = Math.max(1, Math.min(600, Math.floor(normalDuration)));
+            console.log('[QuizHost] Validated timer duration:', normalDuration);
+            // Call handleNavBarStartTimer to properly start the timer with game flow progression
+            handleNavBarStartTimer();
+            success = true;
+            break;
+
+          case 'stop-timer':
+            console.log('[QuizHost] Executing: Stop Timer');
+            sendTimeUpToPlayers();
+            success = true;
+            break;
+
+          case 'pause-timer':
+            console.log('[QuizHost] Executing: Pause Timer');
+            // Would need timer pause functionality
+            success = true;
+            break;
+
+          case 'resume-timer':
+            console.log('[QuizHost] Executing: Resume Timer');
+            // Would need timer resume functionality
+            success = true;
+            break;
+
+          // Team management
+          case 'edit-team-name':
+            console.log('[QuizHost] Executing: Edit Team Name');
+            if (commandData?.teamId && commandData?.newName) {
+              // SECURITY: Validate team name
+              let newName = String(commandData.newName).trim();
+
+              // SECURITY: Enforce name length limits (1-50 characters)
+              if (!newName || newName.length === 0 || newName.length > 50) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Invalid team name length:', newName.length);
+                success = false;
+                break;
+              }
+
+              // SECURITY: Verify team exists before modifying
+              const targetTeam = quizzesRef.current.find(q => q.id === commandData.teamId);
+              if (!targetTeam) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Attempted team name edit on non-existent team:', commandData.teamId);
+                success = false;
+                break;
+              }
+
+              // SECURITY: Prevent changing to the controller PIN (would cause confusion)
+              if (deps.hostControllerEnabled && newName === deps.hostControllerCode) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Attempted to rename team to controller PIN');
+                success = false;
+                break;
+              }
+
+              console.log('[QuizHost] Validated team name change - old:', targetTeam.name, 'new:', newName);
+              setQuizzes(prev => prev.map(quiz =>
+                quiz.id === commandData.teamId
+                  ? { ...quiz, name: newName }
+                  : quiz
+              ));
+              success = true;
+            } else {
+              console.warn('[QuizHost] ⚠️  SECURITY: Missing required fields for team name edit');
+              success = false;
+            }
+            break;
+
+          case 'adjust-score':
+            console.log('[QuizHost] Executing: Adjust Score');
+            if (commandData?.teamId && commandData?.points !== undefined) {
+              // SECURITY: Validate points is a number
+              let points = commandData.points;
+              if (typeof points !== 'number' || !Number.isFinite(points)) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Invalid points value, rejecting command');
+                success = false;
+                break;
+              }
+              // SECURITY: Clamp points to reasonable bounds (prevent huge additions/subtractions)
+              // Max adjustment per command: ±1000 points
+              points = Math.max(-1000, Math.min(1000, Math.floor(points)));
+
+              // SECURITY: Verify team exists before modifying
+              const targetTeam = quizzesRef.current.find(q => q.id === commandData.teamId);
+              if (!targetTeam) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Attempted score adjustment on non-existent team:', commandData.teamId);
+                success = false;
+                break;
+              }
+
+              console.log('[QuizHost] Validated score adjustment - points:', points, 'team:', targetTeam.name);
+              setQuizzes(prev => prev.map(quiz =>
+                quiz.id === commandData.teamId
+                  ? { ...quiz, score: Math.max(0, (quiz.score || 0) + points) }
+                  : quiz
+              ));
+              success = true;
+              debouncedSaveGameStateRef.current?.();
+            } else {
+              console.warn('[QuizHost] ⚠️  SECURITY: Missing required fields for score adjustment');
+              success = false;
+            }
+            break;
+
+          case 'approve-photo':
+          case 'APPROVE_TEAM_PHOTO':
+            console.log('[QuizHost] Executing: Approve Photo');
+            if (commandData?.teamId || commandData?.deviceId) {
+              const targetTeamId = commandData?.teamId || commandData?.deviceId;
+              const targetTeam = quizzesRef.current.find(q => q.id === targetTeamId);
+              if (!targetTeam) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Attempted photo approval on non-existent team:', targetTeamId);
+                success = false;
+                break;
+              }
+              console.log('[QuizHost] Approving photo for team:', targetTeam.name);
+              // Call handleApproveTeam to actually approve the team photo
+              handleApproveTeam(targetTeamId, targetTeam.name);
+              success = true;
+            } else {
+              console.warn('[QuizHost] ⚠️  SECURITY: Missing teamId/deviceId for approve-photo command');
+              success = false;
+            }
+            break;
+
+          case 'decline-photo':
+          case 'DECLINE_TEAM_PHOTO':
+            console.log('[QuizHost] Executing: Decline Photo');
+            if (commandData?.teamId || commandData?.deviceId) {
+              const targetTeamId = commandData?.teamId || commandData?.deviceId;
+              const targetTeam = quizzesRef.current.find(q => q.id === targetTeamId);
+              if (!targetTeam) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Attempted photo decline on non-existent team:', targetTeamId);
+                success = false;
+                break;
+              }
+              console.log('[QuizHost] Declining photo for team:', targetTeam.name);
+              // Call handleDeclineTeam to decline the photo
+              handleDeclineTeam(targetTeamId);
+              success = true;
+            } else {
+              console.warn('[QuizHost] ⚠️  SECURITY: Missing teamId/deviceId for decline-photo command');
+              success = false;
+            }
+            break;
+
+          case 'remove-team':
+          case 'REMOVE_TEAM':
+            console.log('[QuizHost] Executing: Remove Team');
+            if (commandData?.teamId) {
+              // SECURITY: Verify team exists before removing
+              const teamToRemove = quizzesRef.current.find(q => q.id === commandData.teamId);
+              if (!teamToRemove) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Attempted removal of non-existent team:', commandData.teamId);
+                success = false;
+                break;
+              }
+
+              console.log('[QuizHost] Removing team:', teamToRemove.name);
+              setQuizzes(prev => prev.filter(quiz => quiz.id !== commandData.teamId));
+              success = true;
+              debouncedSaveGameStateRef.current?.();
+            } else {
+              console.warn('[QuizHost] ⚠️  SECURITY: Missing teamId for remove-team command');
+              success = false;
+            }
+            break;
+
+          case 'UPDATE_TEAM_NAME':
+            console.log('[QuizHost] Executing: Update Team Name');
+            if (commandData?.teamId && commandData?.newTeamName) {
+              // SECURITY: Validate team name
+              let newName = String(commandData.newTeamName).trim();
+
+              // SECURITY: Enforce name length limits (1-50 characters)
+              if (!newName || newName.length === 0 || newName.length > 50) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Invalid team name length:', newName.length);
+                success = false;
+                break;
+              }
+
+              // SECURITY: Verify team exists before modifying
+              const targetTeam = quizzesRef.current.find(q => q.id === commandData.teamId);
+              if (!targetTeam) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Attempted team name edit on non-existent team:', commandData.teamId);
+                success = false;
+                break;
+              }
+
+              console.log('[QuizHost] Updated team name - old:', targetTeam.name, 'new:', newName);
+              setQuizzes(prev => prev.map(quiz =>
+                quiz.id === commandData.teamId
+                  ? { ...quiz, name: newName }
+                  : quiz
+              ));
+              debouncedSaveGameStateRef.current?.();
+              success = true;
+            } else {
+              console.warn('[QuizHost] ⚠️  SECURITY: Missing required fields for UPDATE_TEAM_NAME');
+              success = false;
+            }
+            break;
+
+          case 'ADJUST_TEAM_SCORE':
+            console.log('[QuizHost] Executing: Adjust Team Score');
+            if (commandData?.teamId && commandData?.points !== undefined) {
+              // SECURITY: Validate points is a number
+              let points = commandData.points;
+              if (typeof points !== 'number' || !Number.isFinite(points)) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Invalid points value, rejecting command');
+                success = false;
+                break;
+              }
+              // SECURITY: Clamp points to reasonable bounds (prevent huge additions/subtractions)
+              // Max adjustment per command: ±1000 points
+              points = Math.max(-1000, Math.min(1000, Math.floor(points)));
+
+              // SECURITY: Verify team exists before modifying
+              const targetTeam = quizzesRef.current.find(q => q.id === commandData.teamId);
+              if (!targetTeam) {
+                console.warn('[QuizHost] ⚠️  SECURITY: Attempted score adjustment on non-existent team:', commandData.teamId);
+                success = false;
+                break;
+              }
+
+              console.log('[QuizHost] Adjusted team score - team:', targetTeam.name, 'points:', points);
+              setQuizzes(prev => prev.map(quiz =>
+                quiz.id === commandData.teamId
+                  ? { ...quiz, score: Math.max(0, (quiz.score || 0) + points) }
+                  : quiz
+              ));
+              debouncedSaveGameStateRef.current?.();
+              success = true;
+            } else {
+              console.warn('[QuizHost] ⚠️  SECURITY: Missing required fields for ADJUST_TEAM_SCORE');
+              success = false;
+            }
+            break;
+
+          // Quiz pack navigation commands
+          case 'previous-question':
+            console.log('[QuizHost] Executing: Previous Question');
+            if (isQuizPackMode) {
+              handleQuizPackPrevious();
+              success = true;
+            } else {
+              console.warn('[QuizHost] ⚠️  Previous question only available in quiz pack mode');
+              success = false;
+            }
+            break;
+
+          case 'next-question-nav':
+            console.log('[QuizHost] Executing: Next Question (Navigation)');
+            if (isQuizPackMode) {
+              handleQuizPackNext();
+              success = true;
+            } else {
+              console.warn('[QuizHost] ⚠️  Next question navigation only available in quiz pack mode');
+              success = false;
+            }
+            break;
+
+          default:
+            console.warn('[QuizHost] Unknown admin command:', commandType);
+            break;
+        }
+
+        // Send response back to controller
+        console.log('[QuizHost] Sending admin response:', { commandType, success });
+        sendAdminResponse(deviceId, commandType, success, success ? 'Command executed' : 'Command failed', responseData, deps.baseUrl);
+      } catch (err) {
+        console.error('[QuizHost] Error handling admin command:', err);
+        sendAdminResponse(deviceId, commandType, false, `Error: ${err instanceof Error ? err.message : 'Unknown error'}`, undefined, deps.baseUrl);
+      }
+    };
+
+    // Register listener and get unsubscribe function
+    const unsubscribe = onAdminCommand(handleAdminCommand);
+
+    // Clean up listener on unmount
+    return unsubscribe;
+  }, []); // EMPTY DEPENDENCY ARRAY - listener registers ONCE on mount, never re-registers
 
   // Listen for team photo updates
   useEffect(() => {
@@ -3111,6 +3658,19 @@ export function QuizHost() {
     // Clean up listener on unmount
     return unsubscribe;
   }, [teamPhotosAutoApprove, handleApproveTeam]); // Re-register when settings or handler changes
+
+  // Send flow state to host controller whenever it changes
+  useEffect(() => {
+    if (hostControllerEnabled && authenticatedControllerId) {
+      console.log('[QuizHost] Broadcasting flow state to controller:', { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode, deviceId: authenticatedControllerId });
+      sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
+        currentQuestion,
+        currentLoadedQuestionIndex,
+        loadedQuizQuestions,
+        isQuizPackMode,
+      }, authenticatedControllerId, hostInfo?.baseUrl);
+    }
+  }, [flowState.flow, flowState.isQuestionMode, hostControllerEnabled, authenticatedControllerId, currentQuestion, currentLoadedQuestionIndex, loadedQuizQuestions, isQuizPackMode, hostInfo?.baseUrl]);
 
   // Listen for player answers via IPC polling
   useEffect(() => {
@@ -3744,6 +4304,14 @@ export function QuizHost() {
   const handleSettingsOpen = () => {
     setShowSettings(true);
   };
+
+  // Clear authenticated controller when host controller is disabled
+  useEffect(() => {
+    if (!hostControllerEnabled && authenticatedControllerId) {
+      console.log('[QuizHost] Host controller disabled, clearing authenticated controller');
+      setAuthenticatedControllerId(null);
+    }
+  }, [hostControllerEnabled]);
 
   // Re-broadcast scores to players when quizzes change and display mode is 'scores'
   useEffect(() => {
@@ -5161,6 +5729,8 @@ export function QuizHost() {
             onEndRound={handleEndRound}
             onOpenBuzzersManagement={handleOpenBuzzersManagement}
             hostControllerEnabled={hostControllerEnabled}
+            hostControllerCode={hostControllerCode}
+            hostControllerAuthenticated={authenticatedControllerId !== null}
             onToggleHostController={handleToggleHostController}
             // Bottom navigation popup states
             bottomNavPopupStates={bottomNavPopupStates}

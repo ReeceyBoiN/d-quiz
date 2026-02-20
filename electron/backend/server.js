@@ -126,6 +126,43 @@ async function startBackend({ port = 4310 } = {}) {
     res.json({ hasNetwork: false });
   });
 
+  // Endpoint to send message to specific player via HTTP request from host
+  // This is used as a fallback when running in web mode (no IPC available)
+  app.post('/api/send-to-player', (req, res) => {
+    try {
+      const { deviceId, messageType, data } = req.body;
+
+      if (!deviceId || !messageType) {
+        return res.status(400).json({ ok: false, error: 'Missing deviceId or messageType' });
+      }
+
+      const player = networkPlayers.get(deviceId.trim());
+      if (!player || !player.ws) {
+        log.warn(`[/api/send-to-player] Player not found or WebSocket not ready: ${deviceId}`);
+        return res.status(404).json({ ok: false, error: 'Player not found' });
+      }
+
+      const message = JSON.stringify({
+        type: messageType,
+        data: data || {},
+        timestamp: Date.now()
+      });
+
+      player.ws.send(message, (err) => {
+        if (err) {
+          log.error(`[send-to-player] Error sending to ${deviceId}:`, err.message);
+          res.status(500).json({ ok: false, error: err.message });
+        } else {
+          log.info(`[send-to-player] Message sent to ${deviceId}`);
+          res.json({ ok: true });
+        }
+      });
+    } catch (err) {
+      log.error('[send-to-player] Error:', err.message);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   app.use((req, res) => {
     const indexPath = path.join(playerAppPath, 'index.html');
     if (!fs.existsSync(indexPath)) {
@@ -584,7 +621,8 @@ async function startBackend({ port = 4310 } = {}) {
                 teamPhoto: null, // Will be set when photo save completes
                 teamPhotoHash: initialPhotoHash, // Track photo hash to detect changes on reconnection
                 buzzerSound: buzzerSound, // Store buzzer if provided (fix for initial buzzer race condition)
-                lastPongAt: createdAt // Phase 2: Track heartbeat timestamp on join
+                lastPongAt: createdAt, // Phase 2: Track heartbeat timestamp on join
+                score: 0 // Initialize score to 0 for new teams
               };
               log.info(`[WS-${connectionId}] [NEW_JOIN] Created player entry with lastPongAt=${createdAt} for device ${deviceId}`);
 
@@ -1179,6 +1217,100 @@ async function startBackend({ port = 4310 } = {}) {
             log.error(`[WS-${connectionId}] ❌ Error processing PLAYER_BUZZER_SELECT:`, buzzerSelectErr.message);
             if (buzzerSelectErr.stack) {
               log.error(`[WS-${connectionId}] PLAYER_BUZZER_SELECT error stack:`, buzzerSelectErr.stack);
+            }
+          }
+        } else if (data.type === 'ADMIN_COMMAND') {
+          // Handle admin commands from host controllers
+          try {
+            const adminDeviceId = ((data.deviceId || deviceId) || '').trim();
+            const commandType = data.commandType || '';
+
+            console.log(`[ADMIN_COMMAND] Received from device: ${adminDeviceId}, command: ${commandType}`);
+            log.info(`[WS-${connectionId}] 🎮 Admin command received: ${commandType} from device ${adminDeviceId}`);
+
+            // SECURITY: Validate that command type is a valid string
+            if (typeof commandType !== 'string' || !commandType.trim()) {
+              console.warn(`[ADMIN_COMMAND] ⚠️  Invalid commandType: ${commandType}`);
+              log.warn(`[WS-${connectionId}] ⚠️  Invalid commandType received: ${commandType}`);
+              return;
+            }
+
+            // Handle special controller commands that don't need to be broadcast to all clients
+            if (commandType === 'GET_CONNECTED_TEAMS') {
+              console.log('[ADMIN_COMMAND] Processing GET_CONNECTED_TEAMS request');
+              log.info(`[WS-${connectionId}] Processing GET_CONNECTED_TEAMS request from controller`);
+
+              // Collect all connected players/teams (excluding the controller device)
+              const teams = Array.from(networkPlayers.entries())
+                .filter(([key, player]) => key !== adminDeviceId) // Exclude the controller itself
+                .map(([key, player]) => ({
+                  id: key, // Use deviceId as the team ID
+                  deviceId: key,
+                  teamName: player.teamName,
+                  status: player.status,
+                  score: player.score || 0, // Include score, default to 0 if not set
+                  photoApprovedAt: player.photoApprovedAt,
+                  timestamp: player.timestamp,
+                  hasPhoto: !!player.teamPhoto
+                }));
+
+              console.log(`[ADMIN_COMMAND] Returning ${teams.length} connected teams to controller`);
+              log.info(`[WS-${connectionId}] Sending ${teams.length} connected teams to controller`);
+
+              // Send the list back to the controller directly
+              try {
+                ws.send(JSON.stringify({
+                  type: 'ADMIN_RESPONSE',
+                  commandType: 'GET_CONNECTED_TEAMS',
+                  success: true,
+                  data: { teams },
+                  timestamp: Date.now()
+                }));
+                console.log('[ADMIN_COMMAND] ✅ Sent team list to controller');
+              } catch (sendErr) {
+                log.error(`[WS-${connectionId}] ❌ Failed to send team list to controller:`, sendErr.message);
+              }
+              return; // Don't broadcast this response to all clients
+            }
+
+            try {
+              // Broadcast ADMIN_COMMAND to all other clients (the host)
+              const adminClients = Array.from(wss.clients).filter(c => c.readyState === 1 && c !== ws);
+              log.info(`[WS-${connectionId}] Broadcasting ADMIN_COMMAND to ${adminClients.length} clients`);
+
+              const adminMessage = JSON.stringify({
+                type: 'ADMIN_COMMAND',
+                playerId: data.playerId,
+                deviceId: adminDeviceId,
+                teamName: data.teamName,
+                commandType: commandType,
+                commandData: data.commandData,
+                timestamp: Date.now()
+              });
+
+              adminClients.forEach((client, idx) => {
+                try {
+                  log.info(`[WS-${connectionId}] Sending ADMIN_COMMAND to client ${idx + 1}/${adminClients.length}`);
+                  client.send(adminMessage);
+                  log.info(`[WS-${connectionId}] Successfully sent ADMIN_COMMAND to client ${idx + 1}/${adminClients.length}`);
+                } catch (sendErr) {
+                  log.error(`[WS-${connectionId}] ❌ Failed to broadcast ADMIN_COMMAND to client ${idx}:`, sendErr.message);
+                }
+              });
+
+              if (adminClients.length === 0) {
+                log.warn(`[WS-${connectionId}] ⚠️  No other clients connected to receive ADMIN_COMMAND message!`);
+              }
+            } catch (broadcastErr) {
+              log.error(`[WS-${connectionId}] ❌ Error broadcasting ADMIN_COMMAND:`, broadcastErr.message);
+              if (broadcastErr.stack) {
+                log.error(`[WS-${connectionId}] Broadcast error stack:`, broadcastErr.stack);
+              }
+            }
+          } catch (adminCommandErr) {
+            log.error(`[WS-${connectionId}] ❌ Error processing ADMIN_COMMAND:`, adminCommandErr.message);
+            if (adminCommandErr.stack) {
+              log.error(`[WS-${connectionId}] ADMIN_COMMAND error stack:`, adminCommandErr.stack);
             }
           }
         } else {

@@ -7,7 +7,8 @@ export type PlayerMessageType =
   | 'PLAYER_ANSWER'    // Player submits answer
   | 'PLAYER_BUZZ'      // Player buzzes in
   | 'PLAYER_BUZZER_SELECT'  // Player selects a buzzer audio file
-  | 'PLAYER_DISCONNECT';
+  | 'PLAYER_DISCONNECT'
+  | 'ADMIN_COMMAND';   // Controller sends admin command to host
 
 export type HostMessageType =
   | 'PICTURE'
@@ -22,7 +23,10 @@ export type HostMessageType =
   | 'NEXT'
   | 'END_ROUND'
   | 'PLAYER_REGISTERED'  // Host confirms player registration
-  | 'PLAYER_LIST';        // Send list of current players
+  | 'PLAYER_LIST'        // Send list of current players
+  | 'CONTROLLER_AUTH_SUCCESS'  // Host confirms PIN authentication
+  | 'CONTROLLER_AUTH_FAILED'   // Host denies PIN authentication
+  | 'ADMIN_RESPONSE';          // Host responds to admin command
 
 export interface PlayerMessage {
   type: PlayerMessageType;

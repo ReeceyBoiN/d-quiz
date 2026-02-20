@@ -17,7 +17,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   ?(Is this still a bug)?change teams layout button on bottom navigation bar changes the size of the navigation bar when toggled. - Visually the boxes and placement and if text changes it shouldnt change location of boxes buttons and interface, unless its font size, that should increase everything all round really.
 
-  host controller button on bottom navigation bar should go green if the host has connected with that 4 diget code as their team name, that code is dynamic and private and lets the host connect and control the software from a mobile device whilst so they can start timers submit questions etc from a player web portal device if they have that 4 diget code as a team name
+  --host controller button on bottom navigation bar should go green if the host has connected with that 4 diget code as their team name, that code is dynamic and private and lets the host connect and control the software from a mobile device whilst so they can start timers submit questions etc from a player web portal device if they have that 4 diget code as a team name
 
   Instructions graphics need making, how to play, how to connect, how to answer, how to edit team name, add a team pic, letters questions etc etc
 

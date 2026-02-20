@@ -6,6 +6,7 @@ import { WaitingScreen } from './components/WaitingScreen';
 import { PlayerDisplayManager } from './components/PlayerDisplayManager';
 import { SettingsBar } from './components/SettingsBar';
 import { FastestTeamOverlay } from './components/FastestTeamOverlay';
+import { HostTerminal } from './components/HostTerminal';
 import { NetworkContext } from './context/NetworkContext';
 import { useNetworkConnection } from './hooks/useNetworkConnection';
 import { usePlayerSettings } from './hooks/usePlayerSettings';
@@ -41,7 +42,7 @@ interface PendingMessage {
 }
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'buzzer-selection' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display'>('team-entry');
+  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'buzzer-selection' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display' | 'host-terminal'>('team-entry');
   const [selectedBuzzers, setSelectedBuzzers] = useState<Record<string, string>>({}); // deviceId -> buzzerSound mapping (other players)
   const [confirmedBuzzer, setConfirmedBuzzer] = useState<string | null>(null); // Current player's confirmed buzzer
   const [teamName, setTeamName] = useState('');
@@ -69,6 +70,16 @@ export default function App() {
   const [submittedAnswer, setSubmittedAnswer] = useState<any>(null);
   const [timerEnded, setTimerEnded] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
+  const [isHostController, setIsHostController] = useState(false); // Track if player is authenticated as host controller
+  const [controllerAuthError, setControllerAuthError] = useState<string | null>(null); // Track controller auth failures
+  const [flowState, setFlowState] = useState<{
+    flow: string;
+    isQuestionMode: boolean;
+    currentQuestion?: any;
+    currentLoadedQuestionIndex?: number;
+    loadedQuizQuestions?: any[];
+    isQuizPackMode?: boolean;
+  } | null>(null); // Track flow state for host controller
 
   const wsRef = useRef<WebSocket | null>(null);
   const displayModeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -254,6 +265,50 @@ export default function App() {
     }
 
     switch (message.type) {
+      case 'CONTROLLER_AUTH_SUCCESS':
+        try {
+          console.log('[Player] 🔐🔐🔐 CONTROLLER_AUTH_SUCCESS HANDLER ENTERED 🔐🔐🔐');
+          console.log('[Player] Host controller PIN authenticated successfully!');
+          console.log('[Player] Transitioning to host terminal screen...');
+
+          // Set controller authentication status
+          setIsHostController(true);
+          setControllerAuthError(null);
+
+          // Clear any cached team data
+          localStorage.removeItem('popquiz_last_team_name');
+
+          // Transition to host terminal screen
+          setCurrentScreen('host-terminal');
+
+          console.log('[Player] ✅ Host controller authenticated and host terminal screen active');
+        } catch (err) {
+          console.error('[Player] ❌ Error in CONTROLLER_AUTH_SUCCESS handler:', err);
+          setControllerAuthError('Failed to authenticate as host controller');
+        }
+        break;
+
+      case 'CONTROLLER_AUTH_FAILED':
+        try {
+          console.log('[Player] ❌ CONTROLLER_AUTH_FAILED HANDLER ENTERED');
+          console.log('[Player] Host controller PIN authentication failed!');
+          const errorMsg = message.data?.message || 'Host controller PIN authentication failed';
+          console.log('[Player] Error message:', errorMsg);
+
+          // Set error state
+          setIsHostController(false);
+          setControllerAuthError(errorMsg);
+
+          // Show error and reset to team entry
+          setCurrentScreen('team-entry');
+          setTeamName('');
+
+          console.log('[Player] Reset to team entry screen after auth failure');
+        } catch (err) {
+          console.error('[Player] ❌ Error in CONTROLLER_AUTH_FAILED handler:', err);
+        }
+        break;
+
       case 'TEAM_APPROVED':
         try {
           console.log('[Player] 🎉🎉🎉 TEAM_APPROVED HANDLER ENTERED 🎉🎉🎉');
@@ -803,6 +858,31 @@ export default function App() {
       case 'SCORE_UPDATE':
         console.log('[Player] SCORE_UPDATE message received:', message.data);
         // Score updates are handled on display side, just log here
+        break;
+
+      case 'FLOW_STATE':
+        try {
+          console.log('[Player] FLOW_STATE message received:', message.data);
+          if (message.data?.flow !== undefined && message.data?.isQuestionMode !== undefined) {
+            setFlowState({
+              flow: message.data.flow,
+              isQuestionMode: message.data.isQuestionMode,
+              currentQuestion: message.data?.currentQuestion,
+              currentLoadedQuestionIndex: message.data?.currentLoadedQuestionIndex,
+              loadedQuizQuestions: message.data?.loadedQuizQuestions,
+              isQuizPackMode: message.data?.isQuizPackMode,
+            });
+            console.log('[Player] Updated flow state with question data:', {
+              flow: message.data.flow,
+              isQuestionMode: message.data.isQuestionMode,
+              hasCurrentQuestion: !!message.data?.currentQuestion,
+              loadedQuestionsCount: message.data?.loadedQuizQuestions?.length,
+              isQuizPackMode: message.data?.isQuizPackMode,
+            });
+          }
+        } catch (err) {
+          console.error('[Player] Error handling FLOW_STATE:', err);
+        }
         break;
     }
   }, [teamName, currentQuestion, currentScreen, submittedAnswer, displayMode, clearTimerLockDelay, pendingApprovalData, shouldIgnoreScreenTransition, isApproved, updateBuzzerSound]);
@@ -1370,6 +1450,16 @@ export default function App() {
             </div>
           )}
 
+          {isConnected && currentScreen === 'host-terminal' && (
+            <HostTerminal
+              deviceId={deviceId}
+              playerId={playerId}
+              teamName={teamName}
+              wsRef={wsRef}
+              flowState={flowState}
+            />
+          )}
+
           {isConnected && currentScreen === 'display' && (
             <PlayerDisplayManager
               mode={displayMode}
@@ -1410,8 +1500,8 @@ export default function App() {
           )}
         </div>
 
-        {/* Settings bar always visible when connected */}
-        {isConnected && currentScreen !== 'team-entry' && (
+        {/* Settings bar always visible when connected (except in host terminal) */}
+        {isConnected && currentScreen !== 'team-entry' && currentScreen !== 'host-terminal' && (
           <SettingsBar />
         )}
       </div>

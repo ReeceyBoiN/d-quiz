@@ -42,6 +42,8 @@ interface StatusBarProps {
   teamLayoutMode?: 'default' | 'alphabetical' | 'random';
   onChangeTeamLayout?: () => void;
   hostControllerEnabled?: boolean;
+  hostControllerCode?: string;
+  hostControllerAuthenticated?: boolean;
   onToggleHostController?: () => void;
   teams?: Array<{ id: string; name: string; scrambled?: boolean; }>;
   currentRoundPoints?: number | null;
@@ -473,6 +475,8 @@ export function StatusBar({
   teamLayoutMode = 'default',
   onChangeTeamLayout,
   hostControllerEnabled = false,
+  hostControllerCode = '',
+  hostControllerAuthenticated = false,
   onToggleHostController,
   teams = [],
   currentRoundPoints,
@@ -1256,15 +1260,30 @@ export function StatusBar({
           {/* Host Controller */}
           <button
             className={`px-3 flex items-center gap-1.5 transition-colors ${
-              hostControllerEnabled
+              hostControllerEnabled && hostControllerAuthenticated
                 ? 'bg-green-500 text-white hover:bg-green-600'
+                : hostControllerEnabled
+                ? 'bg-yellow-500 text-white hover:bg-yellow-600'
                 : 'hover:bg-accent'
             }`}
             onClick={() => onToggleHostController?.()}
-            title={hostControllerEnabled ? "Host Controller is active - click to disable" : "Enable Host Controller"}
+            title={
+              hostControllerEnabled && hostControllerAuthenticated
+                ? `Host Controller authenticated (PIN: ${hostControllerCode}) - Click to disable`
+                : hostControllerEnabled
+                ? `Host Controller active - PIN: ${hostControllerCode} (waiting for connection)`
+                : "Enable Host Controller"
+            }
           >
             <Gamepad2 className="h-4 w-4" />
-            <span className="text-sm text-center">{hostControllerEnabled ? 'Controller Active' : 'Host Controller'}</span>
+            <span className="text-sm text-center">
+              {hostControllerEnabled && hostControllerAuthenticated
+                ? `✓ Controller (${hostControllerCode})`
+                : hostControllerEnabled
+                ? `⏳ PIN: ${hostControllerCode}`
+                : 'Host Controller'
+              }
+            </span>
           </button>
 
         </div>

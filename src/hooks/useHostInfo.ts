@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 
 interface HostInfo {
   baseUrl: string; // e.g., "http://192.168.1.117:4310"
@@ -106,5 +106,8 @@ export function useHostInfo() {
     fetchHostInfo();
   }, []);
 
-  return { hostInfo, isLoading, error };
+  // CRITICAL: Memoize the return object to ensure object identity stays stable
+  // This prevents admin listener effect from re-running on every render
+  // even when hostInfo, isLoading, and error values haven't changed
+  return useMemo(() => ({ hostInfo, isLoading, error }), [hostInfo, isLoading, error]);
 }
