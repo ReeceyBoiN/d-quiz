@@ -706,6 +706,13 @@ export default function App() {
             break;
           }
 
+          // Skip display transitions for authenticated host controllers
+          // Host controllers must always remain on the terminal interface to maintain control
+          if (isHostController) {
+            console.log('[Player] 🔐 Skipping DISPLAY_MODE transition - authenticated host controller must stay on terminal interface');
+            break;
+          }
+
           // Clear answer feedback when switching display modes
           setShowAnswerFeedback(false);
           setIsAnswerCorrect(undefined);

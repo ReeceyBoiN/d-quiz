@@ -339,50 +339,52 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
         )}
       </div>
 
-      {/* Timer Controls Section */}
-      <div className="mb-6">
-        <button
-          onClick={() => toggleSection('timer')}
-          className="w-full flex items-center justify-between p-3 bg-slate-700 rounded-lg border border-slate-600 hover:border-slate-500 transition-colors"
-        >
-          <span className="font-bold text-white">⏱️ Timer Controls</span>
-          <span className="text-slate-400">{expandedSection === 'timer' ? '▼' : '▶'}</span>
-        </button>
+      {/* Timer Controls Section - Only visible when question has been sent */}
+      {flowState?.flow === 'sent-question' && (
+        <div className="mb-6">
+          <button
+            onClick={() => toggleSection('timer')}
+            className="w-full flex items-center justify-between p-3 bg-slate-700 rounded-lg border border-slate-600 hover:border-slate-500 transition-colors"
+          >
+            <span className="font-bold text-white">⏱️ Timer Controls</span>
+            <span className="text-slate-400">{expandedSection === 'timer' ? '▼' : '▶'}</span>
+          </button>
 
-        {expandedSection === 'timer' && (
-          <div className="mt-3 space-y-3">
-            <div>
-              <label className="block text-slate-300 text-sm mb-2">Timer Duration (seconds):</label>
-              <input
-                type="number"
-                value={timerDuration}
-                onChange={(e) => setTimerDuration(Math.max(1, parseInt(e.target.value) || 30))}
-                className="w-full px-3 py-2 bg-slate-600 text-white rounded border border-slate-500 focus:border-slate-400"
-                min="1"
-                max="300"
-              />
+          {expandedSection === 'timer' && (
+            <div className="mt-3 space-y-3">
+              <div>
+                <label className="block text-slate-300 text-sm mb-2">Timer Duration (seconds):</label>
+                <input
+                  type="number"
+                  value={timerDuration}
+                  onChange={(e) => setTimerDuration(Math.max(1, parseInt(e.target.value) || 30))}
+                  className="w-full px-3 py-2 bg-slate-600 text-white rounded border border-slate-500 focus:border-slate-400"
+                  min="1"
+                  max="300"
+                />
+              </div>
+              <button
+                onClick={handleStartSilentTimer}
+                className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded transition-colors"
+              >
+                🔇 Start Silent Timer
+              </button>
+              <button
+                onClick={handleStartNormalTimer}
+                className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded transition-colors"
+              >
+                🔊 Start Normal Timer
+              </button>
+              <button
+                onClick={handleStopTimer}
+                className="w-full px-4 py-3 bg-slate-600 hover:bg-slate-700 text-white font-semibold rounded transition-colors"
+              >
+                ⏹️ Stop Timer
+              </button>
             </div>
-            <button
-              onClick={handleStartSilentTimer}
-              className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded transition-colors"
-            >
-              🔇 Start Silent Timer
-            </button>
-            <button
-              onClick={handleStartNormalTimer}
-              className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded transition-colors"
-            >
-              🔊 Start Normal Timer
-            </button>
-            <button
-              onClick={handleStopTimer}
-              className="w-full px-4 py-3 bg-slate-600 hover:bg-slate-700 text-white font-semibold rounded transition-colors"
-            >
-              ⏹️ Stop Timer
-            </button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

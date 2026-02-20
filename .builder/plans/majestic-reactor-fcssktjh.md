@@ -1,53 +1,87 @@
 # Host Remote Controller Override: Display Mode Fix
 
 ## Problem
-When a host remote controller (authenticated with PIN) connects and receives DISPLAY_MODE messages, the app switches from the host terminal control interface to the basic player display, covering up the remote controls. This prevents the host from controlling the quiz while players see the display.
+When a host remote controller (authenticated with PIN) connects, it successfully shows the host terminal interface. However, when DISPLAY_MODE messages are broadcast to show content to players (basic, slideshow, scores), the host remote gets replaced by the basic player display, covering up the control interface. This prevents the host from controlling the quiz while players view content.
 
 ### Current Behavior
-1. Controller authenticates successfully → `isHostController = true` → Renders `HostTerminal` component
-2. DISPLAY_MODE message arrives → Unconditionally sets `currentScreen = 'display'`
-3. Result: HostTerminal gets replaced by BasicPlayerDisplay, host loses control interface
+1. Controller authenticates with PIN → `CONTROLLER_AUTH_SUCCESS` received → Sets `isHostController = true` → Renders `HostTerminal`
+2. Host broadcasts DISPLAY_MODE message → All clients (including authenticated controller) transition to player display
+3. Result: HostTerminal gets hidden, replaced by BasicPlayerDisplay, host loses all controls
 
 ### Root Cause
-In `src-player/src/App.tsx`, the DISPLAY_MODE message handler does not check if the client is an authenticated controller. It applies the display mode change to all clients equally (only exceptions are buzzer selection deferral and active game screens).
+In `src-player/src/App.tsx`, the DISPLAY_MODE message handler applies display transitions uniformly to all connected clients. It only checks for:
+- Buzzer selection screen (defers the change)
+- Active game screen (ignores the change)
 
-## Solution: Protect Host Terminal from Display Mode Changes
+There is **no check for authenticated host controllers**, so they receive the same display transition as regular players.
+
+## Solution: Protect Host Terminal from Display Mode Broadcasts
 
 ### Approach
-Add a conditional check in the DISPLAY_MODE handler to skip screen transitions when `isHostController === true`. The authenticated controller should:
-- Remain on the host terminal interface at all times
-- Still update display mode state if needed for backend sync
-- Not be affected by DISPLAY_MODE broadcasts meant for audience players
+When a client is authenticated as a host controller (`isHostController === true`), it should:
+1. **Remain on the host terminal interface at all times** (never switch to display screens)
+2. Not respond to DISPLAY_MODE/DISPLAY_UPDATE broadcasts
+3. Continue to function as command center while players see quiz content
 
-### Implementation Steps
+### Implementation
 
 #### 1. Modify DISPLAY_MODE Handler in `src-player/src/App.tsx`
-- Locate the DISPLAY_MODE/DISPLAY_UPDATE case handler (around where `shouldIgnoreScreenTransition` check occurs)
-- After existing checks (buzzer selection, active game), add: **if host controller, skip currentScreen transition**
-- Keep the displayMode state update and data population (slideshow images, scores) for potential backend sync needs
-- Only skip the `setCurrentScreen('display')` call
 
-#### 2. Test Coverage
-- Verify host terminal remains visible when:
-  - Basic display mode is broadcasted to players
-  - Slideshow mode is activated
-  - Scores display is shown
-  - Question is displayed to players (controllers should not be affected anyway due to existing game screen protection)
-- Verify host can still interact with all controls (leaderboard, teams, game controls, settings) while displays change on players
-- Verify regular players still receive and respond to display mode changes normally
+**Location**: Find the DISPLAY_MODE/DISPLAY_UPDATE case handler in the main message switch statement
 
-### Key Files to Modify
-- **`src-player/src/App.tsx`**: Add `isHostController` check in DISPLAY_MODE handler before `setCurrentScreen('display')` call
+**Change**: Add host controller protection before screen transition
 
-### Additional Considerations
-- **Why keep displayMode state update?** In case backend needs to know current display mode for any future features
-- **Why not send separate messages?** This is client-side only change - simpler, no backend coordination needed
-- **Why not a flag in the message?** Not needed for this use case - controllers should simply never receive display transitions
-- **Game screen protection still applies?** Yes - controllers won't see questions anyway due to existing `isInGameScreen` check
+```
+Current logic:
+- Check shouldIgnoreScreenTransition (buzzer selection)
+- Check isInGameScreen (active question)
+- Set displayMode state
+- Set currentScreen('display')
 
-## Rationale
-This is the minimal, most effective solution that:
-- Keeps host control interface always visible
-- Doesn't require backend changes
-- Aligns with quiz hosting pattern (host sees controls, audience sees content)
-- Preserves all existing protections (buzzer selection, game screens)
+New logic:
+- Check shouldIgnoreScreenTransition (buzzer selection)
+- Check isInGameScreen (active question)
+- Check isHostController ← NEW: Skip screen transition if authenticated controller
+- Set displayMode state
+- Set currentScreen('display')
+```
+
+**Rationale**: 
+- Host controllers should never leave the terminal interface
+- They need constant access to controls (leaderboard, teams, game controls, settings)
+- Players see the displays while host maintains control visibility
+
+#### 2. Implementation Detail
+
+In the DISPLAY_MODE handler (before `setCurrentScreen('display')` call), add:
+
+```javascript
+// Skip display transitions for authenticated host controllers
+if (isHostController) {
+  return;
+}
+```
+
+This prevents the screen transition while allowing the state update if needed for backend sync.
+
+### Files to Modify
+- **`src-player/src/App.tsx`** (1 change location): Add `isHostController` check in DISPLAY_MODE/DISPLAY_UPDATE handler
+
+### Why This Works
+1. **Minimal change**: Only touches the message handler, no UI component restructuring needed
+2. **No backend coordination**: Pure client-side fix - controller behavior changes locally
+3. **Preserves all existing logic**: Game screen protection, buzzer selection deferral all still work
+4. **Clean separation**: Host controls = host terminal always visible; Players = see display content
+5. **Matches quiz hosting pattern**: Standard practice for quiz/game apps (host sees admin interface, audience sees content)
+
+### Testing Validation
+- Host connects with PIN → Sees host terminal ✓
+- Host sees leaderboard with 0 teams ✓
+- Basic display mode sent to players → Host still sees terminal ✓
+- Slideshow mode sent to players → Host still sees terminal ✓
+- Scores display sent to players → Host still sees terminal ✓
+- Questions displayed to players → Host still sees terminal (already protected by game screen check) ✓
+- Host can click all controls while players see displays ✓
+
+## Expected Outcome
+Host remote will maintain the control interface while quiz content displays normally on player devices. The host controller will be permanently anchored to the terminal view, acting as a true remote control center.
