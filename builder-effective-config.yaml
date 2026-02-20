@@ -18,8 +18,4 @@ win:
         - x64
   icon: build/icon.ico
   artifactName: PopQuiz.exe
-  certificateFile: ${env.WIN_CSC_KEY}
-  certificatePassword: <stripped sensitive data>
-  signingHashAlgorithms:
-    - sha256
 electronVersion: 38.7.2

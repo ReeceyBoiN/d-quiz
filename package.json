@@ -114,12 +114,7 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "PopQuiz.exe",
-      "certificateFile": "${env.WIN_CSC_KEY}",
-      "certificatePassword": "${env.WIN_CSC_KEY_PASSWORD}",
-      "signingHashAlgorithms": [
-        "sha256"
-      ]
+      "artifactName": "PopQuiz.exe"
     }
   },
   "description": "This is a code bundle for Quiz 5 - Reece - Ready. The original project is available at https://www.figma.com/design/ZLJookmFmhZlO3WJIT8zDx/Quiz-5---Reece---Ready.",
