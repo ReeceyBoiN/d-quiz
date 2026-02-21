@@ -17,9 +17,15 @@ export function QuestionPreviewPanel({
   totalQuestions,
   isQuizPackMode,
 }: QuestionPreviewPanelProps) {
-  // Don't show preview if no question or not in quiz pack mode
-  if (!currentQuestion || !isQuizPackMode) {
-    return null;
+  // Show preview if question data is available (in any mode)
+  if (!currentQuestion) {
+    return (
+      <div className="mb-6 p-4 bg-slate-700 rounded-lg border border-slate-600">
+        <div className="text-center text-slate-400 text-sm font-medium py-4">
+          No Round Loaded
+        </div>
+      </div>
+    );
   }
 
   const options = currentQuestion.options || [];
@@ -30,10 +36,10 @@ export function QuestionPreviewPanel({
       {/* Question Header */}
       <div className="mb-4">
         <p className="text-slate-400 text-xs font-semibold uppercase mb-2">
-          Question Preview - {currentQuestionIndex + 1} of {totalQuestions}
+          Question Preview {isQuizPackMode && totalQuestions > 0 ? `- ${currentQuestionIndex + 1} of ${totalQuestions}` : ''}
         </p>
         <h3 className="text-white font-semibold text-sm leading-relaxed">
-          {currentQuestion.q || currentQuestion.question || 'No question text'}
+          {currentQuestion.q || currentQuestion.question || currentQuestion.text || 'No question text'}
         </h3>
       </div>
 

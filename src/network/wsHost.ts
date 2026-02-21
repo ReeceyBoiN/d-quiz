@@ -450,10 +450,16 @@ export function sendBuzzerFolderChangeToPlayers(folderPath: string) {
  * @param backendUrl - Backend URL for HTTP API calls (REQUIRED for proper delivery)
  */
 export async function sendFlowStateToController(flow: string, isQuestionMode: boolean, questionData?: any, deviceId?: string, backendUrl?: string) {
-  console.log('[wsHost] Sending FLOW_STATE to controller:', { flow, isQuestionMode, hasQuestionData: !!questionData, deviceId, hasBackendUrl: !!backendUrl });
+  console.log('[wsHost] 🚀 sendFlowStateToController called', {
+    flow,
+    isQuestionMode,
+    deviceId,
+    hasQuestionData: !!questionData,
+    backendUrl,
+  });
 
   if (!deviceId) {
-    console.warn('[wsHost] sendFlowStateToController called without deviceId - message will not reach remote controller');
+    console.warn('[wsHost] ❌ NO DEVICE ID - cannot send FLOW_STATE');
     return;
   }
 
@@ -470,27 +476,45 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
     timestamp: Date.now()
   };
 
+  console.log('[wsHost] 📦 FLOW_STATE payload ready', {
+    flow: payload.data.flow,
+    isQuestionMode: payload.data.isQuestionMode,
+    targetDeviceId: deviceId,
+    payloadSize: JSON.stringify(payload).length,
+  });
+
   // Try IPC method first (Electron)
   try {
     const api = (window as any)?.api;
     if (api?.network?.sendToPlayer) {
-      console.log('[wsHost] Attempting to send FLOW_STATE via IPC...');
+      console.log('[wsHost] 📤 Attempting to send FLOW_STATE via IPC...');
       try {
-        await api.network.sendToPlayer({
+        // Use correct IPC format: {deviceId, messageType, data}
+        // Exclude loadedQuizQuestions from data to keep payload small
+        const ipcPayload = {
           deviceId,
-          message: payload
-        });
-        console.log('[wsHost] ✅ FLOW_STATE sent via IPC');
+          messageType: 'FLOW_STATE',
+          data: {
+            flow: payload.data.flow,
+            isQuestionMode: payload.data.isQuestionMode,
+            currentQuestion: payload.data.currentQuestion,
+            currentLoadedQuestionIndex: payload.data.currentLoadedQuestionIndex,
+            isQuizPackMode: payload.data.isQuizPackMode,
+            // NOTE: loadedQuizQuestions intentionally excluded to keep IPC payload small
+          }
+        };
+        await api.network.sendToPlayer(ipcPayload);
+        console.log('[wsHost] ✅ FLOW_STATE sent via IPC successfully');
         return;
       } catch (ipcErr) {
-        console.error('[wsHost] IPC sendToPlayer failed for FLOW_STATE:', ipcErr);
+        console.error('[wsHost] ❌ IPC sendToPlayer failed for FLOW_STATE:', ipcErr);
         console.log('[wsHost] Falling back to HTTP API...');
       }
     } else {
-      console.log('[wsHost] sendToPlayer IPC not available (browser mode or dev) - using HTTP API');
+      console.log('[wsHost] ℹ️ sendToPlayer IPC not available (browser mode or dev) - using HTTP API');
     }
   } catch (err) {
-    console.error('[wsHost] Error attempting IPC send:', err);
+    console.error('[wsHost] ❌ Error attempting IPC send:', err);
   }
 
   // Fallback to HTTP API (like sendControllerAuthToPlayer does)
@@ -502,31 +526,49 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
     if (!resolvedBackendUrl) {
       resolvedBackendUrl = (window as any).__BACKEND_URL__;
       if (!resolvedBackendUrl) {
-        console.warn('[wsHost] No backendUrl provided and __BACKEND_URL__ not set - FLOW_STATE may not reach remote controller');
+        console.warn('[wsHost] ❌ No backendUrl provided and __BACKEND_URL__ not set - FLOW_STATE may not reach remote controller');
         return;
       }
     }
 
     console.log('[wsHost] Using backend URL:', resolvedBackendUrl);
 
+    // Format payload correctly for backend endpoint: {deviceId, messageType, data}
+    // IMPORTANT: Exclude loadedQuizQuestions to avoid 413 Payload Too Large error
+    const httpPayload = {
+      deviceId,
+      messageType: 'FLOW_STATE',
+      data: {
+        flow: payload.data.flow,
+        isQuestionMode: payload.data.isQuestionMode,
+        currentQuestion: payload.data.currentQuestion,
+        currentLoadedQuestionIndex: payload.data.currentLoadedQuestionIndex,
+        isQuizPackMode: payload.data.isQuizPackMode,
+        // NOTE: loadedQuizQuestions is intentionally excluded - it's too large for HTTP API
+      }
+    };
+
     const response = await fetch(`${resolvedBackendUrl}/api/send-to-player`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        deviceId,
-        message: payload
-      })
+      body: JSON.stringify(httpPayload)
     });
 
     if (!response.ok) {
-      console.error('[wsHost] HTTP API error:', response.status, response.statusText);
+      console.error('[wsHost] ❌ HTTP API error:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('[wsHost] Error response body:', errorText);
       return;
     }
 
     const result = await response.json();
-    console.log('[wsHost] ✅ FLOW_STATE sent via HTTP API:', result);
+    console.log('[wsHost] ✅ FLOW_STATE sent via HTTP API successfully:', {
+      flow: result.flow,
+      deviceId: result.deviceId,
+      timestamp: result.timestamp,
+    });
   } catch (err) {
-    console.error('[wsHost] Error sending FLOW_STATE via HTTP API:', err);
+    console.error('[wsHost] ❌ Error sending FLOW_STATE via HTTP API:', err);
   }
 }
 
@@ -543,10 +585,9 @@ export function sendControllerAuthSuccess(deviceId: string, message?: string) {
     if (api?.network?.sendToPlayer) {
       api.network.sendToPlayer({
         deviceId,
-        message: {
-          type: 'CONTROLLER_AUTH_SUCCESS',
-          message: message || 'Controller authenticated',
-          timestamp: Date.now()
+        messageType: 'CONTROLLER_AUTH_SUCCESS',
+        data: {
+          message: message || 'Controller authenticated'
         }
       }).catch((err: any) => {
         console.error('[wsHost] IPC sendToPlayer error:', err);
@@ -576,10 +617,9 @@ export function sendControllerAuthFailed(deviceId: string, message?: string) {
     if (api?.network?.sendToPlayer) {
       api.network.sendToPlayer({
         deviceId,
-        message: {
-          type: 'CONTROLLER_AUTH_FAILED',
-          message: message || 'Controller authentication failed',
-          timestamp: Date.now()
+        messageType: 'CONTROLLER_AUTH_FAILED',
+        data: {
+          message: message || 'Controller authentication failed'
         }
       }).catch((err: any) => {
         console.error('[wsHost] IPC sendToPlayer error:', err);
@@ -643,7 +683,8 @@ export function sendAdminResponse(
     if (api?.network?.sendToPlayer) {
       api.network.sendToPlayer({
         deviceId,
-        message: payload
+        messageType: 'ADMIN_RESPONSE',
+        data: payload
       }).catch((err: any) => {
         console.error('[wsHost] IPC sendToPlayer error:', err);
         console.log('[wsHost] Falling back to HTTP API for ADMIN_RESPONSE...');
@@ -669,13 +710,17 @@ export function sendAdminResponse(
 
     console.log('[wsHost] Sending ADMIN_RESPONSE via HTTP API to:', resolvedBackendUrl);
 
+    // Format payload correctly for backend endpoint: {deviceId, messageType, data}
+    const httpPayload = {
+      deviceId,
+      messageType: 'ADMIN_RESPONSE',
+      data: payload
+    };
+
     fetch(`${resolvedBackendUrl}/api/send-to-player`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        deviceId,
-        message: payload
-      })
+      body: JSON.stringify(httpPayload)
     }).then(response => {
       if (!response.ok) {
         console.error('[wsHost] HTTP API error for ADMIN_RESPONSE:', response.status, response.statusText);

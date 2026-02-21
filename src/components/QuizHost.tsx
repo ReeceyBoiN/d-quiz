@@ -396,10 +396,9 @@ export function QuizHost() {
         try {
           const result = await (window as any).api.network.sendToPlayer({
             deviceId,
-            message: {
-              type: success ? 'CONTROLLER_AUTH_SUCCESS' : 'CONTROLLER_AUTH_FAILED',
-              message: authMessage,
-              timestamp: Date.now()
+            messageType: success ? 'CONTROLLER_AUTH_SUCCESS' : 'CONTROLLER_AUTH_FAILED',
+            data: {
+              message: authMessage
             }
           });
           console.log('[QuizHost] ✅ IPC send successful:', result);
@@ -487,6 +486,10 @@ export function QuizHost() {
   });
 
   const timerIsMountedRef = useRef(true);
+
+  // Monitoring refs for debugging loadedQuizQuestions clearing
+  const prevQuestionsLengthRef = useRef(0);
+  const quizLoadEffectRunCountRef = useRef(0);
 
   // Timer hook for countdown
   const timer = useTimer({
@@ -822,7 +825,21 @@ export function QuizHost() {
 
   // Handle loaded quiz - auto-open Keypad interface for both regular and quiz pack modes
   useEffect(() => {
+    quizLoadEffectRunCountRef.current += 1;
+    console.log('[QuizHost] 📌 Quiz load effect RUN #' + quizLoadEffectRunCountRef.current);
+    console.log('[QuizHost] useEffect: currentQuiz changed');
+    console.log('[QuizHost] - currentQuiz exists:', !!currentQuiz);
+    if (currentQuiz) {
+      console.log('[QuizHost] - currentQuiz.game:', currentQuiz.game);
+      console.log('[QuizHost] - currentQuiz.title:', currentQuiz.title);
+      console.log('[QuizHost] - currentQuiz.questions exists:', !!currentQuiz.questions);
+      console.log('[QuizHost] - currentQuiz.questions type:', typeof currentQuiz.questions);
+      console.log('[QuizHost] - currentQuiz.questions.length:', currentQuiz.questions?.length);
+      console.log('[QuizHost] - currentQuiz.isQuizPack:', currentQuiz.isQuizPack);
+    }
+
     if (currentQuiz && currentQuiz.questions && currentQuiz.questions.length > 0) {
+      console.log('[QuizHost] ✅ Setting loadedQuizQuestions with', currentQuiz.questions.length, 'questions');
       setLoadedQuizQuestions(currentQuiz.questions);
       setCurrentLoadedQuestionIndex(0);
       closeAllGameModes();
@@ -841,8 +858,26 @@ export function QuizHost() {
         setShowKeypadInterface(true);
       }
       setActiveTab("teams");
+    } else {
+      console.log('[QuizHost] ⚠️  Quiz effect skipped - conditions not met');
     }
   }, [currentQuiz]);
+
+  // Monitor loadedQuizQuestions state changes to detect clearing with stack trace
+  useEffect(() => {
+    const currentLength = loadedQuizQuestions.length;
+    console.log('[QuizHost] 📊 loadedQuizQuestions CHANGED: length is now', currentLength);
+
+    if (prevQuestionsLengthRef.current > 0 && currentLength === 0) {
+      console.log('[QuizHost] 🚨 QUESTIONS CLEARED: transitioned from', prevQuestionsLengthRef.current, 'to 0');
+      console.log('[QuizHost] 📍 Stack trace for CLEARING event:');
+      console.trace('[QuizHost] ⬆️  Call stack above');
+    } else if (prevQuestionsLengthRef.current === 0 && currentLength > 0) {
+      console.log('[QuizHost] ✅ QUESTIONS LOADED: transitioned from 0 to', currentLength);
+    }
+
+    prevQuestionsLengthRef.current = currentLength;
+  }, [loadedQuizQuestions.length]);
 
   // Update flow state when question index changes during quiz
   useEffect(() => {
@@ -1690,6 +1725,9 @@ export function QuizHost() {
 
   // Handle END ROUND button - navigate to home and play explosion sound or end quiz pack
   const handleEndRound = () => {
+    console.log('[QuizHost] handleEndRound called - clearing loadedQuizQuestions');
+    console.log('[QuizHost] - Current loadedQuizQuestions.length:', loadedQuizQuestions.length);
+
     // Stop countdown audio if playing
     stopCountdownAudio();
 
@@ -1705,6 +1743,7 @@ export function QuizHost() {
     }
 
     // Clear loaded quiz questions to prevent on-the-spot mode from auto-detecting previous quiz pack question types
+    console.log('[QuizHost] ⚠️  About to clear loadedQuizQuestions');
     setLoadedQuizQuestions([]);
     setCurrentLoadedQuestionIndex(0);
 
@@ -1796,9 +1835,13 @@ export function QuizHost() {
 
   // Handle keypad interface toggle
   const handleKeypadClick = () => {
+    console.log('[QuizHost] handleKeypadClick called - clearing loadedQuizQuestions');
+    console.log('[QuizHost] - Current loadedQuizQuestions.length:', loadedQuizQuestions.length);
+
     closeAllGameModes(); // Close any other active modes first
     resetCurrentRoundScores(); // Reset scores to defaults when starting a new keypad round
     // Clear loaded quiz questions to ensure on-the-spot mode doesn't auto-detect question type from previous quiz pack
+    console.log('[QuizHost] ⚠️  About to clear loadedQuizQuestions for keypad mode');
     setLoadedQuizQuestions([]);
     setCurrentLoadedQuestionIndex(0);
     setIsQuizPackMode(false); // Ensure quiz pack mode is disabled for on-the-spot
@@ -1874,8 +1917,16 @@ export function QuizHost() {
    * Triggered by blue button or Spacebar.
    */
   const handlePrimaryAction = useCallback(() => {
+    console.log('[QuizHost] handlePrimaryAction called');
+    console.log('[QuizHost] - loadedQuizQuestions.length:', loadedQuizQuestions.length);
+    console.log('[QuizHost] - currentLoadedQuestionIndex:', currentLoadedQuestionIndex);
+
     const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
-    if (!currentQuestion) return;
+    if (!currentQuestion) {
+      console.log('[QuizHost] ❌ No question found at index', currentLoadedQuestionIndex);
+      return;
+    }
+    console.log('[QuizHost] ✅ Found question at index', currentLoadedQuestionIndex, ':', currentQuestion.q);
 
     switch (flowState.flow) {
       case 'ready': {
@@ -2371,10 +2422,39 @@ export function QuizHost() {
   /**
    * Wrapper for nav bar's onStartTimer - handles both quiz pack and on-the-spot modes
    */
-  const handleNavBarStartTimer = useCallback(() => {
+  const handleNavBarStartTimer = useCallback((customDuration?: number) => {
     if (isQuizPackMode || flowState.isQuestionMode) {
-      // For quiz pack mode, use the primary action handler
-      handlePrimaryAction();
+      // For quiz pack mode, use the timer parameters (custom duration from admin command or flow state)
+      const now = Date.now();
+      const timerDuration = customDuration ?? flowState.totalTime;
+
+      // Play normal timer audio file (countdown with voice/beeps)
+      playCountdownAudio(timerDuration, false).catch(error => {
+        console.error('[QuizHost] Error playing normal countdown audio:', error);
+      });
+
+      // Set the timer start time for accurate response time calculation
+      setGameTimerStartTime(now);
+      console.log('[QuizHost] NORMAL_TIMER: Setting gameTimerStartTime to', now, 'with duration:', timerDuration);
+
+      // Send timer to players
+      sendTimerToPlayers(timerDuration, false, now);
+
+      // Update external display with timer
+      if (externalWindow) {
+        sendToExternalDisplay({
+          type: 'TIMER',
+          data: { seconds: timerDuration, totalTime: timerDuration },
+          totalTime: timerDuration
+        });
+      }
+
+      // Transition to running state which will trigger local timer start
+      setFlowState(prev => ({
+        ...prev,
+        flow: 'running',
+        answerSubmitted: 'normal',
+      }));
     } else if (showKeypadInterface || showNearestWinsInterface || showBuzzInMode) {
       // For on-the-spot modes, determine which handler to call based on game state
       if (!gameTimerRunning && !gameTimerFinished) {
@@ -2391,7 +2471,7 @@ export function QuizHost() {
         gameActionHandlers?.nextQuestion?.();
       }
     }
-  }, [isQuizPackMode, flowState.isQuestionMode, gameActionHandlers, handlePrimaryAction, gameTimerRunning, gameTimerFinished, gameAnswerRevealed, gameFastestRevealed, teamsAnsweredCorrectly, showKeypadInterface, showNearestWinsInterface, showBuzzInMode]);
+  }, [isQuizPackMode, flowState.isQuestionMode, flowState.totalTime, gameActionHandlers, gameTimerRunning, gameTimerFinished, gameAnswerRevealed, gameFastestRevealed, teamsAnsweredCorrectly, showKeypadInterface, showNearestWinsInterface, showBuzzInMode, externalWindow]);
 
   /**
    * Wrapper for nav bar's onSilentTimer - handles both quiz pack and on-the-spot modes
@@ -2907,7 +2987,7 @@ export function QuizHost() {
         // Send initial flow state to the controller via IPC
         console.log('[QuizHost] 📤 Sending initial flow state to controller:', { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode, deviceId });
         sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
-          currentQuestion,
+          currentQuestion: flowState.currentQuestion,
           currentLoadedQuestionIndex,
           loadedQuizQuestions,
           isQuizPackMode,
@@ -3144,10 +3224,24 @@ export function QuizHost() {
       console.log('[QuizHost] - commandType:', commandType);
       console.log('[QuizHost] - commandData:', commandData);
 
+      // DIAGNOSTIC: Log authentication check details
+      console.log('[QuizHost] 🔍 AUTH CHECK DETAILS:');
+      console.log('[QuizHost]   - Incoming deviceId:', JSON.stringify(deviceId));
+      console.log('[QuizHost]   - Incoming deviceId type:', typeof deviceId);
+      console.log('[QuizHost]   - Incoming deviceId length:', deviceId?.length);
+      console.log('[QuizHost]   - Stored authenticatedControllerId:', JSON.stringify(deps.authenticatedControllerId));
+      console.log('[QuizHost]   - Stored type:', typeof deps.authenticatedControllerId);
+      console.log('[QuizHost]   - Stored length:', deps.authenticatedControllerId?.length);
+      console.log('[QuizHost]   - Are they === equal?', deviceId === deps.authenticatedControllerId);
+      console.log('[QuizHost]   - Trimmed comparison:', (deviceId?.trim?.() === deps.authenticatedControllerId?.trim?.()));
+
       // SECURITY: Verify that this command is from the authenticated controller
-      if (deviceId !== deps.authenticatedControllerId) {
-        console.warn('[QuizHost] ⚠️  SECURITY: Admin command from non-authenticated device:', deviceId);
-        console.warn('[QuizHost] ⚠️  Expected controller:', deps.authenticatedControllerId);
+      // Trim both strings to handle any whitespace issues
+      const incomingId = (deviceId || '').trim();
+      const storedId = (deps.authenticatedControllerId || '').trim();
+      if (incomingId && storedId && incomingId !== storedId) {
+        console.warn('[QuizHost] ⚠️  SECURITY: Admin command from non-authenticated device:', incomingId);
+        console.warn('[QuizHost] ⚠️  Expected controller:', storedId);
         sendAdminResponse(deviceId, commandType, false, 'Not authenticated as controller', undefined, deps.baseUrl);
         return;
       }
@@ -3168,8 +3262,19 @@ export function QuizHost() {
           // Universal question controls
           case 'send-question':
             console.log('[QuizHost] Executing: Send Question');
+            console.log('[QuizHost]   - About to call handlePrimaryAction');
+            console.log('[QuizHost]   - currentLoadedQuestionIndex:', currentLoadedQuestionIndex);
+            console.log('[QuizHost]   - loadedQuizQuestions.length:', loadedQuizQuestions?.length);
             // Call the primary action handler which manages game flow progression
             handlePrimaryAction();
+            success = true;
+            console.log('[QuizHost]   - handlePrimaryAction completed, success:', success);
+            break;
+
+          case 'hide-question':
+            console.log('[QuizHost] Executing: Hide Question');
+            // Call handleHideQuestion to toggle hide mode and progress flow if in ready state
+            handleHideQuestion();
             success = true;
             break;
 
@@ -3210,6 +3315,7 @@ export function QuizHost() {
           // Timer controls
           case 'start-silent-timer':
             console.log('[QuizHost] Executing: Start Silent Timer');
+            console.log('[QuizHost]   - commandData:', commandData);
             // SECURITY: Validate timer duration
             let silentDuration = commandData?.seconds;
             if (typeof silentDuration !== 'number' || !Number.isFinite(silentDuration)) {
@@ -3219,12 +3325,15 @@ export function QuizHost() {
             // SECURITY: Clamp timer duration to reasonable bounds (1 second to 10 minutes)
             silentDuration = Math.max(1, Math.min(600, Math.floor(silentDuration)));
             console.log('[QuizHost] Validated timer duration:', silentDuration);
+            console.log('[QuizHost] About to call sendTimerToPlayers with duration:', silentDuration, 'silent: true');
             sendTimerToPlayers(silentDuration, true);
+            console.log('[QuizHost] sendTimerToPlayers completed');
             success = true;
             break;
 
           case 'start-normal-timer':
             console.log('[QuizHost] Executing: Start Normal Timer');
+            console.log('[QuizHost]   - commandData:', commandData);
             // SECURITY: Validate timer duration
             let normalDuration = commandData?.seconds;
             if (typeof normalDuration !== 'number' || !Number.isFinite(normalDuration)) {
@@ -3234,8 +3343,10 @@ export function QuizHost() {
             // SECURITY: Clamp timer duration to reasonable bounds (1 second to 10 minutes)
             normalDuration = Math.max(1, Math.min(600, Math.floor(normalDuration)));
             console.log('[QuizHost] Validated timer duration:', normalDuration);
-            // Call handleNavBarStartTimer to properly start the timer with game flow progression
-            handleNavBarStartTimer();
+            console.log('[QuizHost] About to call handleNavBarStartTimer with duration:', normalDuration);
+            // Call handleNavBarStartTimer with the validated duration
+            handleNavBarStartTimer(normalDuration);
+            console.log('[QuizHost] handleNavBarStartTimer completed');
             success = true;
             break;
 
@@ -3662,15 +3773,28 @@ export function QuizHost() {
   // Send flow state to host controller whenever it changes
   useEffect(() => {
     if (hostControllerEnabled && authenticatedControllerId) {
-      console.log('[QuizHost] Broadcasting flow state to controller:', { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode, deviceId: authenticatedControllerId });
+      console.log('[QuizHost] 📡 FLOW_STATE BROADCAST ATTEMPT', {
+        authenticatedControllerId,
+        flow: flowState.flow,
+        isQuestionMode: flowState.isQuestionMode,
+        hasCurrentQuestion: !!currentQuestion,
+        currentQuestionText: currentQuestion?.q || 'N/A',
+        baseUrl: hostInfo?.baseUrl,
+      });
       sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
-        currentQuestion,
+        currentQuestion: flowState.currentQuestion,
         currentLoadedQuestionIndex,
         loadedQuizQuestions,
         isQuizPackMode,
       }, authenticatedControllerId, hostInfo?.baseUrl);
+    } else {
+      console.log('[QuizHost] ⚠️ FLOW_STATE NOT SENT - conditions not met', {
+        hostControllerEnabled,
+        authenticatedControllerId,
+        hasFlowState: !!flowState,
+      });
     }
-  }, [flowState.flow, flowState.isQuestionMode, hostControllerEnabled, authenticatedControllerId, currentQuestion, currentLoadedQuestionIndex, loadedQuizQuestions, isQuizPackMode, hostInfo?.baseUrl]);
+  }, [flowState.flow, flowState.isQuestionMode, flowState.currentQuestion, hostControllerEnabled, authenticatedControllerId, currentLoadedQuestionIndex, loadedQuizQuestions, isQuizPackMode, hostInfo?.baseUrl]);
 
   // Listen for player answers via IPC polling
   useEffect(() => {

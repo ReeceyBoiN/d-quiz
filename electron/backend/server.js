@@ -2459,7 +2459,44 @@ async function startBackend({ port = 4310 } = {}) {
     log.info(`[setAutoApproveTeamPhotos] Auto-approve team photos setting: ${previousValue} → ${autoApproveTeamPhotos}`);
   };
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos };
+  // Send a targeted message to a specific player/controller
+  const sendToPlayer = (deviceId, messageType, data) => {
+    try {
+      log.info('[sendToPlayer] Sending message to device:', { deviceId, messageType });
+
+      if (!deviceId || !messageType) {
+        log.error('[sendToPlayer] Missing deviceId or messageType');
+        throw new Error('Missing deviceId or messageType');
+      }
+
+      const player = networkPlayers.get(deviceId.trim());
+      if (!player || !player.ws) {
+        log.warn(`[sendToPlayer] Player not found or WebSocket not ready: ${deviceId}`);
+        return false;
+      }
+
+      const message = JSON.stringify({
+        type: messageType,
+        data: data || {},
+        timestamp: Date.now()
+      });
+
+      player.ws.send(message, (err) => {
+        if (err) {
+          log.error(`[sendToPlayer] Error sending to ${deviceId}:`, err.message);
+        } else {
+          log.info(`[sendToPlayer] Message sent to ${deviceId}`);
+        }
+      });
+
+      return true;
+    } catch (err) {
+      log.error('[sendToPlayer] Error:', err.message);
+      return false;
+    }
+  };
+
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos, sendToPlayer };
 }
 
 export { startBackend };

@@ -26,8 +26,15 @@ interface ActionButtonConfig {
 }
 
 interface ButtonLayoutConfig {
-  layout: 'single' | 'timer-dual' | 'disabled';
+  layout: 'single' | 'timer-dual' | 'question-choice' | 'disabled';
   buttons: ActionButtonConfig[];
+}
+
+/**
+ * Determine if the current question has an image
+ */
+function hasQuestionImage(question: any): boolean {
+  return !!(question?.imageDataUrl);
 }
 
 /**
@@ -48,16 +55,45 @@ function getButtonLayout(flowState: any): ButtonLayoutConfig {
   }
 
   switch (flowState.flow) {
-    case 'ready':
+    case 'ready': {
+      // In ready state, offer options to send picture (if available) or hide question
+      const hasPicture = hasQuestionImage(flowState.currentQuestion);
+      return {
+        layout: 'question-choice',
+        buttons: [
+          {
+            label: hasPicture ? 'Send Picture' : 'Send Question',
+            commandType: 'send-question',
+            disabled: false,
+            emoji: hasPicture ? '🖼️' : '📝'
+          },
+          {
+            label: 'Hide Question',
+            commandType: 'hide-question',
+            disabled: false,
+            emoji: '🙈'
+          }
+        ]
+      };
+    }
+
     case 'sent-picture':
       return {
-        layout: 'single',
-        buttons: [{
-          label: 'Send Question',
-          commandType: 'send-question',
-          disabled: false,
-          emoji: '📝'
-        }]
+        layout: 'question-choice',
+        buttons: [
+          {
+            label: 'Send Question',
+            commandType: 'send-question',
+            disabled: false,
+            emoji: '📝'
+          },
+          {
+            label: 'Hide Question',
+            commandType: 'hide-question',
+            disabled: false,
+            emoji: '🙈'
+          }
+        ]
       };
 
     case 'sent-question':
@@ -147,8 +183,9 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
   const totalQuestions = flowState?.loadedQuizQuestions?.length ?? 0;
   const isQuizPackMode = flowState?.isQuizPackMode ?? false;
 
-  // Determine if navigation arrows should be visible and enabled
-  const showNavigation = isQuizPackMode && totalQuestions > 0;
+  // Show navigation arrows when we have loaded questions (in any mode, not just quiz pack)
+  // This allows jumping between questions in non-quiz-pack modes too
+  const showNavigation = totalQuestions > 0;
   const canGoPrevious = currentQuestionIndex > 0;
   const canGoNext = currentQuestionIndex < totalQuestions - 1;
 
@@ -174,6 +211,9 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
     switch (commandType) {
       case 'send-question':
         sendAdminCommand('send-question');
+        break;
+      case 'hide-question':
+        sendAdminCommand('hide-question');
         break;
       case 'start-normal-timer':
         sendAdminCommand('start-normal-timer', { seconds: timerDuration });
@@ -221,6 +261,14 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
   const toggleSection = (section: string) => {
     setExpandedSection(expandedSection === section ? null : section);
   };
+
+  // Diagnostic logging for GameControlsPanel render
+  console.log('[GameControlsPanel] 📊 Component rendering with:', {
+    flowState: flowState ? { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode } : null,
+    buttonLayout: buttonLayout.layout,
+    buttonCount: buttonLayout.buttons.length,
+    firstButtonLabel: buttonLayout.buttons[0]?.label,
+  });
 
   return (
     <div className="flex flex-col h-full p-6 bg-slate-800 overflow-auto">
@@ -290,6 +338,38 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
             <p className="text-slate-400 text-sm mt-2 text-center">
               {buttonLayout.buttons[0].disabled ? 'No active question' : 'Press spacebar or click to continue'}
             </p>
+          </>
+        )}
+
+        {buttonLayout.layout === 'question-choice' && (
+          <>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleButtonClick(buttonLayout.buttons[0])}
+                disabled={buttonLayout.buttons[0].disabled}
+                className={`flex-1 px-4 py-3 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                  buttonLayout.buttons[0].disabled
+                    ? 'bg-slate-600 cursor-not-allowed opacity-50'
+                    : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
+                }`}
+              >
+                <span className="text-xl">{buttonLayout.buttons[0].emoji}</span>
+                {buttonLayout.buttons[0].label}
+              </button>
+              <button
+                onClick={() => handleButtonClick(buttonLayout.buttons[1])}
+                disabled={buttonLayout.buttons[1].disabled}
+                className={`flex-1 px-4 py-3 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                  buttonLayout.buttons[1].disabled
+                    ? 'bg-slate-600 cursor-not-allowed opacity-50'
+                    : 'bg-amber-600 hover:bg-amber-700 active:scale-95'
+                }`}
+              >
+                <span className="text-xl">{buttonLayout.buttons[1].emoji}</span>
+                {buttonLayout.buttons[1].label}
+              </button>
+            </div>
+            <p className="text-slate-400 text-sm mt-2 text-center">Choose action to proceed</p>
           </>
         )}
 

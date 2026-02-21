@@ -835,6 +835,33 @@ async function boot() {
     }
   });
 
+  // Send message to a specific player (controller or player)
+  router.mount('network/send-to-player', async (payload) => {
+    try {
+      const { deviceId, messageType, data } = payload;
+      log.info('[IPC] network/send-to-player called with:', { deviceId, messageType, hasData: !!data });
+
+      if (!deviceId || !messageType) {
+        log.error('[IPC] network/send-to-player: Missing deviceId or messageType');
+        throw new Error('Missing deviceId or messageType');
+      }
+
+      if (!backend || !backend.sendToPlayer) {
+        log.error('[IPC] Backend not initialized for network/send-to-player');
+        throw new Error('Backend not initialized');
+      }
+
+      const result = await backend.sendToPlayer(deviceId, messageType, data);
+      log.info('[IPC] backend.sendToPlayer completed successfully, result:', result);
+
+      return { ok: true, result };
+    } catch (err) {
+      log.error('[IPC] network/send-to-player error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
+    }
+  });
+
   log.info('App boot complete');
 }
 

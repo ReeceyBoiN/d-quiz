@@ -121,9 +121,24 @@ export function useNetworkConnection({
               return;
             }
 
-            console.log('[Player] Successfully parsed message type:', message.type);
+            console.log('[Player] ✅ Successfully parsed message type:', message.type);
+            console.log('[Player] 📨 Incoming message:', {
+              type: message.type,
+              hasData: !!message.data,
+              dataKeys: message.data ? Object.keys(message.data).slice(0, 10) : [],
+              timestamp: message.timestamp,
+            });
 
             // Special logging for critical message types
+            if (message.type === 'FLOW_STATE') {
+              console.log('[Player] 🎯 FLOW_STATE MESSAGE RECEIVED ON WEBSOCKET:', {
+                type: message.type,
+                flow: message.data?.flow,
+                isQuestionMode: message.data?.isQuestionMode,
+                timestamp: message.timestamp,
+              });
+            }
+
             if (message.type === 'TEAM_APPROVED') {
               console.log('🎉 [Player] 🎉 🎉 🎉 TEAM_APPROVED RECEIVED! 🎉 🎉 🎉');
               console.log('[Player] TEAM_APPROVED full message:', JSON.stringify(message).substring(0, 300) + '...');

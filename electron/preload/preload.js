@@ -111,6 +111,7 @@ contextBridge.exposeInMainWorld('api', {
     broadcastReveal: (data) => invoke('network/broadcast-reveal', data),
     broadcastTimeUp: () => invoke('network/broadcast-timeup'),
     broadcastBuzzerFolderChange: (data) => invoke('network/broadcast-buzzer-folder-change', data),
+    sendToPlayer: (data) => invoke('network/send-to-player', data),
   },
 
   // --- External display control ---

@@ -868,9 +868,16 @@ export default function App() {
         break;
 
       case 'FLOW_STATE':
+        console.log('[Player] 📥 FLOW_STATE message received!', {
+          flow: message.data?.flow,
+          isQuestionMode: message.data?.isQuestionMode,
+          hasCurrentQuestion: !!message.data?.currentQuestion,
+          messageTimestamp: message.timestamp,
+        });
+
         try {
-          console.log('[Player] FLOW_STATE message received:', message.data);
           if (message.data?.flow !== undefined && message.data?.isQuestionMode !== undefined) {
+            console.log('[Player] ✅ FLOW_STATE conditions met, updating local state');
             setFlowState({
               flow: message.data.flow,
               isQuestionMode: message.data.isQuestionMode,
@@ -879,16 +886,21 @@ export default function App() {
               loadedQuizQuestions: message.data?.loadedQuizQuestions,
               isQuizPackMode: message.data?.isQuizPackMode,
             });
-            console.log('[Player] Updated flow state with question data:', {
+            console.log('[Player] ✨ flowState updated, GameControlsPanel should re-render', {
               flow: message.data.flow,
               isQuestionMode: message.data.isQuestionMode,
               hasCurrentQuestion: !!message.data?.currentQuestion,
               loadedQuestionsCount: message.data?.loadedQuizQuestions?.length,
               isQuizPackMode: message.data?.isQuizPackMode,
             });
+          } else {
+            console.log('[Player] ❌ FLOW_STATE missing required fields', {
+              flow: message.data?.flow,
+              isQuestionMode: message.data?.isQuestionMode,
+            });
           }
         } catch (err) {
-          console.error('[Player] Error handling FLOW_STATE:', err);
+          console.error('[Player] ❌ Error handling FLOW_STATE:', err);
         }
         break;
     }
