@@ -122,6 +122,28 @@ export function useHostTerminalAPI({
     return sendAdminCommand('remove-team', { teamId });
   }, [sendAdminCommand]);
 
+  /**
+   * Commands for on-the-spot mode
+   */
+  const selectQuestionType = useCallback(
+    (type: 'letters' | 'numbers' | 'multiple-choice') => {
+      return sendAdminCommand('select-question-type', { type });
+    },
+    [sendAdminCommand]
+  );
+
+  const setExpectedAnswer = useCallback((answer: string) => {
+    return sendAdminCommand('set-expected-answer', { answer });
+  }, [sendAdminCommand]);
+
+  const previousQuestionType = useCallback(() => {
+    return sendAdminCommand('previous-type');
+  }, [sendAdminCommand]);
+
+  const nextQuestionType = useCallback(() => {
+    return sendAdminCommand('next-type');
+  }, [sendAdminCommand]);
+
   return {
     sendAdminCommand,
     previousQuestionNav,
@@ -140,5 +162,9 @@ export function useHostTerminalAPI({
     approvePhoto,
     declinePhoto,
     removeTeam,
+    selectQuestionType,
+    setExpectedAnswer,
+    previousQuestionType,
+    nextQuestionType,
   };
 }

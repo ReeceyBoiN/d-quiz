@@ -92,6 +92,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } catch (error) {
         // Network error - assume no network
         console.error('[AuthContext] Failed to fetch network-status:', error);
+        if (error instanceof SyntaxError) {
+          console.error('[AuthContext] Response was not valid JSON - backend may be serving HTML instead of API response');
+        }
         setNetworkAvailable(false);
       }
     };

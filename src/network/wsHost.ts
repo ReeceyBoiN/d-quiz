@@ -472,6 +472,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
       currentLoadedQuestionIndex: questionData?.currentLoadedQuestionIndex,
       loadedQuizQuestions: questionData?.loadedQuizQuestions,
       isQuizPackMode: questionData?.isQuizPackMode,
+      selectedQuestionType: questionData?.selectedQuestionType,
     },
     timestamp: Date.now()
   };
@@ -500,6 +501,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
             currentQuestion: payload.data.currentQuestion,
             currentLoadedQuestionIndex: payload.data.currentLoadedQuestionIndex,
             isQuizPackMode: payload.data.isQuizPackMode,
+            selectedQuestionType: questionData?.selectedQuestionType,
             // NOTE: loadedQuizQuestions intentionally excluded to keep IPC payload small
           }
         };
@@ -544,6 +546,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
         currentQuestion: payload.data.currentQuestion,
         currentLoadedQuestionIndex: payload.data.currentLoadedQuestionIndex,
         isQuizPackMode: payload.data.isQuizPackMode,
+        selectedQuestionType: questionData?.selectedQuestionType,
         // NOTE: loadedQuizQuestions is intentionally excluded - it's too large for HTTP API
       }
     };

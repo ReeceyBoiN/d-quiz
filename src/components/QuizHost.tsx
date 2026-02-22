@@ -709,11 +709,19 @@ export function QuizHost() {
     hostControllerEnabled,
     hostControllerCode,
     baseUrl: hostInfo?.baseUrl,
+    handlePrimaryAction: null as any, // Will be assigned in render
+    handleRevealAnswer: null as any, // Will be assigned in render
+    handleHideQuestion: null as any, // Will be assigned in render
+    handleNavBarStartTimer: null as any, // Will be assigned in render
+    setCurrentLoadedQuestionIndex: null as any, // Will be assigned in render
+    setFlowState: null as any, // Will be assigned in render (for on-the-spot mode)
+    sendFlowStateToController: null as any, // Will be assigned in render (for on-the-spot mode)
   });
 
   // Update the refs whenever dependencies change, but DON'T trigger listener re-registration
   useEffect(() => {
     adminListenerDepsRef.current = {
+      ...adminListenerDepsRef.current,
       authenticatedControllerId,
       hostControllerEnabled,
       hostControllerCode,
@@ -3266,37 +3274,89 @@ export function QuizHost() {
             console.log('[QuizHost]   - currentLoadedQuestionIndex:', currentLoadedQuestionIndex);
             console.log('[QuizHost]   - loadedQuizQuestions.length:', loadedQuizQuestions?.length);
             // Call the primary action handler which manages game flow progression
-            handlePrimaryAction();
+            deps.handlePrimaryAction();
             success = true;
             console.log('[QuizHost]   - handlePrimaryAction completed, success:', success);
+            break;
+
+          case 'send-picture':
+            console.log('[QuizHost] Executing: Send Picture');
+            console.log('[QuizHost]   - Current flow state:', flowState.flow);
+            console.log('[QuizHost]   - Current question index:', currentLoadedQuestionIndex);
+            if (isQuizPackMode && loadedQuizQuestions.length > 0) {
+              const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+              // Check if question has an image
+              if (currentQuestion && hasQuestionImage(currentQuestion)) {
+                console.log('[QuizHost]   - Question has image, calling handlePrimaryAction');
+                deps.handlePrimaryAction();
+                success = true;
+              } else {
+                console.warn('[QuizHost] ⚠️  send-picture called but question has no image');
+                success = false;
+              }
+            } else {
+              console.warn('[QuizHost] ⚠️  send-picture called outside quiz pack mode or no questions loaded');
+              success = false;
+            }
             break;
 
           case 'hide-question':
             console.log('[QuizHost] Executing: Hide Question');
             // Call handleHideQuestion to toggle hide mode and progress flow if in ready state
-            handleHideQuestion();
+            deps.handleHideQuestion();
             success = true;
             break;
 
           case 'next-question':
             console.log('[QuizHost] Executing: Next Question');
-            // Trigger next question - this will depend on current game mode
-            // For now, we'll just broadcast the NEXT message
-            sendNextQuestion();
-            success = true;
+            // For quiz pack mode, advance to next question
+            // For on-the-spot mode, just broadcast NEXT
+            if (isQuizPackMode && currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
+              console.log('[QuizHost] - Quiz pack mode, advancing from question', currentLoadedQuestionIndex, 'to', currentLoadedQuestionIndex + 1);
+              // Increment question index - the useEffect watching currentLoadedQuestionIndex will reset flowState to 'ready'
+              deps.setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex + 1);
+              // Broadcast next question to players
+              sendNextQuestion();
+              success = true;
+            } else if (!isQuizPackMode) {
+              console.log('[QuizHost] - On-the-spot mode, sending next question');
+              // For on-the-spot, reset flow and broadcast next
+              deps.setFlowState({
+                flow: 'idle',
+                isQuestionMode: true, // Keep in question mode for next type selection
+                totalTime: 30,
+                selectedQuestionType: undefined, // Clear question type for next round
+              });
+              sendNextQuestion();
+              // Reset team answers/times for next round
+              setTeamAnswers({});
+              setTeamResponseTimes({});
+              setTeamAnswerCounts({});
+              setTeamAnswerStatuses({});
+              setTeamCorrectRankings({});
+              setFastestTeamRevealTime(null);
+              success = true;
+            } else if (currentLoadedQuestionIndex >= loadedQuizQuestions.length - 1) {
+              console.log('[QuizHost] - Last question in quiz pack, ending round');
+              // Last question already shown - end round
+              deps.handlePrimaryAction();
+              success = true;
+            }
             break;
 
           case 'reveal-answer':
             console.log('[QuizHost] Executing: Reveal Answer');
-            // Trigger reveal answer
-            handleRevealAnswer();
+            // Trigger reveal answer and transition flowState
+            deps.handleRevealAnswer();
+            // Also call handlePrimaryAction to transition flowState from running/timeup to revealed/fastest
+            deps.handlePrimaryAction();
             success = true;
             break;
 
           case 'show-fastest':
             console.log('[QuizHost] Executing: Show Fastest Team');
             // Trigger showing fastest team - call primary action to progress game state
-            handlePrimaryAction();
+            deps.handlePrimaryAction();
             success = true;
             break;
 
@@ -3343,10 +3403,10 @@ export function QuizHost() {
             // SECURITY: Clamp timer duration to reasonable bounds (1 second to 10 minutes)
             normalDuration = Math.max(1, Math.min(600, Math.floor(normalDuration)));
             console.log('[QuizHost] Validated timer duration:', normalDuration);
-            console.log('[QuizHost] About to call handleNavBarStartTimer with duration:', normalDuration);
-            // Call handleNavBarStartTimer with the validated duration
-            handleNavBarStartTimer(normalDuration);
-            console.log('[QuizHost] handleNavBarStartTimer completed');
+            console.log('[QuizHost] About to call deps.handleNavBarStartTimer with duration:', normalDuration);
+            // Call deps.handleNavBarStartTimer with the validated duration
+            deps.handleNavBarStartTimer(normalDuration);
+            console.log('[QuizHost] deps.handleNavBarStartTimer completed');
             success = true;
             break;
 
@@ -3600,6 +3660,59 @@ export function QuizHost() {
               success = true;
             } else {
               console.warn('[QuizHost] ⚠️  Next question navigation only available in quiz pack mode');
+              success = false;
+            }
+            break;
+
+          // On-the-spot mode commands
+          case 'select-question-type':
+            console.log('[QuizHost] Executing: Select Question Type');
+            const selectedType = commandData?.type;
+            // Validate question type
+            if (!selectedType || !['letters', 'numbers', 'multiple-choice'].includes(selectedType)) {
+              console.warn('[QuizHost] ⚠️  SECURITY: Invalid question type:', selectedType);
+              success = false;
+              break;
+            }
+
+            if (!isQuizPackMode) {
+              console.log('[QuizHost] - On-the-spot mode: selected type:', selectedType);
+              // Set up on-the-spot mode with selected question type
+              // For on-the-spot, we transition directly to 'sent-question' state so timer buttons appear
+              // (we skip 'ready' state because there's no pre-written question to send)
+              deps.setFlowState({
+                flow: 'sent-question',
+                isQuestionMode: true,
+                totalTime: 30,
+                selectedQuestionType: selectedType as 'letters' | 'numbers' | 'multiple-choice',
+              });
+              success = true;
+              // Broadcast flow state change to controller
+              deps.sendFlowStateToController?.(deviceId);
+            } else {
+              console.warn('[QuizHost] ⚠️  Question type selection only available in on-the-spot mode');
+              success = false;
+            }
+            break;
+
+          case 'set-expected-answer':
+            console.log('[QuizHost] Executing: Set Expected Answer');
+            const expectedAnswer = commandData?.answer;
+            // Validate answer is a string
+            if (typeof expectedAnswer !== 'string' || expectedAnswer.trim().length === 0) {
+              console.warn('[QuizHost] ⚠️  SECURITY: Invalid expected answer');
+              success = false;
+              break;
+            }
+
+            if (!isQuizPackMode) {
+              console.log('[QuizHost] - On-the-spot mode: setting expected answer:', expectedAnswer);
+              // Store expected answer for later use (e.g., when revealing answer)
+              // This could be used to determine which team answered fastest and correctly
+              // For now, we just log it; future enhancement could use it for scoring
+              success = true;
+            } else {
+              console.warn('[QuizHost] ⚠️  Answer input only available in on-the-spot mode');
               success = false;
             }
             break;
@@ -5625,6 +5738,24 @@ export function QuizHost() {
           </div>
         );
     }
+  };
+
+  // Ensure admin handler has access to current handler functions
+  // These assignments happen after the functions are defined, so no temporal dead zone issues
+  adminListenerDepsRef.current.handlePrimaryAction = handlePrimaryAction;
+  adminListenerDepsRef.current.handleRevealAnswer = handleRevealAnswer;
+  adminListenerDepsRef.current.handleHideQuestion = handleHideQuestion;
+  adminListenerDepsRef.current.handleNavBarStartTimer = handleNavBarStartTimer;
+  adminListenerDepsRef.current.setCurrentLoadedQuestionIndex = setCurrentLoadedQuestionIndex;
+  adminListenerDepsRef.current.setFlowState = setFlowState;
+  adminListenerDepsRef.current.sendFlowStateToController = (deviceId?: string) => {
+    sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
+      currentQuestion: flowState.currentQuestion,
+      currentLoadedQuestionIndex,
+      loadedQuizQuestions,
+      isQuizPackMode,
+      selectedQuestionType: flowState.selectedQuestionType,
+    }, deviceId, hostInfo?.baseUrl);
   };
 
   return (

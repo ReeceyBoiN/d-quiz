@@ -4,6 +4,8 @@ import { LeaderboardPanel } from './LeaderboardPanel';
 import { TeamManagementPanel } from './TeamManagementPanel';
 import { GameControlsPanel } from './GameControlsPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { QuestionTypeSelector } from './QuestionTypeSelector';
+import { AnswerInputKeypad } from './AnswerInputKeypad';
 
 interface HostTerminalProps {
   deviceId: string;
@@ -17,12 +19,26 @@ interface HostTerminalProps {
     currentLoadedQuestionIndex?: number;
     loadedQuizQuestions?: any[];
     isQuizPackMode?: boolean;
+    selectedQuestionType?: 'letters' | 'numbers' | 'multiple-choice';
   } | null;
 }
 
 export function HostTerminal({ deviceId, playerId, teamName, wsRef, flowState }: HostTerminalProps) {
   const [activeTab, setActiveTab] = useState<'leaderboard' | 'teams' | 'controls' | 'settings'>('leaderboard');
   const [showPurposeInfo, setShowPurposeInfo] = useState(false);
+
+  // Determine if we're in on-the-spot mode
+  const isOnTheSpotMode = flowState?.isQuizPackMode === false;
+  const isInIdleState = flowState?.flow === 'idle';
+  const isInTimerState = flowState?.flow === 'sent-question' || flowState?.flow === 'running';
+
+  // For on-the-spot mode, show different UI based on game state
+  const showQuestionTypeSelector = isOnTheSpotMode && isInIdleState && flowState?.isQuestionMode;
+  const showAnswerKeypad = isOnTheSpotMode && isInTimerState && flowState?.isQuestionMode;
+
+  // Compute whether keypad will actually render (has question type data)
+  const shouldRenderAnswerKeypad = showAnswerKeypad &&
+    (flowState?.selectedQuestionType || flowState?.currentQuestion?.type);
 
   return (
     <div className="flex flex-col h-full w-full bg-gradient-to-b from-slate-900 to-slate-800">
@@ -34,7 +50,9 @@ export function HostTerminal({ deviceId, playerId, teamName, wsRef, flowState }:
               <span className="text-2xl">🎮</span>
               Host Controller
             </h1>
-            <p className="text-slate-400 text-sm mt-1">Remote Control Terminal</p>
+            <p className="text-slate-400 text-sm mt-1">
+              {isOnTheSpotMode ? 'On-The-Spot Mode' : 'Quiz Pack Mode'} • Remote Control Terminal
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -94,32 +112,74 @@ export function HostTerminal({ deviceId, playerId, teamName, wsRef, flowState }:
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'leaderboard' && (
-          <LeaderboardPanel deviceId={deviceId} wsRef={wsRef} />
-        )}
-        {activeTab === 'teams' && (
-          <TeamManagementPanel deviceId={deviceId} wsRef={wsRef} />
-        )}
-        {activeTab === 'controls' && (
-          <GameControlsPanel
+        {/* On-The-Spot Mode: Question Type Selector (Idle State) */}
+        {showQuestionTypeSelector && (
+          <QuestionTypeSelector
             deviceId={deviceId}
             playerId={playerId}
             teamName={teamName}
             wsRef={wsRef}
+            isOnTheSpotMode={isOnTheSpotMode}
             flowState={flowState}
           />
         )}
-        {activeTab === 'settings' && (
-          <SettingsPanel
-            deviceId={deviceId}
-            playerId={playerId}
-            teamName={teamName}
-          />
+
+        {/* On-The-Spot Mode: Timer Controls + Answer Input (Timer State) */}
+        {shouldRenderAnswerKeypad ? (
+          <div className="flex h-full gap-4 p-4 bg-slate-900">
+            <div className="flex-1 overflow-auto">
+              <GameControlsPanel
+                deviceId={deviceId}
+                playerId={playerId}
+                teamName={teamName}
+                wsRef={wsRef}
+                flowState={flowState}
+              />
+            </div>
+            <div className="w-80 overflow-auto border-l border-slate-700">
+              <AnswerInputKeypad
+                deviceId={deviceId}
+                playerId={playerId}
+                teamName={teamName}
+                wsRef={wsRef}
+                isOnTheSpotMode={isOnTheSpotMode}
+                flowState={flowState}
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Regular Tab Navigation (Quiz Pack Mode or Non-Timer States) */}
+            {activeTab === 'leaderboard' && (
+              <LeaderboardPanel deviceId={deviceId} playerId={playerId} teamName={teamName} wsRef={wsRef} />
+            )}
+            {activeTab === 'teams' && (
+              <TeamManagementPanel deviceId={deviceId} playerId={playerId} teamName={teamName} wsRef={wsRef} />
+            )}
+            {activeTab === 'controls' && (
+              <GameControlsPanel
+                deviceId={deviceId}
+                playerId={playerId}
+                teamName={teamName}
+                wsRef={wsRef}
+                flowState={flowState}
+              />
+            )}
+            {activeTab === 'settings' && (
+              <SettingsPanel
+                deviceId={deviceId}
+                playerId={playerId}
+                teamName={teamName}
+              />
+            )}
+          </>
         )}
       </div>
 
-      {/* Bottom Navigation */}
-      <HostTerminalNav activeTab={activeTab} onTabChange={setActiveTab} />
+      {/* Bottom Navigation - Only show when not in question type selector or answer input */}
+      {!showQuestionTypeSelector && !showAnswerKeypad && (
+        <HostTerminalNav activeTab={activeTab} onTabChange={setActiveTab} />
+      )}
     </div>
   );
 }

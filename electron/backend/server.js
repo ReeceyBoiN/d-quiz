@@ -64,21 +64,6 @@ async function startBackend({ port = 4310 } = {}) {
     next();
   });
 
-  const playerAppPath = path.join(__dirname, '../../dist-player');
-
-  if (!fs.existsSync(playerAppPath)) {
-    log.error(`Player app directory not found at: ${playerAppPath}`);
-  } else {
-    log.info(`Serving player app from: ${playerAppPath}`);
-  }
-
-  app.use(express.static(playerAppPath, {
-    setHeaders: (res, filePath) => {
-      if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-      if (filePath.endsWith('.css')) res.setHeader('Content-Type', 'text/css; charset=utf-8');
-    }
-  }));
-
   await loadEndpoints(app);
 
   // Helper function to get local IP (will be used by /api/host-info endpoint)
@@ -163,6 +148,22 @@ async function startBackend({ port = 4310 } = {}) {
     }
   });
 
+  // Serve static files (player app) - AFTER all API routes
+  const playerAppPath = path.join(__dirname, '../../dist-player');
+  if (!fs.existsSync(playerAppPath)) {
+    log.error(`Player app directory not found at: ${playerAppPath}`);
+  } else {
+    log.info(`Serving player app from: ${playerAppPath}`);
+  }
+
+  app.use(express.static(playerAppPath, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      if (filePath.endsWith('.css')) res.setHeader('Content-Type', 'text/css; charset=utf-8');
+    }
+  }));
+
+  // Catch-all SPA fallback - MUST be last
   app.use((req, res) => {
     const indexPath = path.join(playerAppPath, 'index.html');
     if (!fs.existsSync(indexPath)) {

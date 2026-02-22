@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useHostTerminalAPI } from './useHostTerminalAPI';
 
 interface LeaderboardEntry {
   id: string;
@@ -20,14 +21,22 @@ interface TeamFromBackend {
 
 interface LeaderboardPanelProps {
   deviceId: string;
+  playerId: string;
+  teamName: string;
   wsRef: React.MutableRefObject<WebSocket | null>;
 }
 
-export function LeaderboardPanel({ deviceId, wsRef }: LeaderboardPanelProps) {
+export function LeaderboardPanel({ deviceId, playerId, teamName, wsRef }: LeaderboardPanelProps) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [pinnedTeamId, setPinnedTeamId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
+  const { sendAdminCommand } = useHostTerminalAPI({
+    deviceId,
+    playerId,
+    teamName,
+    wsRef,
+  });
 
   /**
    * Fetch connected teams from backend and update leaderboard
@@ -95,12 +104,16 @@ export function LeaderboardPanel({ deviceId, wsRef }: LeaderboardPanelProps) {
 
     // Send request to backend for list of connected teams
     try {
-      wsRef.current.send(JSON.stringify({
-        type: 'ADMIN_COMMAND',
-        commandType: 'GET_CONNECTED_TEAMS',
-        deviceId: deviceId,
-        timestamp: Date.now()
-      }));
+      const success = sendAdminCommand('GET_CONNECTED_TEAMS');
+      if (!success) {
+        console.error('[LeaderboardPanel] Error sending GET_CONNECTED_TEAMS via sendAdminCommand');
+        setIsLoading(false);
+        if (messageHandlerRegistered && wsRef.current) {
+          wsRef.current.removeEventListener('message', handleAdminResponse);
+          messageHandlerRegistered = false;
+        }
+        return;
+      }
       console.log('[LeaderboardPanel] ✅ Sent GET_CONNECTED_TEAMS request to backend');
     } catch (err) {
       console.error('[LeaderboardPanel] Error sending GET_CONNECTED_TEAMS:', err);
@@ -205,7 +218,7 @@ export function LeaderboardPanel({ deviceId, wsRef }: LeaderboardPanelProps) {
         wsRef.current.removeEventListener('message', handleLeaderboardUpdate);
       }
     };
-  }, [wsRef, deviceId]);
+  }, [wsRef, deviceId, playerId, teamName, sendAdminCommand]);
 
   const handlePinTeam = (teamId: string) => {
     setPinnedTeamId(pinnedTeamId === teamId ? null : teamId);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useHostTerminalAPI } from './useHostTerminalAPI';
 
 interface Team {
   id: string;
@@ -11,14 +12,22 @@ interface Team {
 
 interface TeamManagementPanelProps {
   deviceId: string;
+  playerId: string;
+  teamName: string;
   wsRef: React.MutableRefObject<WebSocket | null>;
 }
 
-export function TeamManagementPanel({ deviceId, wsRef }: TeamManagementPanelProps) {
+export function TeamManagementPanel({ deviceId, playerId, teamName, wsRef }: TeamManagementPanelProps) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editingTeamName, setEditingTeamName] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const { sendAdminCommand } = useHostTerminalAPI({
+    deviceId,
+    playerId,
+    teamName,
+    wsRef,
+  });
 
   // Fetch connected teams from backend on mount
   useEffect(() => {
@@ -61,12 +70,7 @@ export function TeamManagementPanel({ deviceId, wsRef }: TeamManagementPanelProp
 
     // Send request to backend for list of connected players/teams
     try {
-      wsRef.current.send(JSON.stringify({
-        type: 'ADMIN_COMMAND',
-        commandType: 'GET_CONNECTED_TEAMS',
-        deviceId: deviceId,
-        timestamp: Date.now()
-      }));
+      sendAdminCommand('GET_CONNECTED_TEAMS');
     } catch (err) {
       console.error('[TeamManagementPanel] Error sending GET_CONNECTED_TEAMS:', err);
       setIsLoading(false);
@@ -83,7 +87,7 @@ export function TeamManagementPanel({ deviceId, wsRef }: TeamManagementPanelProp
         wsRef.current.removeEventListener('message', handleAdminResponse);
       }
     };
-  }, [wsRef, deviceId]);
+  }, [wsRef, deviceId, playerId, teamName, sendAdminCommand]);
 
   const handleEditTeam = (team: Team) => {
     setEditingTeamId(team.id);
@@ -94,18 +98,7 @@ export function TeamManagementPanel({ deviceId, wsRef }: TeamManagementPanelProp
     console.log('[HostTerminal] Saving team name:', editingTeamName);
 
     // Send command to backend to update team name
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'ADMIN_COMMAND',
-        commandType: 'UPDATE_TEAM_NAME',
-        deviceId: deviceId,
-        commandData: {
-          teamId,
-          newTeamName: editingTeamName
-        },
-        timestamp: Date.now()
-      }));
-    }
+    sendAdminCommand('UPDATE_TEAM_NAME', { teamId, newTeamName: editingTeamName });
 
     setTeams(teams.map(t =>
       t.id === teamId ? { ...t, name: editingTeamName } : t
@@ -117,18 +110,7 @@ export function TeamManagementPanel({ deviceId, wsRef }: TeamManagementPanelProp
     console.log('[HostTerminal] Adjusting score for team:', teamId, 'points:', points);
 
     // Send command to backend to adjust score
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'ADMIN_COMMAND',
-        commandType: 'ADJUST_TEAM_SCORE',
-        deviceId: deviceId,
-        commandData: {
-          teamId,
-          points
-        },
-        timestamp: Date.now()
-      }));
-    }
+    sendAdminCommand('ADJUST_TEAM_SCORE', { teamId, points });
 
     setTeams(teams.map(t =>
       t.id === teamId ? { ...t, score: Math.max(0, t.score + points) } : t
@@ -139,20 +121,8 @@ export function TeamManagementPanel({ deviceId, wsRef }: TeamManagementPanelProp
     console.log('[HostTerminal] Approving photo for team:', teamId);
 
     // Send approval command to backend
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'ADMIN_COMMAND',
-        commandType: 'APPROVE_TEAM_PHOTO',
-        deviceId: deviceId,
-        commandData: {
-          teamId
-        },
-        timestamp: Date.now()
-      }));
-      console.log('[TeamManagementPanel] ✅ Sent APPROVE_TEAM_PHOTO command to backend');
-    } else {
-      console.error('[TeamManagementPanel] ❌ WebSocket not ready for APPROVE_TEAM_PHOTO');
-    }
+    sendAdminCommand('APPROVE_TEAM_PHOTO', { teamId });
+    console.log('[TeamManagementPanel] ✅ Sent APPROVE_TEAM_PHOTO command to backend');
 
     setTeams(teams.map(t =>
       t.id === teamId ? { ...t, photoApprovalStatus: 'approved' } : t
@@ -163,20 +133,8 @@ export function TeamManagementPanel({ deviceId, wsRef }: TeamManagementPanelProp
     console.log('[HostTerminal] Declining photo for team:', teamId);
 
     // Send decline command to backend
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'ADMIN_COMMAND',
-        commandType: 'DECLINE_TEAM_PHOTO',
-        deviceId: deviceId,
-        commandData: {
-          teamId
-        },
-        timestamp: Date.now()
-      }));
-      console.log('[TeamManagementPanel] ✅ Sent DECLINE_TEAM_PHOTO command to backend');
-    } else {
-      console.error('[TeamManagementPanel] ❌ WebSocket not ready for DECLINE_TEAM_PHOTO');
-    }
+    sendAdminCommand('DECLINE_TEAM_PHOTO', { teamId });
+    console.log('[TeamManagementPanel] ✅ Sent DECLINE_TEAM_PHOTO command to backend');
 
     setTeams(teams.map(t =>
       t.id === teamId ? { ...t, photoApprovalStatus: 'declined' } : t
@@ -188,17 +146,7 @@ export function TeamManagementPanel({ deviceId, wsRef }: TeamManagementPanelProp
       console.log('[HostTerminal] Removing team:', teamId);
 
       // Send remove command to backend
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'ADMIN_COMMAND',
-          commandType: 'REMOVE_TEAM',
-          deviceId: deviceId,
-          commandData: {
-            teamId
-          },
-          timestamp: Date.now()
-        }));
-      }
+      sendAdminCommand('REMOVE_TEAM', { teamId });
 
       setTeams(teams.filter(t => t.id !== teamId));
     }
