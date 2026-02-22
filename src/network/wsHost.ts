@@ -473,6 +473,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
       loadedQuizQuestions: questionData?.loadedQuizQuestions,
       isQuizPackMode: questionData?.isQuizPackMode,
       selectedQuestionType: questionData?.selectedQuestionType,
+      answerSubmitted: questionData?.answerSubmitted,
     },
     timestamp: Date.now()
   };
@@ -502,6 +503,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
             currentLoadedQuestionIndex: payload.data.currentLoadedQuestionIndex,
             isQuizPackMode: payload.data.isQuizPackMode,
             selectedQuestionType: questionData?.selectedQuestionType,
+            answerSubmitted: questionData?.answerSubmitted,
             // NOTE: loadedQuizQuestions intentionally excluded to keep IPC payload small
           }
         };

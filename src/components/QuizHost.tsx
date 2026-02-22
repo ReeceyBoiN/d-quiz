@@ -2484,29 +2484,30 @@ export function QuizHost() {
   /**
    * Wrapper for nav bar's onSilentTimer - handles both quiz pack and on-the-spot modes
    */
-  const handleNavBarSilentTimer = useCallback(() => {
+  const handleNavBarSilentTimer = useCallback((customDuration?: number) => {
     if (isQuizPackMode || flowState.isQuestionMode) {
       // For quiz pack mode: play silent timer audio and start timer
       const now = Date.now();
+      const timerDuration = customDuration ?? flowState.totalTime;
 
       // Play silent timer audio file (countdown without voice/beeps)
-      playCountdownAudio(flowState.totalTime, true).catch(error => {
+      playCountdownAudio(timerDuration, true).catch(error => {
         console.error('[QuizHost] Error playing silent countdown audio:', error);
       });
 
       // Set the timer start time for accurate response time calculation
       setGameTimerStartTime(now);
-      console.log('[QuizHost] SILENT_TIMER: Setting gameTimerStartTime to', now);
+      console.log('[QuizHost] SILENT_TIMER: Setting gameTimerStartTime to', now, 'with duration:', timerDuration);
 
       // Send timer to players
-      sendTimerToPlayers(flowState.totalTime, true, now);
+      sendTimerToPlayers(timerDuration, true, now);
 
       // Update external display with timer
       if (externalWindow) {
         sendToExternalDisplay({
           type: 'TIMER',
-          data: { seconds: flowState.totalTime, totalTime: flowState.totalTime },
-          totalTime: flowState.totalTime
+          data: { seconds: timerDuration, totalTime: timerDuration },
+          totalTime: timerDuration
         });
       }
 
@@ -3385,9 +3386,10 @@ export function QuizHost() {
             // SECURITY: Clamp timer duration to reasonable bounds (1 second to 10 minutes)
             silentDuration = Math.max(1, Math.min(600, Math.floor(silentDuration)));
             console.log('[QuizHost] Validated timer duration:', silentDuration);
-            console.log('[QuizHost] About to call sendTimerToPlayers with duration:', silentDuration, 'silent: true');
-            sendTimerToPlayers(silentDuration, true);
-            console.log('[QuizHost] sendTimerToPlayers completed');
+            console.log('[QuizHost] About to call deps.handleNavBarSilentTimer with duration:', silentDuration);
+            // Call deps.handleNavBarSilentTimer with the validated duration to properly update flow state and notify controller
+            deps.handleNavBarSilentTimer(silentDuration);
+            console.log('[QuizHost] deps.handleNavBarSilentTimer completed');
             success = true;
             break;
 
@@ -3707,9 +3709,13 @@ export function QuizHost() {
 
             if (!isQuizPackMode) {
               console.log('[QuizHost] - On-the-spot mode: setting expected answer:', expectedAnswer);
-              // Store expected answer for later use (e.g., when revealing answer)
-              // This could be used to determine which team answered fastest and correctly
-              // For now, we just log it; future enhancement could use it for scoring
+              // Store expected answer in flowState for use when revealing answer/scoring
+              // Update the local flow state with the expected answer
+              setFlowState(prev => ({
+                ...prev,
+                answerSubmitted: expectedAnswer,
+              }));
+              console.log('[QuizHost] - Expected answer stored in flowState');
               success = true;
             } else {
               console.warn('[QuizHost] ⚠️  Answer input only available in on-the-spot mode');
@@ -3892,6 +3898,7 @@ export function QuizHost() {
         isQuestionMode: flowState.isQuestionMode,
         hasCurrentQuestion: !!currentQuestion,
         currentQuestionText: currentQuestion?.q || 'N/A',
+        answerSubmitted: flowState.answerSubmitted,
         baseUrl: hostInfo?.baseUrl,
       });
       sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
@@ -3899,6 +3906,8 @@ export function QuizHost() {
         currentLoadedQuestionIndex,
         loadedQuizQuestions,
         isQuizPackMode,
+        selectedQuestionType: flowState.selectedQuestionType,
+        answerSubmitted: flowState.answerSubmitted,
       }, authenticatedControllerId, hostInfo?.baseUrl);
     } else {
       console.log('[QuizHost] ⚠️ FLOW_STATE NOT SENT - conditions not met', {
@@ -3907,7 +3916,7 @@ export function QuizHost() {
         hasFlowState: !!flowState,
       });
     }
-  }, [flowState.flow, flowState.isQuestionMode, flowState.currentQuestion, hostControllerEnabled, authenticatedControllerId, currentLoadedQuestionIndex, loadedQuizQuestions, isQuizPackMode, hostInfo?.baseUrl]);
+  }, [flowState.flow, flowState.isQuestionMode, flowState.currentQuestion, flowState.answerSubmitted, flowState.selectedQuestionType, hostControllerEnabled, authenticatedControllerId, currentLoadedQuestionIndex, loadedQuizQuestions, isQuizPackMode, hostInfo?.baseUrl]);
 
   // Listen for player answers via IPC polling
   useEffect(() => {
@@ -5746,6 +5755,7 @@ export function QuizHost() {
   adminListenerDepsRef.current.handleRevealAnswer = handleRevealAnswer;
   adminListenerDepsRef.current.handleHideQuestion = handleHideQuestion;
   adminListenerDepsRef.current.handleNavBarStartTimer = handleNavBarStartTimer;
+  adminListenerDepsRef.current.handleNavBarSilentTimer = handleNavBarSilentTimer;
   adminListenerDepsRef.current.setCurrentLoadedQuestionIndex = setCurrentLoadedQuestionIndex;
   adminListenerDepsRef.current.setFlowState = setFlowState;
   adminListenerDepsRef.current.sendFlowStateToController = (deviceId?: string) => {
@@ -5755,6 +5765,7 @@ export function QuizHost() {
       loadedQuizQuestions,
       isQuizPackMode,
       selectedQuestionType: flowState.selectedQuestionType,
+      answerSubmitted: flowState.answerSubmitted,
     }, deviceId, hostInfo?.baseUrl);
   };
 

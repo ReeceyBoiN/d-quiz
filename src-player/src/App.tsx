@@ -80,6 +80,7 @@ export default function App() {
     loadedQuizQuestions?: any[];
     isQuizPackMode?: boolean;
     selectedQuestionType?: 'letters' | 'numbers' | 'multiple-choice';
+    answerSubmitted?: string;
   } | null>(null); // Track flow state for host controller
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -887,6 +888,7 @@ export default function App() {
               loadedQuizQuestions: message.data?.loadedQuizQuestions,
               isQuizPackMode: message.data?.isQuizPackMode,
               selectedQuestionType: message.data?.selectedQuestionType,
+              answerSubmitted: message.data?.answerSubmitted,
             });
             console.log('[Player] ✨ flowState updated, GameControlsPanel should re-render', {
               flow: message.data.flow,
