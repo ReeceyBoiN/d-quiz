@@ -75,6 +75,7 @@ export default function App() {
   const [flowState, setFlowState] = useState<{
     flow: string;
     isQuestionMode: boolean;
+    totalTime?: number; // Settings-based timer duration from host
     currentQuestion?: any;
     currentLoadedQuestionIndex?: number;
     loadedQuizQuestions?: any[];
@@ -883,6 +884,7 @@ export default function App() {
             setFlowState({
               flow: message.data.flow,
               isQuestionMode: message.data.isQuestionMode,
+              totalTime: message.data?.totalTime, // Settings-based timer duration from host
               currentQuestion: message.data?.currentQuestion,
               currentLoadedQuestionIndex: message.data?.currentLoadedQuestionIndex,
               loadedQuizQuestions: message.data?.loadedQuizQuestions,
@@ -893,6 +895,7 @@ export default function App() {
             console.log('[Player] ✨ flowState updated, GameControlsPanel should re-render', {
               flow: message.data.flow,
               isQuestionMode: message.data.isQuestionMode,
+              totalTime: message.data?.totalTime,
               hasCurrentQuestion: !!message.data?.currentQuestion,
               loadedQuestionsCount: message.data?.loadedQuizQuestions?.length,
               isQuizPackMode: message.data?.isQuizPackMode,

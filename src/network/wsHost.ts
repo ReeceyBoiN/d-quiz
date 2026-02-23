@@ -468,6 +468,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
     data: {
       flow,
       isQuestionMode,
+      totalTime: questionData?.totalTime, // Settings-based timer duration - remote should use this
       currentQuestion: questionData?.currentQuestion,
       currentLoadedQuestionIndex: questionData?.currentLoadedQuestionIndex,
       loadedQuizQuestions: questionData?.loadedQuizQuestions,
@@ -481,6 +482,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
   console.log('[wsHost] 📦 FLOW_STATE payload ready', {
     flow: payload.data.flow,
     isQuestionMode: payload.data.isQuestionMode,
+    totalTime: payload.data.totalTime,
     targetDeviceId: deviceId,
     payloadSize: JSON.stringify(payload).length,
   });
@@ -499,12 +501,16 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
           data: {
             flow: payload.data.flow,
             isQuestionMode: payload.data.isQuestionMode,
+            totalTime: payload.data.totalTime, // Settings-based timer duration
             currentQuestion: payload.data.currentQuestion,
             currentLoadedQuestionIndex: payload.data.currentLoadedQuestionIndex,
             isQuizPackMode: payload.data.isQuizPackMode,
             selectedQuestionType: questionData?.selectedQuestionType,
             answerSubmitted: questionData?.answerSubmitted,
-            // NOTE: loadedQuizQuestions intentionally excluded to keep IPC payload small
+            // Include question count for navigation arrows (but not full array to keep payload small)
+            loadedQuizQuestions: questionData?.loadedQuizQuestions ?
+              questionData.loadedQuizQuestions.map((q: any, idx: number) => ({ id: q.id, index: idx })) :
+              undefined,
           }
         };
         await api.network.sendToPlayer(ipcPayload);
@@ -545,11 +551,15 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
       data: {
         flow: payload.data.flow,
         isQuestionMode: payload.data.isQuestionMode,
+        totalTime: payload.data.totalTime, // Settings-based timer duration
         currentQuestion: payload.data.currentQuestion,
         currentLoadedQuestionIndex: payload.data.currentLoadedQuestionIndex,
         isQuizPackMode: payload.data.isQuizPackMode,
         selectedQuestionType: questionData?.selectedQuestionType,
-        // NOTE: loadedQuizQuestions is intentionally excluded - it's too large for HTTP API
+        // Include question count for navigation arrows (but not full array to keep payload small)
+        loadedQuizQuestions: questionData?.loadedQuizQuestions ?
+          questionData.loadedQuizQuestions.map((q: any, idx: number) => ({ id: q.id, index: idx })) :
+          undefined,
       }
     };
 

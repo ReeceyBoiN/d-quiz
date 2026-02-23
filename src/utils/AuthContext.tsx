@@ -66,35 +66,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       try {
         // Get backend base URL from preload API (if available)
         let url = '/api/network-status';
-        if (window.api?.backend?.url) {
+        const isElectron = !!(window as any).api?.backend?.url;
+
+        if (isElectron) {
           try {
-            const backendUrl = await window.api.backend.url();
+            const backendUrl = await (window as any).api.backend.url();
             if (backendUrl) {
               url = `${backendUrl}/api/network-status`;
-              console.log('[AuthContext] Using backend URL for network check:', url);
+              console.log('[AuthContext] Using Electron backend URL for network check:', url);
             }
           } catch (error) {
-            console.warn('[AuthContext] Failed to get backend URL from preload API, falling back to relative URL:', error);
+            console.debug('[AuthContext] Failed to get backend URL from Electron preload API, backend may not be available');
+            setNetworkAvailable(false);
+            return;
           }
         }
 
         const response = await fetch(url, {
-          signal: AbortSignal.timeout(5000) // 5 second timeout
+          signal: AbortSignal.timeout(3000) // 3 second timeout
         });
         if (response.ok) {
           const data = await response.json();
           setNetworkAvailable(data.hasNetwork === true);
-          console.log('[AuthContext] Network status check succeeded:', { hasNetwork: data.hasNetwork });
+          console.debug('[AuthContext] Network status check succeeded:', { hasNetwork: data.hasNetwork });
         } else {
-          console.error('[AuthContext] network-status response not ok:', response.status, response.statusText);
+          console.debug('[AuthContext] network-status response not ok:', response.status, response.statusText);
           setNetworkAvailable(false);
         }
       } catch (error) {
-        // Network error - assume no network
-        console.error('[AuthContext] Failed to fetch network-status:', error);
-        if (error instanceof SyntaxError) {
-          console.error('[AuthContext] Response was not valid JSON - backend may be serving HTML instead of API response');
-        }
+        // Network error - assume no network available
+        // This is expected in browser mode where backend isn't running
+        console.debug('[AuthContext] Backend network-status check unavailable (running in browser mode)');
         setNetworkAvailable(false);
       }
     };
@@ -102,8 +104,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Check immediately on mount
     checkNetworkStatus();
 
-    // Poll every 5 seconds
-    const interval = setInterval(checkNetworkStatus, 5000);
+    // Poll every 10 seconds (less frequent to reduce noise)
+    const interval = setInterval(checkNetworkStatus, 10000);
 
     return () => clearInterval(interval);
   }, []);

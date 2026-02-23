@@ -165,7 +165,9 @@ function getButtonLayout(flowState: any): ButtonLayoutConfig {
 }
 
 export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowState }: GameControlsPanelProps) {
-  const [timerDuration, setTimerDuration] = useState<number>(30);
+  // Timer duration is now pulled from flowState.totalTime (Settings-based) sent by host
+  // Falls back to 30 only if flowState not available (shouldn't happen in normal flow)
+  const timerDuration = flowState?.totalTime ?? 30;
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   const { sendAdminCommand, previousQuestionNav, nextQuestionNav, nextQuestion, startSilentTimer, startNormalTimer, stopTimer } = useHostTerminalAPI({
@@ -216,10 +218,12 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
         sendAdminCommand('hide-question');
         break;
       case 'start-normal-timer':
-        sendAdminCommand('start-normal-timer', { seconds: timerDuration });
+        // Don't send explicit seconds - let host use Settings-based flowState.totalTime
+        sendAdminCommand('start-normal-timer');
         break;
       case 'start-silent-timer':
-        sendAdminCommand('start-silent-timer', { seconds: timerDuration });
+        // Don't send explicit seconds - let host use Settings-based flowState.totalTime
+        sendAdminCommand('start-silent-timer');
         break;
       case 'reveal-answer':
         sendAdminCommand('reveal-answer');

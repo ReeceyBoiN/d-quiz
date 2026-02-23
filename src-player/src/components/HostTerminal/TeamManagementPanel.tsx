@@ -98,7 +98,7 @@ export function TeamManagementPanel({ deviceId, playerId, teamName, wsRef }: Tea
     console.log('[HostTerminal] Saving team name:', editingTeamName);
 
     // Send command to backend to update team name
-    sendAdminCommand('UPDATE_TEAM_NAME', { teamId, newTeamName: editingTeamName });
+    sendAdminCommand('edit-team-name', { teamId, newName: editingTeamName });
 
     setTeams(teams.map(t =>
       t.id === teamId ? { ...t, name: editingTeamName } : t
@@ -110,7 +110,7 @@ export function TeamManagementPanel({ deviceId, playerId, teamName, wsRef }: Tea
     console.log('[HostTerminal] Adjusting score for team:', teamId, 'points:', points);
 
     // Send command to backend to adjust score
-    sendAdminCommand('ADJUST_TEAM_SCORE', { teamId, points });
+    sendAdminCommand('adjust-score', { teamId, points });
 
     setTeams(teams.map(t =>
       t.id === teamId ? { ...t, score: Math.max(0, t.score + points) } : t
@@ -121,8 +121,8 @@ export function TeamManagementPanel({ deviceId, playerId, teamName, wsRef }: Tea
     console.log('[HostTerminal] Approving photo for team:', teamId);
 
     // Send approval command to backend
-    sendAdminCommand('APPROVE_TEAM_PHOTO', { teamId });
-    console.log('[TeamManagementPanel] ✅ Sent APPROVE_TEAM_PHOTO command to backend');
+    sendAdminCommand('approve-photo', { teamId });
+    console.log('[TeamManagementPanel] ✅ Sent approve-photo command to backend');
 
     setTeams(teams.map(t =>
       t.id === teamId ? { ...t, photoApprovalStatus: 'approved' } : t
@@ -133,8 +133,8 @@ export function TeamManagementPanel({ deviceId, playerId, teamName, wsRef }: Tea
     console.log('[HostTerminal] Declining photo for team:', teamId);
 
     // Send decline command to backend
-    sendAdminCommand('DECLINE_TEAM_PHOTO', { teamId });
-    console.log('[TeamManagementPanel] ✅ Sent DECLINE_TEAM_PHOTO command to backend');
+    sendAdminCommand('decline-photo', { teamId });
+    console.log('[TeamManagementPanel] ✅ Sent decline-photo command to backend');
 
     setTeams(teams.map(t =>
       t.id === teamId ? { ...t, photoApprovalStatus: 'declined' } : t
@@ -146,7 +146,7 @@ export function TeamManagementPanel({ deviceId, playerId, teamName, wsRef }: Tea
       console.log('[HostTerminal] Removing team:', teamId);
 
       // Send remove command to backend
-      sendAdminCommand('REMOVE_TEAM', { teamId });
+      sendAdminCommand('remove-team', { teamId });
 
       setTeams(teams.filter(t => t.id !== teamId));
     }

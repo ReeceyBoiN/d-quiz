@@ -37,10 +37,11 @@ import { useQuizData } from "../utils/QuizDataContext";
 import { useTimer } from "../hooks/useTimer";
 import { useHostInfo } from "../hooks/useHostInfo";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
-import { getTotalTimeForQuestion, hasQuestionImage } from "../state/flowState";
+import { getTotalTimeForQuestion, hasQuestionImage, initialFlow } from "../state/flowState";
 import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { playApplauseSound, playFailSound } from "../utils/audioUtils";
+import { executeStartNormalTimer, executeStartSilentTimer, validateTimerDuration } from "../utils/unifiedTimerHandlers";
 import { calculateTeamPoints, rankCorrectTeams, shouldAutoDisableGoWide, type ScoringConfig } from "../utils/scoringEngine";
 import { getAnswerText, createHandleComputeAndAwardScores, createHandleApplyEvilModePenalty } from "../utils/quizHostHelpers";
 import { saveGameState, loadGameState, clearGameState, createGameStateSnapshot, type RoundSettings } from "../utils/gameStatePersistence";
@@ -222,6 +223,7 @@ export function QuizHost() {
     staggeredEnabled,
     defaultPoints,
     gameModeTimers,
+    nearestWinsTimer,
     voiceCountdown,
     teamPhotosAutoApprove
   } = useSettings();
@@ -709,6 +711,25 @@ export function QuizHost() {
     hostControllerEnabled,
     hostControllerCode,
     baseUrl: hostInfo?.baseUrl,
+    gameModeTimers,
+    nearestWinsTimer: 10, // Will be updated via useEffect
+    loadedQuizQuestions: [] as any[],
+    currentLoadedQuestionIndex: 0,
+    flowState: {
+      isQuestionMode: false,
+      flow: 'idle' as const,
+      totalTime: 30,
+      timeRemaining: 30,
+      currentQuestionIndex: 0,
+      currentQuestion: null,
+      pictureSent: false,
+      questionSent: false,
+      answerSubmitted: undefined,
+    },
+    showKeypadInterface: false,
+    showQuizPackDisplay: false,
+    showBuzzInMode: false,
+    showNearestWinsInterface: false,
     handlePrimaryAction: null as any, // Will be assigned in render
     handleRevealAnswer: null as any, // Will be assigned in render
     handleHideQuestion: null as any, // Will be assigned in render
@@ -726,8 +747,17 @@ export function QuizHost() {
       hostControllerEnabled,
       hostControllerCode,
       baseUrl: hostInfo?.baseUrl,
+      gameModeTimers,
+      nearestWinsTimer,
+      loadedQuizQuestions,
+      currentLoadedQuestionIndex,
+      flowState,
+      showKeypadInterface,
+      showQuizPackDisplay,
+      showBuzzInMode,
+      showNearestWinsInterface,
     };
-  }, [authenticatedControllerId, hostControllerEnabled, hostControllerCode, hostInfo?.baseUrl]);
+  }, [authenticatedControllerId, hostControllerEnabled, hostControllerCode, hostInfo?.baseUrl, gameModeTimers, nearestWinsTimer, loadedQuizQuestions, currentLoadedQuestionIndex, flowState, showKeypadInterface, showQuizPackDisplay, showBuzzInMode, showNearestWinsInterface]);
 
   // Auto-load on component mount
   useEffect(() => {
@@ -1203,29 +1233,47 @@ export function QuizHost() {
         wsInstance.onerror = (event) => {
           clearTimeout(connectionTimeout);
           const errorMsg = event instanceof Event
-            ? `WebSocket connection failed (the app may need to run in Electron)`
+            ? `WebSocket connection failed (expected in browser mode - run in Electron to enable player connectivity)`
             : (event as any)?.message || 'Unknown WebSocket error';
-          console.error('❌ WebSocket error:', errorMsg, 'Attempting to connect to:', backendWs);
+          // Log at debug level - this is expected in browser mode
+          const isElectron = !!(window as any).api?.backend?.url;
+          if (isElectron) {
+            console.error('❌ WebSocket error:', errorMsg, 'Attempting to connect to:', backendWs);
+          } else {
+            console.debug('ℹ️ WebSocket unavailable in browser mode (expected, Electron needed for multiplayer):', backendWs);
+          }
           setWsConnected(false);
           // Don't retry on error alone - wait for onclose to handle reconnection
         };
 
         wsInstance.onclose = (event) => {
           clearTimeout(connectionTimeout);
-          console.log(`⚠️  WebSocket closed with code ${event.code}`);
+          const isElectron = !!(window as any).api?.backend?.url;
+          if (isElectron) {
+            console.warn(`⚠️  WebSocket closed with code ${event.code}`);
+          } else {
+            console.debug(`ℹ️  WebSocket closed with code ${event.code} (browser mode - no player connectivity)`);
+          }
           setWsConnected(false);
 
           if (isComponentMounted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttempts++;
             const delayMs = getDelayMs(reconnectAttempts - 1);
-            console.log(`📍 Scheduling WebSocket reconnect in ${delayMs}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+            if (isElectron) {
+              console.log(`📍 Scheduling WebSocket reconnect in ${delayMs}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+            }
 
             if (connectionTimeoutId) clearTimeout(connectionTimeoutId);
             connectionTimeoutId = setTimeout(connectWebSocket, delayMs);
           }
         };
       } catch (err) {
-        console.error('Failed to initialize WebSocket:', err);
+        const isElectron = !!(window as any).api?.backend?.url;
+        if (isElectron) {
+          console.error('Failed to initialize WebSocket:', err);
+        } else {
+          console.debug('WebSocket initialization skipped in browser mode (run in Electron for multiplayer)');
+        }
         if (isComponentMounted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttempts++;
           const delayMs = getDelayMs(reconnectAttempts - 1);
@@ -1238,7 +1286,12 @@ export function QuizHost() {
     // Wait 1 second before first connection attempt to allow backend to initialize
     const initialDelayId = setTimeout(() => {
       if (isComponentMounted) {
-        console.log('Starting WebSocket connection process...');
+        const isElectron = !!(window as any).api?.backend?.url;
+        if (isElectron) {
+          console.log('Starting WebSocket connection process...');
+        } else {
+          console.debug('WebSocket connection skipped - running in browser mode');
+        }
         connectWebSocket();
       }
     }, 1000);
@@ -2433,41 +2486,31 @@ export function QuizHost() {
   const handleNavBarStartTimer = useCallback((customDuration?: number) => {
     if (isQuizPackMode || flowState.isQuestionMode) {
       // For quiz pack mode, use the timer parameters (custom duration from admin command or flow state)
-      const now = Date.now();
-      const timerDuration = customDuration ?? flowState.totalTime;
+      const timerDuration = validateTimerDuration(
+        customDuration ?? flowState.totalTime,
+        flowState.totalTime || 30
+      );
 
-      // Play normal timer audio file (countdown with voice/beeps)
-      playCountdownAudio(timerDuration, false).catch(error => {
-        console.error('[QuizHost] Error playing normal countdown audio:', error);
+      // Execute the unified timer handler (handles audio, player broadcast, external display)
+      executeStartNormalTimer(timerDuration, sendToExternalDisplay).then(result => {
+        // Set the timer start time for accurate response time calculation
+        setGameTimerStartTime(result.timerStartTime);
+        console.log('[QuizHost] NORMAL_TIMER: Set gameTimerStartTime to', result.timerStartTime, 'with duration:', result.timerDuration);
+
+        // Transition to running state which will trigger local timer start
+        setFlowState(prev => ({
+          ...prev,
+          ...result.flowStateUpdate,
+        }));
+      }).catch(error => {
+        console.error('[QuizHost] Error executing normal timer handler:', error);
       });
-
-      // Set the timer start time for accurate response time calculation
-      setGameTimerStartTime(now);
-      console.log('[QuizHost] NORMAL_TIMER: Setting gameTimerStartTime to', now, 'with duration:', timerDuration);
-
-      // Send timer to players
-      sendTimerToPlayers(timerDuration, false, now);
-
-      // Update external display with timer
-      if (externalWindow) {
-        sendToExternalDisplay({
-          type: 'TIMER',
-          data: { seconds: timerDuration, totalTime: timerDuration },
-          totalTime: timerDuration
-        });
-      }
-
-      // Transition to running state which will trigger local timer start
-      setFlowState(prev => ({
-        ...prev,
-        flow: 'running',
-        answerSubmitted: 'normal',
-      }));
     } else if (showKeypadInterface || showNearestWinsInterface || showBuzzInMode) {
       // For on-the-spot modes, determine which handler to call based on game state
       if (!gameTimerRunning && !gameTimerFinished) {
         // Timer not started yet - start the timer
-        gameActionHandlers?.startTimer?.();
+        // Pass the customDuration (from admin command) to the game action handler
+        gameActionHandlers?.startTimer?.(customDuration);
       } else if (gameTimerFinished && !gameAnswerRevealed) {
         // Timer finished, next action is reveal answer
         gameActionHandlers?.reveal?.();
@@ -2487,39 +2530,29 @@ export function QuizHost() {
   const handleNavBarSilentTimer = useCallback((customDuration?: number) => {
     if (isQuizPackMode || flowState.isQuestionMode) {
       // For quiz pack mode: play silent timer audio and start timer
-      const now = Date.now();
-      const timerDuration = customDuration ?? flowState.totalTime;
+      const timerDuration = validateTimerDuration(
+        customDuration ?? flowState.totalTime,
+        flowState.totalTime || 30
+      );
 
-      // Play silent timer audio file (countdown without voice/beeps)
-      playCountdownAudio(timerDuration, true).catch(error => {
-        console.error('[QuizHost] Error playing silent countdown audio:', error);
+      // Execute the unified timer handler (handles audio, player broadcast, external display)
+      executeStartSilentTimer(timerDuration, sendToExternalDisplay).then(result => {
+        // Set the timer start time for accurate response time calculation
+        setGameTimerStartTime(result.timerStartTime);
+        console.log('[QuizHost] SILENT_TIMER: Set gameTimerStartTime to', result.timerStartTime, 'with duration:', result.timerDuration);
+
+        // Transition to running state which will trigger local timer start
+        setFlowState(prev => ({
+          ...prev,
+          ...result.flowStateUpdate,
+        }));
+      }).catch(error => {
+        console.error('[QuizHost] Error executing silent timer handler:', error);
       });
-
-      // Set the timer start time for accurate response time calculation
-      setGameTimerStartTime(now);
-      console.log('[QuizHost] SILENT_TIMER: Setting gameTimerStartTime to', now, 'with duration:', timerDuration);
-
-      // Send timer to players
-      sendTimerToPlayers(timerDuration, true, now);
-
-      // Update external display with timer
-      if (externalWindow) {
-        sendToExternalDisplay({
-          type: 'TIMER',
-          data: { seconds: timerDuration, totalTime: timerDuration },
-          totalTime: timerDuration
-        });
-      }
-
-      // Transition to running state which will trigger local timer start
-      setFlowState(prev => ({
-        ...prev,
-        flow: 'running',
-        answerSubmitted: 'silent',
-      }));
     } else if (gameActionHandlers?.silentTimer) {
       // For on-the-spot modes, use the game-specific silent timer handler
-      gameActionHandlers.silentTimer();
+      // Pass the customDuration (from admin command) to the game action handler
+      gameActionHandlers.silentTimer(customDuration);
     }
   }, [isQuizPackMode, flowState.totalTime, flowState.isQuestionMode, externalWindow, gameActionHandlers]);
 
@@ -2994,8 +3027,9 @@ export function QuizHost() {
         setAuthenticatedControllerId(deviceId);
 
         // Send initial flow state to the controller via IPC
-        console.log('[QuizHost] 📤 Sending initial flow state to controller:', { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode, deviceId });
+        console.log('[QuizHost] 📤 Sending initial flow state to controller:', { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode, totalTime: flowState.totalTime, deviceId });
         sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
+          totalTime: flowState.totalTime,
           currentQuestion: flowState.currentQuestion,
           currentLoadedQuestionIndex,
           loadedQuizQuestions,
@@ -3322,10 +3356,12 @@ export function QuizHost() {
             } else if (!isQuizPackMode) {
               console.log('[QuizHost] - On-the-spot mode, sending next question');
               // For on-the-spot, reset flow and broadcast next
+              // Use default keypad timer as placeholder until user selects next question type
+              const defaultOnTheSpotTimer = deps.gameModeTimers.keypad || 30;
               deps.setFlowState({
                 flow: 'idle',
                 isQuestionMode: true, // Keep in question mode for next type selection
-                totalTime: 30,
+                totalTime: defaultOnTheSpotTimer, // Use settings default, not hardcoded
                 selectedQuestionType: undefined, // Clear question type for next round
               });
               sendNextQuestion();
@@ -3374,46 +3410,93 @@ export function QuizHost() {
             break;
 
           // Timer controls
-          case 'start-silent-timer':
+          case 'start-silent-timer': {
             console.log('[QuizHost] Executing: Start Silent Timer');
             console.log('[QuizHost]   - commandData:', commandData);
-            // SECURITY: Validate timer duration
-            let silentDuration = commandData?.seconds;
-            if (typeof silentDuration !== 'number' || !Number.isFinite(silentDuration)) {
-              silentDuration = 30; // Use default
-              console.warn('[QuizHost] ⚠️  SECURITY: Invalid timer duration for silent timer, using default 30s');
+            console.log('[QuizHost] - Current game mode context:');
+            console.log('[QuizHost]   - isQuizPackMode:', deps.flowState.isQuestionMode);
+            console.log('[QuizHost]   - showKeypadInterface:', deps.showKeypadInterface);
+            console.log('[QuizHost]   - showBuzzInMode:', deps.showBuzzInMode);
+            console.log('[QuizHost]   - showNearestWinsInterface:', deps.showNearestWinsInterface);
+            console.log('[QuizHost]   - flowState.totalTime:', deps.flowState.totalTime);
+
+            // Determine correct timer duration based on current game mode and settings
+            // This ensures the remote trigger uses the same timer as UI buttons
+            let timerDuration: number;
+
+            if (!commandData?.seconds) {
+              // No explicit duration provided - determine from game mode and settings
+              // For quiz pack / question mode, use flowState.totalTime (which was set by getTotalTimeForQuestion)
+              if (deps.flowState.isQuestionMode || deps.flowState.flow !== 'idle') {
+                timerDuration = deps.flowState.totalTime || 30;
+                console.log('[QuizHost] Using flowState.totalTime for silent timer:', timerDuration);
+              } else {
+                // Fallback: shouldn't happen if game is in proper state
+                timerDuration = 30;
+                console.log('[QuizHost] Using fallback 30s for silent timer (no question mode)');
+              }
+            } else {
+              // Custom duration provided (unlikely from remote, but support it)
+              timerDuration = validateTimerDuration(commandData.seconds);
+              console.log('[QuizHost] Using custom duration for silent timer:', timerDuration);
             }
-            // SECURITY: Clamp timer duration to reasonable bounds (1 second to 10 minutes)
-            silentDuration = Math.max(1, Math.min(600, Math.floor(silentDuration)));
-            console.log('[QuizHost] Validated timer duration:', silentDuration);
-            console.log('[QuizHost] About to call deps.handleNavBarSilentTimer with duration:', silentDuration);
-            // Call deps.handleNavBarSilentTimer with the validated duration to properly update flow state and notify controller
-            deps.handleNavBarSilentTimer(silentDuration);
-            console.log('[QuizHost] deps.handleNavBarSilentTimer completed');
+
+            // Call handler with explicit duration (same as UI would use)
+            deps.handleNavBarSilentTimer(timerDuration);
             success = true;
             break;
+          }
 
-          case 'start-normal-timer':
+          case 'start-normal-timer': {
             console.log('[QuizHost] Executing: Start Normal Timer');
             console.log('[QuizHost]   - commandData:', commandData);
-            // SECURITY: Validate timer duration
-            let normalDuration = commandData?.seconds;
-            if (typeof normalDuration !== 'number' || !Number.isFinite(normalDuration)) {
-              normalDuration = flowState.totalTime || 30; // Use current flow state time or default
-              console.warn('[QuizHost] ⚠️  SECURITY: Invalid timer duration for normal timer, using', normalDuration);
+            console.log('[QuizHost] - Current game mode context:');
+            console.log('[QuizHost]   - isQuizPackMode:', deps.flowState.isQuestionMode);
+            console.log('[QuizHost]   - showKeypadInterface:', deps.showKeypadInterface);
+            console.log('[QuizHost]   - showBuzzInMode:', deps.showBuzzInMode);
+            console.log('[QuizHost]   - showNearestWinsInterface:', deps.showNearestWinsInterface);
+            console.log('[QuizHost]   - flowState.totalTime:', deps.flowState.totalTime);
+
+            // Determine correct timer duration based on current game mode and settings
+            // This ensures the remote trigger uses the same timer as UI buttons
+            let timerDuration: number;
+
+            if (!commandData?.seconds) {
+              // No explicit duration provided - determine from game mode and settings
+              // For quiz pack / question mode, use flowState.totalTime (which was set by getTotalTimeForQuestion)
+              if (deps.flowState.isQuestionMode || deps.flowState.flow !== 'idle') {
+                timerDuration = deps.flowState.totalTime || 30;
+                console.log('[QuizHost] Using flowState.totalTime for normal timer:', timerDuration);
+              } else {
+                // Fallback: shouldn't happen if game is in proper state
+                timerDuration = 30;
+                console.log('[QuizHost] Using fallback 30s for normal timer (no question mode)');
+              }
+            } else {
+              // Custom duration provided (unlikely from remote, but support it)
+              timerDuration = validateTimerDuration(commandData.seconds);
+              console.log('[QuizHost] Using custom duration for normal timer:', timerDuration);
             }
-            // SECURITY: Clamp timer duration to reasonable bounds (1 second to 10 minutes)
-            normalDuration = Math.max(1, Math.min(600, Math.floor(normalDuration)));
-            console.log('[QuizHost] Validated timer duration:', normalDuration);
-            console.log('[QuizHost] About to call deps.handleNavBarStartTimer with duration:', normalDuration);
-            // Call deps.handleNavBarStartTimer with the validated duration
-            deps.handleNavBarStartTimer(normalDuration);
-            console.log('[QuizHost] deps.handleNavBarStartTimer completed');
+
+            // Call handler with explicit duration (same as UI would use)
+            deps.handleNavBarStartTimer(timerDuration);
             success = true;
             break;
+          }
 
           case 'stop-timer':
             console.log('[QuizHost] Executing: Stop Timer');
+            // Stop countdown audio on host
+            stopCountdownAudio();
+            // Clear timer start time
+            setGameTimerStartTime(null);
+            // Update host flowState to 'timeup' (same as when timer naturally expires)
+            deps.setFlowState(prev => ({
+              ...prev,
+              flow: 'timeup',
+              timeRemaining: 0,
+            }));
+            // Notify players that time is up
             sendTimeUpToPlayers();
             success = true;
             break;
@@ -3509,7 +3592,6 @@ export function QuizHost() {
             break;
 
           case 'approve-photo':
-          case 'APPROVE_TEAM_PHOTO':
             console.log('[QuizHost] Executing: Approve Photo');
             if (commandData?.teamId || commandData?.deviceId) {
               const targetTeamId = commandData?.teamId || commandData?.deviceId;
@@ -3530,7 +3612,6 @@ export function QuizHost() {
             break;
 
           case 'decline-photo':
-          case 'DECLINE_TEAM_PHOTO':
             console.log('[QuizHost] Executing: Decline Photo');
             if (commandData?.teamId || commandData?.deviceId) {
               const targetTeamId = commandData?.teamId || commandData?.deviceId;
@@ -3551,7 +3632,6 @@ export function QuizHost() {
             break;
 
           case 'remove-team':
-          case 'REMOVE_TEAM':
             console.log('[QuizHost] Executing: Remove Team');
             if (commandData?.teamId) {
               // SECURITY: Verify team exists before removing
@@ -3572,76 +3652,6 @@ export function QuizHost() {
             }
             break;
 
-          case 'UPDATE_TEAM_NAME':
-            console.log('[QuizHost] Executing: Update Team Name');
-            if (commandData?.teamId && commandData?.newTeamName) {
-              // SECURITY: Validate team name
-              let newName = String(commandData.newTeamName).trim();
-
-              // SECURITY: Enforce name length limits (1-50 characters)
-              if (!newName || newName.length === 0 || newName.length > 50) {
-                console.warn('[QuizHost] ⚠️  SECURITY: Invalid team name length:', newName.length);
-                success = false;
-                break;
-              }
-
-              // SECURITY: Verify team exists before modifying
-              const targetTeam = quizzesRef.current.find(q => q.id === commandData.teamId);
-              if (!targetTeam) {
-                console.warn('[QuizHost] ⚠️  SECURITY: Attempted team name edit on non-existent team:', commandData.teamId);
-                success = false;
-                break;
-              }
-
-              console.log('[QuizHost] Updated team name - old:', targetTeam.name, 'new:', newName);
-              setQuizzes(prev => prev.map(quiz =>
-                quiz.id === commandData.teamId
-                  ? { ...quiz, name: newName }
-                  : quiz
-              ));
-              debouncedSaveGameStateRef.current?.();
-              success = true;
-            } else {
-              console.warn('[QuizHost] ⚠️  SECURITY: Missing required fields for UPDATE_TEAM_NAME');
-              success = false;
-            }
-            break;
-
-          case 'ADJUST_TEAM_SCORE':
-            console.log('[QuizHost] Executing: Adjust Team Score');
-            if (commandData?.teamId && commandData?.points !== undefined) {
-              // SECURITY: Validate points is a number
-              let points = commandData.points;
-              if (typeof points !== 'number' || !Number.isFinite(points)) {
-                console.warn('[QuizHost] ⚠️  SECURITY: Invalid points value, rejecting command');
-                success = false;
-                break;
-              }
-              // SECURITY: Clamp points to reasonable bounds (prevent huge additions/subtractions)
-              // Max adjustment per command: ±1000 points
-              points = Math.max(-1000, Math.min(1000, Math.floor(points)));
-
-              // SECURITY: Verify team exists before modifying
-              const targetTeam = quizzesRef.current.find(q => q.id === commandData.teamId);
-              if (!targetTeam) {
-                console.warn('[QuizHost] ⚠️  SECURITY: Attempted score adjustment on non-existent team:', commandData.teamId);
-                success = false;
-                break;
-              }
-
-              console.log('[QuizHost] Adjusted team score - team:', targetTeam.name, 'points:', points);
-              setQuizzes(prev => prev.map(quiz =>
-                quiz.id === commandData.teamId
-                  ? { ...quiz, score: Math.max(0, (quiz.score || 0) + points) }
-                  : quiz
-              ));
-              debouncedSaveGameStateRef.current?.();
-              success = true;
-            } else {
-              console.warn('[QuizHost] ⚠️  SECURITY: Missing required fields for ADJUST_TEAM_SCORE');
-              success = false;
-            }
-            break;
 
           // Quiz pack navigation commands
           case 'previous-question':
@@ -3680,12 +3690,19 @@ export function QuizHost() {
             if (!isQuizPackMode) {
               console.log('[QuizHost] - On-the-spot mode: selected type:', selectedType);
               // Set up on-the-spot mode with selected question type
+              // Determine correct timer duration based on question type and settings
+              const selectedTypeForTimer = selectedType as 'letters' | 'numbers' | 'multiple-choice';
+              const questionTypeNormalized = selectedTypeForTimer === 'letters' ? 'letters' :
+                                              selectedTypeForTimer === 'numbers' ? 'numbers' :
+                                              selectedTypeForTimer === 'multiple-choice' ? 'multi' : 'letters';
+              const typedDuration = getTotalTimeForQuestion({ type: questionTypeNormalized }, deps.gameModeTimers);
+              console.log('[QuizHost]   - Question type:', selectedType, 'Timer duration:', typedDuration);
               // For on-the-spot, we transition directly to 'sent-question' state so timer buttons appear
               // (we skip 'ready' state because there's no pre-written question to send)
               deps.setFlowState({
                 flow: 'sent-question',
                 isQuestionMode: true,
-                totalTime: 30,
+                totalTime: typedDuration, // Use Settings-based duration, not hardcoded
                 selectedQuestionType: selectedType as 'letters' | 'numbers' | 'multiple-choice',
               });
               success = true;
@@ -3902,6 +3919,7 @@ export function QuizHost() {
         baseUrl: hostInfo?.baseUrl,
       });
       sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
+        totalTime: flowState.totalTime,
         currentQuestion: flowState.currentQuestion,
         currentLoadedQuestionIndex,
         loadedQuizQuestions,
@@ -5760,6 +5778,7 @@ export function QuizHost() {
   adminListenerDepsRef.current.setFlowState = setFlowState;
   adminListenerDepsRef.current.sendFlowStateToController = (deviceId?: string) => {
     sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
+      totalTime: flowState.totalTime,
       currentQuestion: flowState.currentQuestion,
       currentLoadedQuestionIndex,
       loadedQuizQuestions,

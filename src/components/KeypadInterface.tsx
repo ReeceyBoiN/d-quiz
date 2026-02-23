@@ -684,9 +684,10 @@ export function KeypadInterface({
 
 
 
-  const handleStartTimer = useCallback(() => {
+  const handleStartTimer = useCallback((customDuration?: number) => {
     // Can now start timer without requiring an answer first
-    const timerLength = gameModeTimers.keypad;
+    // Use provided duration (from admin command/host flowState) or fall back to Settings-based default or 30s
+    const timerLength = customDuration ?? gameModeTimers.keypad ?? 30;
     setTotalTimerLength(timerLength); // Set total timer length for progress bar
     setIsTimerRunning(true);
     setTimerFinished(false);
@@ -833,9 +834,10 @@ export function KeypadInterface({
   }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, currentQuestion, questionType]);
 
   // Add function to handle silent timer (no countdown audio)
-  const handleSilentTimer = useCallback(() => {
+  const handleSilentTimer = useCallback((customDuration?: number) => {
     // Can now start timer without requiring an answer first
-    const timerLength = gameModeTimers.keypad;
+    // Use provided duration (from admin command/host flowState) or fall back to Settings-based default or 30s
+    const timerLength = customDuration ?? gameModeTimers.keypad ?? 30;
     setTotalTimerLength(timerLength); // Set total timer length for progress bar
     setIsTimerRunning(true);
     setTimerFinished(false);
