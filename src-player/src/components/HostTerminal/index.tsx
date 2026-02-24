@@ -5,6 +5,7 @@ import { TeamManagementPanel } from './TeamManagementPanel';
 import { GameControlsPanel } from './GameControlsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { QuestionTypeSelector } from './QuestionTypeSelector';
+import { HostRemoteKeypad } from './HostRemoteKeypad';
 import { AnswerInputKeypad } from './AnswerInputKeypad';
 
 interface HostTerminalProps {
@@ -30,11 +31,12 @@ export function HostTerminal({ deviceId, playerId, teamName, wsRef, flowState }:
   // Determine if we're in on-the-spot mode
   const isOnTheSpotMode = flowState?.isQuizPackMode === false;
   const isInIdleState = flowState?.flow === 'idle';
-  const isInTimerState = flowState?.flow === 'sent-question' || flowState?.flow === 'running';
+  // Keypad should be visible throughout entire game flow (after question type selected)
+  const isInGameFlow = ['sent-question', 'running', 'timeup', 'revealed', 'fastest'].includes(flowState?.flow || '');
 
   // For on-the-spot mode, show different UI based on game state
   const showQuestionTypeSelector = isOnTheSpotMode && isInIdleState && flowState?.isQuestionMode;
-  const showAnswerKeypad = isOnTheSpotMode && isInTimerState && flowState?.isQuestionMode;
+  const showAnswerKeypad = isOnTheSpotMode && isInGameFlow && flowState?.isQuestionMode;
 
   // Compute whether keypad will actually render (has question type data)
   const shouldRenderAnswerKeypad = showAnswerKeypad &&
@@ -136,15 +138,28 @@ export function HostTerminal({ deviceId, playerId, teamName, wsRef, flowState }:
                 flowState={flowState}
               />
             </div>
-            <div className="w-80 overflow-auto border-l border-slate-700">
-              <AnswerInputKeypad
-                deviceId={deviceId}
-                playerId={playerId}
-                teamName={teamName}
-                wsRef={wsRef}
-                isOnTheSpotMode={isOnTheSpotMode}
-                flowState={flowState}
-              />
+            <div className="w-80 overflow-auto border-l border-slate-700 flex flex-col gap-4">
+              {/* Use HostRemoteKeypad for full keypad UI, with AnswerInputKeypad as fallback */}
+              {flowState?.selectedQuestionType &&
+              ['letters', 'numbers', 'multiple-choice'].includes(flowState.selectedQuestionType) ? (
+                <HostRemoteKeypad
+                  deviceId={deviceId}
+                  playerId={playerId}
+                  teamName={teamName}
+                  wsRef={wsRef}
+                  isOnTheSpotMode={isOnTheSpotMode}
+                  flowState={flowState}
+                />
+              ) : (
+                <AnswerInputKeypad
+                  deviceId={deviceId}
+                  playerId={playerId}
+                  teamName={teamName}
+                  wsRef={wsRef}
+                  isOnTheSpotMode={isOnTheSpotMode}
+                  flowState={flowState}
+                />
+              )}
             </div>
           </div>
         ) : (

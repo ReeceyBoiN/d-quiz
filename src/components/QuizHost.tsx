@@ -733,6 +733,8 @@ export function QuizHost() {
     handlePrimaryAction: null as any, // Will be assigned in render
     handleRevealAnswer: null as any, // Will be assigned in render
     handleHideQuestion: null as any, // Will be assigned in render
+    handleQuizPackNext: null as any, // Will be assigned in render
+    handleQuizPackPrevious: null as any, // Will be assigned in render
     handleNavBarStartTimer: null as any, // Will be assigned in render
     setCurrentLoadedQuestionIndex: null as any, // Will be assigned in render
     setFlowState: null as any, // Will be assigned in render (for on-the-spot mode)
@@ -756,8 +758,9 @@ export function QuizHost() {
       showQuizPackDisplay,
       showBuzzInMode,
       showNearestWinsInterface,
+      isQuizPackMode,
     };
-  }, [authenticatedControllerId, hostControllerEnabled, hostControllerCode, hostInfo?.baseUrl, gameModeTimers, nearestWinsTimer, loadedQuizQuestions, currentLoadedQuestionIndex, flowState, showKeypadInterface, showQuizPackDisplay, showBuzzInMode, showNearestWinsInterface]);
+  }, [authenticatedControllerId, hostControllerEnabled, hostControllerCode, hostInfo?.baseUrl, gameModeTimers, nearestWinsTimer, loadedQuizQuestions, currentLoadedQuestionIndex, flowState, showKeypadInterface, showQuizPackDisplay, showBuzzInMode, showNearestWinsInterface, isQuizPackMode]);
 
   // Auto-load on component mount
   useEffect(() => {
@@ -3306,8 +3309,8 @@ export function QuizHost() {
           case 'send-question':
             console.log('[QuizHost] Executing: Send Question');
             console.log('[QuizHost]   - About to call handlePrimaryAction');
-            console.log('[QuizHost]   - currentLoadedQuestionIndex:', currentLoadedQuestionIndex);
-            console.log('[QuizHost]   - loadedQuizQuestions.length:', loadedQuizQuestions?.length);
+            console.log('[QuizHost]   - currentLoadedQuestionIndex:', deps.currentLoadedQuestionIndex);
+            console.log('[QuizHost]   - loadedQuizQuestions.length:', deps.loadedQuizQuestions?.length);
             // Call the primary action handler which manages game flow progression
             deps.handlePrimaryAction();
             success = true;
@@ -3316,10 +3319,10 @@ export function QuizHost() {
 
           case 'send-picture':
             console.log('[QuizHost] Executing: Send Picture');
-            console.log('[QuizHost]   - Current flow state:', flowState.flow);
-            console.log('[QuizHost]   - Current question index:', currentLoadedQuestionIndex);
-            if (isQuizPackMode && loadedQuizQuestions.length > 0) {
-              const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+            console.log('[QuizHost]   - Current flow state:', deps.flowState.flow);
+            console.log('[QuizHost]   - Current question index:', deps.currentLoadedQuestionIndex);
+            if (deps.isQuizPackMode && deps.loadedQuizQuestions.length > 0) {
+              const currentQuestion = deps.loadedQuizQuestions[deps.currentLoadedQuestionIndex];
               // Check if question has an image
               if (currentQuestion && hasQuestionImage(currentQuestion)) {
                 console.log('[QuizHost]   - Question has image, calling handlePrimaryAction');
@@ -3344,16 +3347,21 @@ export function QuizHost() {
 
           case 'next-question':
             console.log('[QuizHost] Executing: Next Question');
-            // For quiz pack mode, advance to next question
-            // For on-the-spot mode, just broadcast NEXT
-            if (isQuizPackMode && currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
-              console.log('[QuizHost] - Quiz pack mode, advancing from question', currentLoadedQuestionIndex, 'to', currentLoadedQuestionIndex + 1);
-              // Increment question index - the useEffect watching currentLoadedQuestionIndex will reset flowState to 'ready'
-              deps.setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex + 1);
-              // Broadcast next question to players
-              sendNextQuestion();
+            console.log('[QuizHost]   - isQuizPackMode:', deps.isQuizPackMode);
+            console.log('[QuizHost]   - flowState.flow:', deps.flowState.flow);
+            console.log('[QuizHost]   - currentLoadedQuestionIndex:', deps.currentLoadedQuestionIndex);
+            console.log('[QuizHost]   - loadedQuizQuestions.length:', deps.loadedQuizQuestions.length);
+
+            // For quiz pack mode, use handlePrimaryAction to ensure proper state transitions and cleanup
+            if (deps.isQuizPackMode) {
+              console.log('[QuizHost] - Quiz pack mode: Calling handlePrimaryAction');
+              // handlePrimaryAction will handle the state machine:
+              // - In 'fastest' state: advances to next question with full cleanup
+              // - In last question: ends the round
+              // This ensures all team answers are cleared, timers are reset, etc.
+              deps.handlePrimaryAction();
               success = true;
-            } else if (!isQuizPackMode) {
+            } else if (!deps.isQuizPackMode) {
               console.log('[QuizHost] - On-the-spot mode, sending next question');
               // For on-the-spot, reset flow and broadcast next
               // Use default keypad timer as placeholder until user selects next question type
@@ -3372,11 +3380,6 @@ export function QuizHost() {
               setTeamAnswerStatuses({});
               setTeamCorrectRankings({});
               setFastestTeamRevealTime(null);
-              success = true;
-            } else if (currentLoadedQuestionIndex >= loadedQuizQuestions.length - 1) {
-              console.log('[QuizHost] - Last question in quiz pack, ending round');
-              // Last question already shown - end round
-              deps.handlePrimaryAction();
               success = true;
             }
             break;
@@ -3656,8 +3659,9 @@ export function QuizHost() {
           // Quiz pack navigation commands
           case 'previous-question':
             console.log('[QuizHost] Executing: Previous Question');
-            if (isQuizPackMode) {
-              handleQuizPackPrevious();
+            console.log('[QuizHost]   - isQuizPackMode:', deps.isQuizPackMode);
+            if (deps.isQuizPackMode) {
+              deps.handleQuizPackPrevious();
               success = true;
             } else {
               console.warn('[QuizHost] ⚠️  Previous question only available in quiz pack mode');
@@ -3667,8 +3671,9 @@ export function QuizHost() {
 
           case 'next-question-nav':
             console.log('[QuizHost] Executing: Next Question (Navigation)');
-            if (isQuizPackMode) {
-              handleQuizPackNext();
+            console.log('[QuizHost]   - isQuizPackMode:', deps.isQuizPackMode);
+            if (deps.isQuizPackMode) {
+              deps.handleQuizPackNext();
               success = true;
             } else {
               console.warn('[QuizHost] ⚠️  Next question navigation only available in quiz pack mode');
@@ -5772,6 +5777,8 @@ export function QuizHost() {
   adminListenerDepsRef.current.handlePrimaryAction = handlePrimaryAction;
   adminListenerDepsRef.current.handleRevealAnswer = handleRevealAnswer;
   adminListenerDepsRef.current.handleHideQuestion = handleHideQuestion;
+  adminListenerDepsRef.current.handleQuizPackNext = handleQuizPackNext;
+  adminListenerDepsRef.current.handleQuizPackPrevious = handleQuizPackPrevious;
   adminListenerDepsRef.current.handleNavBarStartTimer = handleNavBarStartTimer;
   adminListenerDepsRef.current.handleNavBarSilentTimer = handleNavBarSilentTimer;
   adminListenerDepsRef.current.setCurrentLoadedQuestionIndex = setCurrentLoadedQuestionIndex;
@@ -5902,6 +5909,7 @@ export function QuizHost() {
             onStartTimer={handleNavBarStartTimer}
             onSilentTimer={handleNavBarSilentTimer}
             onHideQuestion={handleHideQuestion}
+            onSendQuestion={handlePrimaryAction}
             onReveal={
               isQuizPackMode || flowState.isQuestionMode
                 ? () => {

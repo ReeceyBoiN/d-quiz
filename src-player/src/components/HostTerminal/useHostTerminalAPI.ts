@@ -48,6 +48,8 @@ export function useHostTerminalAPI({
 
   /**
    * Commands for quiz pack navigation (preview only, no game flow)
+   * Note: 'previous-question' and 'next-question-nav' are both navigation commands
+   * (despite naming inconsistency - both call handleQuizPackNext/Previous on host)
    */
   const previousQuestionNav = useCallback(() => {
     return sendAdminCommand('previous-question');

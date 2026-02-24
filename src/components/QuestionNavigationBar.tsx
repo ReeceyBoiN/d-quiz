@@ -12,6 +12,7 @@ interface QuestionNavigationBarProps {
   onStartTimer: () => void;
   onSilentTimer: () => void;
   onHideQuestion: () => void;
+  onSendQuestion?: () => void; // Send Question/Send Picture button callback
   onReveal?: () => void; // Reveal answer button callback
   onNextAction?: () => void; // Next action button callback (for Next Question)
   onRevealFastestTeam?: () => void; // Reveal fastest team button callback
@@ -45,6 +46,7 @@ export function QuestionNavigationBar({
   onStartTimer,
   onSilentTimer,
   onHideQuestion,
+  onSendQuestion,
   onReveal,
   onNextAction,
   onRevealFastestTeam,
@@ -292,7 +294,7 @@ export function QuestionNavigationBar({
         return onNextAction || null;
       case 'Send Picture':
       case 'Send Question':
-        return onStartTimer;
+        return onSendQuestion || null;
       default:
         return null;
     }
@@ -496,9 +498,9 @@ export function QuestionNavigationBar({
                       onRevealFastestTeam?.();
                     } else if (flowButton.label === 'Next Question' || flowButton.label === 'End Round') {
                       onNextAction?.();
-                    } else {
-                      // For Send Picture/Send Question buttons, use onStartTimer
-                      onStartTimer();
+                    } else if (flowButton.label === 'Send Picture' || flowButton.label === 'Send Question') {
+                      // For Send Picture/Send Question buttons, call onSendQuestion
+                      onSendQuestion?.();
                     }
                   }}
                   disabled={

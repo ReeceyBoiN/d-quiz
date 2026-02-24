@@ -281,37 +281,61 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
       {/* Navigation Arrows - Quiz Pack Mode Only */}
       {showNavigation && (
         <div className="mb-6 flex items-center justify-between gap-3">
-          <button
-            onClick={handlePreviousQuestion}
-            disabled={!canGoPrevious}
-            className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-              canGoPrevious
-                ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                : 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'
-            }`}
-          >
-            <ChevronLeft size={20} />
-            Previous
-          </button>
+          {/* Check if timer is running to disable navigation */}
+          {(() => {
+            const isTimerRunning = flowState?.flow === 'running';
+            const previousDisabled = !canGoPrevious || isTimerRunning;
+            const nextDisabled = !canGoNext || isTimerRunning;
 
-          <div className="flex-1 text-center">
-            <p className="text-slate-300 text-sm font-medium">
-              Question {currentQuestionIndex + 1} of {totalQuestions}
-            </p>
-          </div>
+            return (
+              <>
+                <button
+                  onClick={handlePreviousQuestion}
+                  disabled={previousDisabled}
+                  className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
+                    previousDisabled
+                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50 pointer-events-none'
+                      : 'bg-slate-700 hover:bg-slate-600 text-white'
+                  }`}
+                  style={{
+                    pointerEvents: previousDisabled ? 'none' : 'auto',
+                    opacity: previousDisabled ? 0.5 : 1,
+                    cursor: previousDisabled ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  <ChevronLeft size={20} />
+                  Previous
+                </button>
 
-          <button
-            onClick={handleNextQuestion}
-            disabled={!canGoNext}
-            className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-              canGoNext
-                ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                : 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'
-            }`}
-          >
-            Next
-            <ChevronRight size={20} />
-          </button>
+                <div className="flex-1 text-center">
+                  <p className="text-slate-300 text-sm font-medium">
+                    Question {currentQuestionIndex + 1} of {totalQuestions}
+                  </p>
+                  {isTimerRunning && (
+                    <p className="text-amber-400 text-xs mt-1 font-semibold">⏱️ Timer running - navigation disabled</p>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleNextQuestion}
+                  disabled={nextDisabled}
+                  className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
+                    nextDisabled
+                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50 pointer-events-none'
+                      : 'bg-slate-700 hover:bg-slate-600 text-white'
+                  }`}
+                  style={{
+                    pointerEvents: nextDisabled ? 'none' : 'auto',
+                    opacity: nextDisabled ? 0.5 : 1,
+                    cursor: nextDisabled ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Next
+                  <ChevronRight size={20} />
+                </button>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -327,21 +351,40 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
       <div className="mb-6">
         {buttonLayout.layout === 'single' && (
           <>
-            <button
-              onClick={() => handleButtonClick(buttonLayout.buttons[0])}
-              disabled={buttonLayout.buttons[0].disabled}
-              className={`w-full px-6 py-4 text-white font-bold text-lg rounded-lg transition-all ${
-                buttonLayout.buttons[0].disabled
-                  ? 'bg-slate-600 cursor-not-allowed opacity-50'
-                  : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
-              }`}
-            >
-              <span className="text-2xl mr-2">{buttonLayout.buttons[0].emoji}</span>
-              {buttonLayout.buttons[0].label}
-            </button>
-            <p className="text-slate-400 text-sm mt-2 text-center">
-              {buttonLayout.buttons[0].disabled ? 'No active question' : 'Press spacebar or click to continue'}
-            </p>
+            {(() => {
+              // For 'Reveal Answer' button: disable if timer is still running
+              // Allow clicking when timer is 'running' but protect against accidental clicks during timer
+              const isRevealAnswerButton = buttonLayout.buttons[0].commandType === 'reveal-answer';
+              const isTimerRunning = flowState?.flow === 'running';
+              const buttonDisabled = buttonLayout.buttons[0].disabled || (isRevealAnswerButton && isTimerRunning);
+
+              return (
+                <>
+                  <button
+                    onClick={() => handleButtonClick(buttonLayout.buttons[0])}
+                    disabled={buttonDisabled}
+                    className={`w-full px-6 py-4 text-white font-bold text-lg rounded-lg transition-all ${
+                      buttonDisabled
+                        ? 'bg-slate-600 cursor-not-allowed opacity-50 pointer-events-none'
+                        : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
+                    }`}
+                    style={{
+                      pointerEvents: buttonDisabled ? 'none' : 'auto',
+                      opacity: buttonDisabled ? 0.5 : 1,
+                      cursor: buttonDisabled ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <span className="text-2xl mr-2">{buttonLayout.buttons[0].emoji}</span>
+                    {buttonLayout.buttons[0].label}
+                  </button>
+                  <p className="text-slate-400 text-sm mt-2 text-center">
+                    {buttonDisabled && isRevealAnswerButton && isTimerRunning
+                      ? '⏱️ Timer running - button disabled to prevent accidents'
+                      : (buttonLayout.buttons[0].disabled ? 'No active question' : 'Press spacebar or click to continue')}
+                  </p>
+                </>
+              );
+            })()}
           </>
         )}
 
@@ -353,9 +396,14 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
                 disabled={buttonLayout.buttons[0].disabled}
                 className={`flex-1 px-4 py-3 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
                   buttonLayout.buttons[0].disabled
-                    ? 'bg-slate-600 cursor-not-allowed opacity-50'
+                    ? 'bg-slate-600 cursor-not-allowed opacity-50 pointer-events-none'
                     : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
                 }`}
+                style={{
+                  pointerEvents: buttonLayout.buttons[0].disabled ? 'none' : 'auto',
+                  opacity: buttonLayout.buttons[0].disabled ? 0.5 : 1,
+                  cursor: buttonLayout.buttons[0].disabled ? 'not-allowed' : 'pointer'
+                }}
               >
                 <span className="text-xl">{buttonLayout.buttons[0].emoji}</span>
                 {buttonLayout.buttons[0].label}
@@ -365,9 +413,14 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
                 disabled={buttonLayout.buttons[1].disabled}
                 className={`flex-1 px-4 py-3 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
                   buttonLayout.buttons[1].disabled
-                    ? 'bg-slate-600 cursor-not-allowed opacity-50'
+                    ? 'bg-slate-600 cursor-not-allowed opacity-50 pointer-events-none'
                     : 'bg-amber-600 hover:bg-amber-700 active:scale-95'
                 }`}
+                style={{
+                  pointerEvents: buttonLayout.buttons[1].disabled ? 'none' : 'auto',
+                  opacity: buttonLayout.buttons[1].disabled ? 0.5 : 1,
+                  cursor: buttonLayout.buttons[1].disabled ? 'not-allowed' : 'pointer'
+                }}
               >
                 <span className="text-xl">{buttonLayout.buttons[1].emoji}</span>
                 {buttonLayout.buttons[1].label}
@@ -385,9 +438,14 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
                 disabled={buttonLayout.buttons[0].disabled}
                 className={`flex-1 px-4 py-3 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
                   buttonLayout.buttons[0].disabled
-                    ? 'bg-slate-600 cursor-not-allowed opacity-50'
+                    ? 'bg-slate-600 cursor-not-allowed opacity-50 pointer-events-none'
                     : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
                 }`}
+                style={{
+                  pointerEvents: buttonLayout.buttons[0].disabled ? 'none' : 'auto',
+                  opacity: buttonLayout.buttons[0].disabled ? 0.5 : 1,
+                  cursor: buttonLayout.buttons[0].disabled ? 'not-allowed' : 'pointer'
+                }}
               >
                 <span className="text-xl">{buttonLayout.buttons[0].emoji}</span>
                 {buttonLayout.buttons[0].label}
@@ -397,9 +455,14 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
                 disabled={buttonLayout.buttons[1].disabled}
                 className={`flex-1 px-4 py-3 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
                   buttonLayout.buttons[1].disabled
-                    ? 'bg-slate-600 cursor-not-allowed opacity-50'
+                    ? 'bg-slate-600 cursor-not-allowed opacity-50 pointer-events-none'
                     : 'bg-green-600 hover:bg-green-700 active:scale-95'
                 }`}
+                style={{
+                  pointerEvents: buttonLayout.buttons[1].disabled ? 'none' : 'auto',
+                  opacity: buttonLayout.buttons[1].disabled ? 0.5 : 1,
+                  cursor: buttonLayout.buttons[1].disabled ? 'not-allowed' : 'pointer'
+                }}
               >
                 <span className="text-xl">{buttonLayout.buttons[1].emoji}</span>
                 {buttonLayout.buttons[1].label}
@@ -413,7 +476,12 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
           <>
             <button
               disabled={true}
-              className="w-full px-6 py-4 text-white font-bold text-lg rounded-lg bg-slate-600 cursor-not-allowed opacity-50 transition-all"
+              className="w-full px-6 py-4 text-white font-bold text-lg rounded-lg bg-slate-600 cursor-not-allowed opacity-50 transition-all pointer-events-none"
+              style={{
+                pointerEvents: 'none',
+                opacity: 0.5,
+                cursor: 'not-allowed'
+              }}
             >
               <span className="text-2xl mr-2">{buttonLayout.buttons[0].emoji}</span>
               {buttonLayout.buttons[0].label}
@@ -436,16 +504,9 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
 
           {expandedSection === 'timer' && (
             <div className="mt-3 space-y-3">
-              <div>
-                <label className="block text-slate-300 text-sm mb-2">Timer Duration (seconds):</label>
-                <input
-                  type="number"
-                  value={timerDuration}
-                  onChange={(e) => setTimerDuration(Math.max(1, parseInt(e.target.value) || 30))}
-                  className="w-full px-3 py-2 bg-slate-600 text-white rounded border border-slate-500 focus:border-slate-400"
-                  min="1"
-                  max="300"
-                />
+              <div className="px-3 py-2 bg-slate-700 rounded border border-slate-600">
+                <p className="text-slate-300 text-sm mb-1">Timer Duration (from host settings):</p>
+                <p className="text-white text-lg font-semibold">{timerDuration} seconds</p>
               </div>
               <button
                 onClick={handleStartSilentTimer}
