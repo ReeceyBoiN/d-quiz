@@ -55,6 +55,7 @@ interface KeypadInterfaceProps {
   onTeamsAnsweredCorrectly?: (hasCorrectAnswers: boolean) => void; // Notify parent if any teams answered correctly
   onGameAnswerSelected?: (selected: boolean) => void; // Notify parent when user has selected an answer
   onTimerStart?: (startTime: number) => void; // Notify parent when timer starts for response time calculation
+  onSelectQuestionType?: (type: 'letters' | 'numbers' | 'multiple-choice' | 'sequence') => void; // Notify parent when host selects question type in on-the-spot mode
 }
 
 export function KeypadInterface({
@@ -91,7 +92,8 @@ export function KeypadInterface({
   onGameFastestRevealed,
   onTeamsAnsweredCorrectly,
   onGameAnswerSelected,
-  onTimerStart
+  onTimerStart,
+  onSelectQuestionType
 }: KeypadInterfaceProps) {
   const {
     defaultPoints,
@@ -490,6 +492,9 @@ export function KeypadInterface({
       setCurrentScreen('sequence-game');
     }
 
+    // Notify parent of question type selection (for on-the-spot mode synchronization with remote)
+    onSelectQuestionType?.(type);
+
     // Guard against re-broadcasting the same question type multiple times
     // Only broadcast if this is a NEW question type (not previously broadcast)
     if (broadcastedQuestionTypeRef.current !== type) {
@@ -542,7 +547,7 @@ export function KeypadInterface({
       evilModeEnabled,
       questionType: type
     });
-  }, [currentLoadedQuestion, isQuizPackMode, points, speedBonus, bonusType, goWideEnabled, evilModeEnabled]);
+  }, [currentLoadedQuestion, isQuizPackMode, points, speedBonus, bonusType, goWideEnabled, evilModeEnabled, onSelectQuestionType]);
 
   const handleStartRound = useCallback(() => {
     // Only auto-detect question type in QUIZ PACK MODE

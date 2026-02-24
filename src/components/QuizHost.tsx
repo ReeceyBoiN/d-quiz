@@ -1931,6 +1931,35 @@ export function QuizHost() {
     setActiveTab("home"); // Return to home when keypad is closed
   };
 
+  // Handle question type selection in on-the-spot mode (from KeypadInterface)
+  const handleSelectQuestionType = (type: 'letters' | 'numbers' | 'multiple-choice' | 'sequence') => {
+    console.log('[QuizHost] Host selected question type:', type);
+
+    // Compute timer duration based on question type
+    // Map the selected type to a game mode to get the correct timer from settings
+    let totalTime = gameModeTimers.keypad || 30; // Default for letters, multiple-choice, sequence
+    if (type === 'numbers') {
+      totalTime = gameModeTimers.nearestwins || 10; // Numbers uses nearestwins timer
+    }
+
+    console.log('[QuizHost] Setting flowState for selected type:', type, 'with duration:', totalTime);
+
+    // Update flowState to transition from idle -> sent-question with the selected type
+    // This will trigger sendFlowStateToController to broadcast to remote
+    setFlowState({
+      flow: 'sent-question',
+      isQuestionMode: true,
+      selectedQuestionType: type,
+      totalTime: totalTime,
+      timeRemaining: totalTime,
+      currentQuestionIndex: flowState.currentQuestionIndex,
+      currentQuestion: flowState.currentQuestion,
+      pictureSent: false,
+      questionSent: true, // We're sending the question type to players
+      answerSubmitted: undefined,
+    });
+  };
+
   // Handle quiz pack display navigation
   const handleQuizPackPrevious = () => {
     if (currentLoadedQuestionIndex > 0) {
@@ -3382,6 +3411,10 @@ export function QuizHost() {
               setFastestTeamRevealTime(null);
               success = true;
             }
+            // Explicitly broadcast the next question state to remote controller
+            setTimeout(() => {
+              deps.sendFlowStateToController?.(deviceId);
+            }, 0);
             break;
 
           case 'reveal-answer':
@@ -3391,6 +3424,10 @@ export function QuizHost() {
             // Also call handlePrimaryAction to transition flowState from running/timeup to revealed/fastest
             deps.handlePrimaryAction();
             success = true;
+            // Explicitly broadcast the reveal state to remote controller
+            setTimeout(() => {
+              deps.sendFlowStateToController?.(deviceId);
+            }, 0);
             break;
 
           case 'show-fastest':
@@ -3398,6 +3435,10 @@ export function QuizHost() {
             // Trigger showing fastest team - call primary action to progress game state
             deps.handlePrimaryAction();
             success = true;
+            // Explicitly broadcast the fastest team state to remote controller
+            setTimeout(() => {
+              deps.sendFlowStateToController?.(deviceId);
+            }, 0);
             break;
 
           case 'skip-question':
@@ -3447,6 +3488,10 @@ export function QuizHost() {
             // Call handler with explicit duration (same as UI would use)
             deps.handleNavBarSilentTimer(timerDuration);
             success = true;
+            // Explicitly broadcast the timer start state to remote controller
+            setTimeout(() => {
+              deps.sendFlowStateToController?.(deviceId);
+            }, 0);
             break;
           }
 
@@ -3484,6 +3529,10 @@ export function QuizHost() {
             // Call handler with explicit duration (same as UI would use)
             deps.handleNavBarStartTimer(timerDuration);
             success = true;
+            // Explicitly broadcast the timer start state to remote controller
+            setTimeout(() => {
+              deps.sendFlowStateToController?.(deviceId);
+            }, 0);
             break;
           }
 
@@ -3502,6 +3551,10 @@ export function QuizHost() {
             // Notify players that time is up
             sendTimeUpToPlayers();
             success = true;
+            // Explicitly broadcast the timer stop state to remote controller
+            setTimeout(() => {
+              deps.sendFlowStateToController?.(deviceId);
+            }, 0);
             break;
 
           case 'pause-timer':
@@ -3663,6 +3716,11 @@ export function QuizHost() {
             if (deps.isQuizPackMode) {
               deps.handleQuizPackPrevious();
               success = true;
+              // Explicitly broadcast the updated question to the remote controller
+              // (state update and flowState update will occur, but we need to send it now)
+              setTimeout(() => {
+                deps.sendFlowStateToController?.(deviceId);
+              }, 0);
             } else {
               console.warn('[QuizHost] ⚠️  Previous question only available in quiz pack mode');
               success = false;
@@ -3675,6 +3733,11 @@ export function QuizHost() {
             if (deps.isQuizPackMode) {
               deps.handleQuizPackNext();
               success = true;
+              // Explicitly broadcast the updated question to the remote controller
+              // (state update and flowState update will occur, but we need to send it now)
+              setTimeout(() => {
+                deps.sendFlowStateToController?.(deviceId);
+              }, 0);
             } else {
               console.warn('[QuizHost] ⚠️  Next question navigation only available in quiz pack mode');
               success = false;
@@ -5570,6 +5633,7 @@ export function QuizHost() {
               onTeamsAnsweredCorrectly={setTeamsAnsweredCorrectly}
               onGameAnswerSelected={setGameAnswerSelected}
               onTimerStart={handleGameTimerStart}
+              onSelectQuestionType={handleSelectQuestionType}
             />
           </div>
           {/* Show fastest team display as an overlay on top of keypad */}
