@@ -676,6 +676,15 @@ export function QuizHost() {
 
   // Game mode configuration state is now handled by settings context
 
+  // Sync gameAnswerSelected with flowState.answerSubmitted for on-the-spot mode
+  // When an answer is submitted (from remote or host app), set gameAnswerSelected to true
+  // This enables the "Reveal Answer" button to appear when timer finishes
+  useEffect(() => {
+    if (flowState.answerSubmitted) {
+      setGameAnswerSelected(true);
+    }
+  }, [flowState.answerSubmitted]);
+
   // Helper function to normalize buzzer sound value
   const normalizeBuzzerSound = (buzzerSound: string): string => {
     if (!buzzerSound) return '';
@@ -3508,8 +3517,27 @@ export function QuizHost() {
               timerDuration = validateTimerDuration(commandData.seconds);
             }
 
+            console.log('[QuizHost] Silent timer - resolved duration:', {
+              commandDataSeconds: commandData?.seconds,
+              flowStateTotalTime: deps.flowState.totalTime,
+              finalTimerDuration: timerDuration,
+              isQuestionMode: deps.flowState.isQuestionMode,
+              flowState: deps.flowState.flow
+            });
+
             // Call handler with explicit duration (same as UI would use)
             deps.handleNavBarSilentTimer(timerDuration);
+
+            // Also update main flowState to 'running' so Reveal Answer button appears
+            // This is necessary for keypad mode where handleNavBarSilentTimer doesn't update flowState
+            // In quiz pack mode, handleNavBarSilentTimer already updates flowState via executeStartSilentTimer
+            // but updateting again here ensures keypad mode has the correct state
+            deps.setFlowState(prev => ({
+              ...prev,
+              flow: 'running',
+              timerMode: 'silent'
+            }));
+
             success = true;
             // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
             // This prevents duplicate broadcasts
@@ -3540,8 +3568,27 @@ export function QuizHost() {
               console.log('[QuizHost] Using custom duration for normal timer:', timerDuration);
             }
 
+            console.log('[QuizHost] Normal timer - resolved duration:', {
+              commandDataSeconds: commandData?.seconds,
+              flowStateTotalTime: deps.flowState.totalTime,
+              finalTimerDuration: timerDuration,
+              isQuestionMode: deps.flowState.isQuestionMode,
+              flowState: deps.flowState.flow
+            });
+
             // Call handler with explicit duration (same as UI would use)
             deps.handleNavBarStartTimer(timerDuration);
+
+            // Also update main flowState to 'running' so Reveal Answer button appears
+            // This is necessary for keypad mode where handleNavBarStartTimer doesn't update flowState
+            // In quiz pack mode, handleNavBarStartTimer already updates flowState via executeStartNormalTimer
+            // but updating again here ensures keypad mode has the correct state
+            deps.setFlowState(prev => ({
+              ...prev,
+              flow: 'running',
+              timerMode: 'normal'
+            }));
+
             success = true;
             // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
             // This prevents duplicate broadcasts

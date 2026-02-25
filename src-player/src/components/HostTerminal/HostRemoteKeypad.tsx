@@ -70,7 +70,7 @@ export function HostRemoteKeypad({
   const isDisabled = confirmedAnswer !== null;
 
   const handleAnswerSelect = (answer: string) => {
-    if (isDisabled || isTimerRunning) return;
+    if (isDisabled) return;
 
     // For numbers questions: append digit instead of replacing
     // For other question types: replace the answer
@@ -87,7 +87,7 @@ export function HostRemoteKeypad({
   };
 
   const handleBackspace = () => {
-    if (isDisabled || isTimerRunning || !selectedAnswer) return;
+    if (isDisabled || !selectedAnswer) return;
 
     // Remove the last character
     const newAnswer = selectedAnswer.slice(0, -1);
@@ -95,19 +95,18 @@ export function HostRemoteKeypad({
   };
 
   const handleClear = () => {
-    if (isDisabled || isTimerRunning) return;
+    if (isDisabled) return;
     setSelectedAnswer(null);
   };
 
   const handleSubmit = () => {
-    if (!selectedAnswer || isDisabled || isTimerRunning) {
+    if (!selectedAnswer || isDisabled) {
       return;
     }
 
     // Send the answer to the host
+    // Don't lock locally; let flowState.answerSubmitted sync it via the existing useEffect
     sendAdminCommand('set-expected-answer', { answer: selectedAnswer });
-    // Lock the keypad after submission
-    setConfirmedAnswer(selectedAnswer);
   };
 
   const renderLetterKeypad = () => {
@@ -123,9 +122,9 @@ export function HostRemoteKeypad({
                 <button
                   key={`${rowIndex}-${colIndex}`}
                   onClick={() => handleAnswerSelect(letter)}
-                  disabled={isDisabled || isTimerRunning}
+                  disabled={isDisabled}
                   className={`aspect-square p-2 sm:p-3 md:p-4 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-2xl transition-all transform ${
-                    isDisabled || isTimerRunning
+                    isDisabled
                       ? 'opacity-50 cursor-not-allowed'
                       : 'active:scale-95 cursor-pointer'
                   } ${
@@ -168,9 +167,9 @@ export function HostRemoteKeypad({
               <button
                 key={num}
                 onClick={() => handleAnswerSelect(num)}
-                disabled={isDisabled || isTimerRunning}
+                disabled={isDisabled}
                 className={`aspect-square p-2 sm:p-3 md:p-4 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg md:text-xl transition-all transform ${
-                  isDisabled || isTimerRunning
+                  isDisabled
                     ? 'opacity-50 cursor-not-allowed'
                     : 'active:scale-95 cursor-pointer'
                 } ${
@@ -192,9 +191,9 @@ export function HostRemoteKeypad({
         <div className="grid grid-cols-4 gap-2 sm:gap-2.5 md:gap-3 mt-2">
           <button
             onClick={handleBackspace}
-            disabled={isDisabled || isTimerRunning || !selectedAnswer}
+            disabled={isDisabled || !selectedAnswer}
             className={`p-2 sm:p-3 md:p-4 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base md:text-lg transition-all ${
-              isDisabled || isTimerRunning || !selectedAnswer
+              isDisabled || !selectedAnswer
                 ? 'bg-slate-700 text-slate-500 opacity-50 cursor-not-allowed'
                 : 'bg-orange-600 hover:bg-orange-700 text-white cursor-pointer active:scale-95'
             }`}
@@ -203,9 +202,9 @@ export function HostRemoteKeypad({
           </button>
           <button
             onClick={handleClear}
-            disabled={isDisabled || isTimerRunning || !selectedAnswer}
+            disabled={isDisabled || !selectedAnswer}
             className={`p-2 sm:p-3 md:p-4 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base md:text-lg transition-all ${
-              isDisabled || isTimerRunning || !selectedAnswer
+              isDisabled || !selectedAnswer
                 ? 'bg-slate-700 text-slate-500 opacity-50 cursor-not-allowed'
                 : 'bg-red-600 hover:bg-red-700 text-white cursor-pointer active:scale-95'
             }`}
@@ -215,9 +214,9 @@ export function HostRemoteKeypad({
           <div />
           <button
             onClick={handleSubmit}
-            disabled={!selectedAnswer || isDisabled || isTimerRunning}
+            disabled={!selectedAnswer || isDisabled}
             className={`p-2 sm:p-3 md:p-4 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base md:text-lg transition-all ${
-              !selectedAnswer || isDisabled || isTimerRunning
+              !selectedAnswer || isDisabled
                 ? 'bg-slate-700 text-slate-500 opacity-50 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700 text-white cursor-pointer active:scale-95'
             }`}
@@ -246,9 +245,9 @@ export function HostRemoteKeypad({
             <button
               key={choice}
               onClick={() => handleAnswerSelect(choice)}
-              disabled={isDisabled || isTimerRunning}
+              disabled={isDisabled}
               className={`aspect-square p-4 sm:p-6 md:p-8 rounded-lg sm:rounded-xl md:rounded-2xl font-bold text-2xl sm:text-3xl md:text-4xl transition-all transform ${
-                isDisabled || isTimerRunning
+                isDisabled
                   ? 'opacity-50 cursor-not-allowed'
                   : 'active:scale-95 cursor-pointer'
               } ${
@@ -315,7 +314,7 @@ export function HostRemoteKeypad({
       {isTimerRunning && !confirmedAnswer && (
         <div className="mb-4 p-3 bg-amber-600/20 border border-amber-500 rounded-lg">
           <p className="text-amber-100 text-sm font-semibold text-center">
-            ⏱️ Timer running - entry locked
+            ⏱️ Timer running
           </p>
         </div>
       )}
@@ -330,9 +329,9 @@ export function HostRemoteKeypad({
         <div className="mt-4 sm:mt-5 md:mt-6">
           <button
             onClick={handleSubmit}
-            disabled={!selectedAnswer || isDisabled || isTimerRunning}
+            disabled={!selectedAnswer || isDisabled}
             className={`w-full p-3 sm:p-4 md:p-5 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base md:text-lg transition-all ${
-              !selectedAnswer || isDisabled || isTimerRunning
+              !selectedAnswer || isDisabled
                 ? 'bg-slate-600 text-slate-400 opacity-50 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700 text-white cursor-pointer active:scale-95'
             }`}

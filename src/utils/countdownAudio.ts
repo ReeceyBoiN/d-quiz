@@ -121,6 +121,16 @@ async function getAudioUrl(isSilent: boolean): Promise<string> {
  */
 export async function playCountdownAudio(timerDuration: number, isSilent: boolean = false): Promise<void> {
   try {
+    // Validate timerDuration is a valid positive number
+    if (!Number.isFinite(timerDuration) || timerDuration <= 0) {
+      console.error('[CountdownAudio] Invalid timerDuration received:', {
+        timerDuration,
+        type: typeof timerDuration,
+        isFinite: Number.isFinite(timerDuration)
+      });
+      throw new Error(`Invalid timer duration: ${timerDuration}`);
+    }
+
     // Stop any currently playing audio
     stopCountdownAudio();
 
@@ -133,7 +143,10 @@ export async function playCountdownAudio(timerDuration: number, isSilent: boolea
     // Wait for audio metadata to be loaded so we can get the duration
     await new Promise<void>((resolve, reject) => {
       const handleLoadedMetadata = () => {
-        console.log('[CountdownAudio] Audio metadata loaded successfully');
+        console.log('[CountdownAudio] Audio metadata loaded successfully:', {
+          duration: audio.duration,
+          isFinite: Number.isFinite(audio.duration)
+        });
         audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
         resolve();
       };
@@ -177,11 +190,42 @@ export async function playCountdownAudio(timerDuration: number, isSilent: boolea
     // Safely handle cases where metadata didn't load (duration would be NaN)
     const audioDuration = Number.isFinite(audio.duration) ? audio.duration : 0;
 
+    // CRITICAL: Log if audio duration failed to load
+    if (audioDuration === 0) {
+      console.error('[CountdownAudio] ⚠️ CRITICAL: Audio duration is 0 or not loaded!', {
+        audioDuration,
+        audioUrl,
+        audioReadyState: audio.readyState,
+        audioNetworkState: audio.networkState,
+        timerDuration
+      });
+      console.warn('[CountdownAudio] This will cause the ENTIRE audio file to play regardless of timer duration!');
+    }
+
     // Calculate start time: always play from the END of the audio, working backwards
     // startTime = audioDuration - (timerDuration + 1)
     // This ensures we play the last (timerDuration + 1) seconds of the audio
     // If duration is 0 (metadata didn't load), start from beginning
     const startTime = Math.max(0, audioDuration - (timerDuration + 1));
+
+    console.log('[CountdownAudio] Calculated startTime:', {
+      timerDuration,
+      audioDuration,
+      timerDurationPlusBufer: timerDuration + 1,
+      calculatedStartTime: audioDuration - (timerDuration + 1),
+      finalStartTime: startTime,
+      durationToPlay: audioDuration - startTime
+    });
+
+    // Validate startTime is a valid number
+    if (!Number.isFinite(startTime)) {
+      console.error('[CountdownAudio] Invalid startTime calculated:', {
+        startTime,
+        timerDuration,
+        audioDuration
+      });
+      throw new Error(`Invalid start time: ${startTime}`);
+    }
 
     // Set the start time and play
     audio.currentTime = startTime;
@@ -194,12 +238,13 @@ export async function playCountdownAudio(timerDuration: number, isSilent: boolea
     // Play the audio
     await audio.play();
 
-    console.log('[CountdownAudio] Playing audio:', {
+    console.log('[CountdownAudio] Audio playback started successfully:', {
       isSilent,
       timerDuration,
       audioDuration,
       startTime,
-      durationToPlay: audioDuration - startTime
+      durationToPlay: audioDuration - startTime,
+      audioUrl
     });
   } catch (error) {
     console.error('[CountdownAudio] Error playing audio:', error);

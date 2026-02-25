@@ -37,11 +37,17 @@ export async function executeStartNormalTimer(
 ): Promise<TimerActionResult> {
   const now = Date.now();
 
+  console.log('[TimerHandlers] executeStartNormalTimer called with:', {
+    timerDuration,
+    type: typeof timerDuration,
+    isFinite: Number.isFinite(timerDuration)
+  });
+
   try {
     // Step 1: Play countdown audio (with normal sound)
     // This must complete before starting the timer
     await playCountdownAudio(timerDuration, false);
-    console.log('[TimerHandlers] Normal countdown audio started');
+    console.log('[TimerHandlers] Normal countdown audio started with duration:', timerDuration);
   } catch (error) {
     console.error('[TimerHandlers] Error playing normal countdown audio:', error);
     // Don't fail - continue with timer even if audio fails
@@ -96,11 +102,17 @@ export async function executeStartSilentTimer(
 ): Promise<TimerActionResult> {
   const now = Date.now();
 
+  console.log('[TimerHandlers] executeStartSilentTimer called with:', {
+    timerDuration,
+    type: typeof timerDuration,
+    isFinite: Number.isFinite(timerDuration)
+  });
+
   try {
     // Step 1: Play countdown audio (silent mode - no sound)
     // This must complete before starting the timer
     await playCountdownAudio(timerDuration, true);
-    console.log('[TimerHandlers] Silent countdown audio started');
+    console.log('[TimerHandlers] Silent countdown audio started with duration:', timerDuration);
   } catch (error) {
     console.error('[TimerHandlers] Error playing silent countdown audio:', error);
     // Don't fail - continue with timer even if audio fails
