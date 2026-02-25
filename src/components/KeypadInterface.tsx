@@ -8,6 +8,7 @@ import { Separator } from "./ui/separator";
 import { Switch } from "./ui/switch";
 import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
+import { CountdownTimer } from "./CountdownTimer";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { playApplauseSound, playFailSound } from "../utils/audioUtils";
 import { sendTimeUpToPlayers } from "../network/wsHost";
@@ -729,7 +730,11 @@ export function KeypadInterface({
 
   const handleKeypadInput = (digit: string) => {
     if (!numbersAnswerConfirmed) {
-      setNumbersAnswer(prev => prev + digit);
+      setNumbersAnswer(prev => {
+        const newAnswer = prev + digit;
+        // Enforce max 10 digits for numbers input
+        return newAnswer.length <= 10 ? newAnswer : prev;
+      });
     }
   };
 
@@ -1737,6 +1742,19 @@ export function KeypadInterface({
           </div>
         </div>
 
+        {/* Timer Display */}
+        {isTimerRunning && countdown !== null && (
+          <div className="flex justify-center mb-6">
+            <CountdownTimer
+              currentTime={Math.ceil(countdown)}
+              totalTime={totalTimerLength}
+              size={60}
+              showLabel={true}
+              label="seconds"
+            />
+          </div>
+        )}
+
         {/* Debug Panel */}
         {showDebugPanel && (
           <div className="mb-6 bg-gray-800 rounded-xl p-4 border-2 border-gray-600">
@@ -1863,6 +1881,19 @@ export function KeypadInterface({
           </div>
         </div>
 
+        {/* Timer Display */}
+        {isTimerRunning && countdown !== null && (
+          <div className="flex justify-center mb-6">
+            <CountdownTimer
+              currentTime={Math.ceil(countdown)}
+              totalTime={totalTimerLength}
+              size={60}
+              showLabel={true}
+              label="seconds"
+            />
+          </div>
+        )}
+
         {/* Multiple Choice Interface */}
         <div className="flex items-center justify-center mb-8">
           <div className={currentDesign.containerClass}>
@@ -1946,6 +1977,19 @@ export function KeypadInterface({
           </div>
 
         </div>
+
+        {/* Timer Display */}
+        {isTimerRunning && countdown !== null && (
+          <div className="flex justify-center mb-6">
+            <CountdownTimer
+              currentTime={Math.ceil(countdown)}
+              totalTime={totalTimerLength}
+              size={60}
+              showLabel={true}
+              label="seconds"
+            />
+          </div>
+        )}
 
         {/* Numbers Interface */}
         <div className="flex-1 flex items-center justify-center">
@@ -2104,6 +2148,19 @@ export function KeypadInterface({
             <h2 className="text-3xl font-semibold text-white">Question {currentQuestion}: Sequence Question</h2>
           </div>
         </div>
+
+        {/* Timer Display */}
+        {isTimerRunning && countdown !== null && (
+          <div className="flex justify-center mb-6">
+            <CountdownTimer
+              currentTime={Math.ceil(countdown)}
+              totalTime={totalTimerLength}
+              size={60}
+              showLabel={true}
+              label="seconds"
+            />
+          </div>
+        )}
 
         {/* Sequence Game Interface */}
         <div className="flex-1 flex flex-col items-center justify-center gap-8">

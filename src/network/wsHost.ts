@@ -252,6 +252,8 @@ class HostNetwork {
         currentLoadedQuestionIndex: questionData?.currentLoadedQuestionIndex,
         loadedQuizQuestions: questionData?.loadedQuizQuestions,
         isQuizPackMode: questionData?.isQuizPackMode,
+        answerSubmitted: questionData?.answerSubmitted,
+        timerMode: questionData?.timerMode,
       },
     });
   }
@@ -475,6 +477,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
       isQuizPackMode: questionData?.isQuizPackMode,
       selectedQuestionType: questionData?.selectedQuestionType,
       answerSubmitted: questionData?.answerSubmitted,
+      timerMode: questionData?.timerMode,
       keypadCurrentScreen: questionData?.keypadCurrentScreen,
     },
     timestamp: Date.now()
@@ -511,6 +514,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
             isQuizPackMode: payload.data.isQuizPackMode,
             selectedQuestionType: questionData?.selectedQuestionType,
             answerSubmitted: questionData?.answerSubmitted,
+            timerMode: questionData?.timerMode,
             keypadCurrentScreen: questionData?.keypadCurrentScreen,
             // Include question count for navigation arrows (but not full array to keep payload small)
             loadedQuizQuestions: questionData?.loadedQuizQuestions ?

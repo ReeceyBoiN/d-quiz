@@ -19,7 +19,7 @@ export interface TimerActionResult {
   silent: boolean;
   flowStateUpdate: {
     flow: 'running';
-    answerSubmitted: 'normal' | 'silent';
+    timerMode: 'normal' | 'silent';
   };
 }
 
@@ -77,7 +77,7 @@ export async function executeStartNormalTimer(
     silent: false,
     flowStateUpdate: {
       flow: 'running',
-      answerSubmitted: 'normal',
+      timerMode: 'normal',
     },
   };
 }
@@ -136,7 +136,7 @@ export async function executeStartSilentTimer(
     silent: true,
     flowStateUpdate: {
       flow: 'running',
-      answerSubmitted: 'silent',
+      timerMode: 'silent',
     },
   };
 }

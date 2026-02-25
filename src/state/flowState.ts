@@ -19,6 +19,7 @@ export interface HostFlow {
   pictureSent: boolean;
   questionSent: boolean;
   answerSubmitted?: string;     // Type 2: on-the-spot host's answer
+  timerMode?: 'normal' | 'silent'; // Timer mode (normal sound or silent)
   selectedQuestionType?: 'letters' | 'numbers' | 'multiple-choice' | 'sequence'; // On-the-spot question type
 }
 
