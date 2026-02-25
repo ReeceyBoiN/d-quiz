@@ -214,12 +214,14 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
         sendAdminCommand('hide-question');
         break;
       case 'start-normal-timer':
-        // Don't send explicit seconds - let host use Settings-based flowState.totalTime
-        sendAdminCommand('start-normal-timer');
+        // Pass explicit seconds to ensure consistent timer duration between remote and host
+        // This prevents the host from falling back to defaults if flowState is out of sync
+        sendAdminCommand('start-normal-timer', { seconds: timerDuration });
         break;
       case 'start-silent-timer':
-        // Don't send explicit seconds - let host use Settings-based flowState.totalTime
-        sendAdminCommand('start-silent-timer');
+        // Pass explicit seconds to ensure consistent timer duration between remote and host
+        // This prevents the host from falling back to defaults if flowState is out of sync
+        sendAdminCommand('start-silent-timer', { seconds: timerDuration });
         break;
       case 'reveal-answer':
         sendAdminCommand('reveal-answer');

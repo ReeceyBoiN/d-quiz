@@ -71,7 +71,27 @@ export function HostRemoteKeypad({
 
   const handleAnswerSelect = (answer: string) => {
     if (isDisabled || isTimerRunning) return;
-    setSelectedAnswer(answer);
+
+    // For numbers questions: append digit instead of replacing
+    // For other question types: replace the answer
+    if (questionType === 'numbers') {
+      // Append the digit, with a max of 10 digits
+      setSelectedAnswer(prev => {
+        const newAnswer = (prev ?? '') + answer;
+        return newAnswer.length <= 10 ? newAnswer : prev;
+      });
+    } else {
+      // For letters/multiple-choice: single selection (replace)
+      setSelectedAnswer(answer);
+    }
+  };
+
+  const handleBackspace = () => {
+    if (isDisabled || isTimerRunning || !selectedAnswer) return;
+
+    // Remove the last character
+    const newAnswer = selectedAnswer.slice(0, -1);
+    setSelectedAnswer(newAnswer || null);
   };
 
   const handleClear = () => {
@@ -169,12 +189,23 @@ export function HostRemoteKeypad({
         </div>
 
         {/* Control buttons */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 mt-2">
+        <div className="grid grid-cols-4 gap-2 sm:gap-2.5 md:gap-3 mt-2">
+          <button
+            onClick={handleBackspace}
+            disabled={isDisabled || isTimerRunning || !selectedAnswer}
+            className={`p-2 sm:p-3 md:p-4 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base md:text-lg transition-all ${
+              isDisabled || isTimerRunning || !selectedAnswer
+                ? 'bg-slate-700 text-slate-500 opacity-50 cursor-not-allowed'
+                : 'bg-orange-600 hover:bg-orange-700 text-white cursor-pointer active:scale-95'
+            }`}
+          >
+            ← Back
+          </button>
           <button
             onClick={handleClear}
-            disabled={isDisabled || isTimerRunning}
+            disabled={isDisabled || isTimerRunning || !selectedAnswer}
             className={`p-2 sm:p-3 md:p-4 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base md:text-lg transition-all ${
-              isDisabled || isTimerRunning
+              isDisabled || isTimerRunning || !selectedAnswer
                 ? 'bg-slate-700 text-slate-500 opacity-50 cursor-not-allowed'
                 : 'bg-red-600 hover:bg-red-700 text-white cursor-pointer active:scale-95'
             }`}

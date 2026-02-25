@@ -57,6 +57,8 @@ interface KeypadInterfaceProps {
   onTimerStart?: (startTime: number) => void; // Notify parent when timer starts for response time calculation
   onSelectQuestionType?: (type: 'letters' | 'numbers' | 'multiple-choice' | 'sequence') => void; // Notify parent when host selects question type in on-the-spot mode
   externalCurrentScreen?: string; // External control of current screen (when admin command sets it remotely)
+  answerSubmitted?: string; // Answer confirmed by remote (from flowState.answerSubmitted)
+  onAnswerConfirmed?: (answer: string) => void; // Callback when user confirms an answer locally
 }
 
 export function KeypadInterface({
@@ -95,7 +97,9 @@ export function KeypadInterface({
   onGameAnswerSelected,
   onTimerStart,
   onSelectQuestionType,
-  externalCurrentScreen
+  externalCurrentScreen,
+  answerSubmitted,
+  onAnswerConfirmed
 }: KeypadInterfaceProps) {
   const {
     defaultPoints,
@@ -184,6 +188,9 @@ export function KeypadInterface({
   // Track when an external screen change is being applied to prevent echoing back to parent
   // This breaks the feedback loop: external change -> local state update -> parent notification -> external change again
   const externalScreenChangeRef = useRef<string | undefined>(undefined);
+
+  // Track the last applied answerSubmitted to prevent redundant state updates and echo feedback
+  const lastAppliedAnswerRef = useRef<string | undefined>(undefined);
 
   // Get keypad design from settings context
   const { keypadDesign } = useSettings();
@@ -610,6 +617,60 @@ export function KeypadInterface({
     prevIsQuizPackModeRef.current = isQuizPackMode;
   }, [isQuizPackMode, currentScreen, loadedQuestions, handleStartRound]);
 
+  // Synchronize remote answer confirmation (from flowState.answerSubmitted) to local UI state
+  // This breaks the feedback loop by:
+  // 1. Tracking lastAppliedAnswerRef to prevent re-applying the same answer
+  // 2. Not calling onAnswerConfirmed when applying remote answer (to prevent echo back to parent)
+  useEffect(() => {
+    if (answerSubmitted && answerSubmitted !== lastAppliedAnswerRef.current) {
+      console.log('[KeypadInterface] ✅ Syncing remote answer confirmation:', answerSubmitted);
+      lastAppliedAnswerRef.current = answerSubmitted;
+
+      // Apply remote answer to appropriate local state based on current screen/game mode
+      if (currentScreen === 'letters-game') {
+        // For letters mode, update selectedLetter if different
+        if (selectedLetter !== answerSubmitted) {
+          console.log('[KeypadInterface] 📝 Setting selectedLetter to remote answer:', answerSubmitted);
+          setSelectedLetter(answerSubmitted);
+        }
+      } else if (currentScreen === 'multiple-choice-game') {
+        // For multiple-choice, update selectedAnswers if different
+        if (!selectedAnswers.includes(answerSubmitted)) {
+          console.log('[KeypadInterface] 📋 Setting selectedAnswers to remote answer:', answerSubmitted);
+          setSelectedAnswers([answerSubmitted]);
+        }
+      } else if (currentScreen === 'numbers-game') {
+        // For numbers mode, update numbersAnswer and mark as confirmed
+        if (numbersAnswer !== answerSubmitted) {
+          console.log('[KeypadInterface] 🔢 Setting numbersAnswer to remote answer:', answerSubmitted);
+          setNumbersAnswer(answerSubmitted);
+        }
+        // Mark as confirmed to lock UI
+        if (!numbersAnswerConfirmed) {
+          console.log('[KeypadInterface] 🔒 Marking numbers answer as confirmed from remote');
+          setNumbersAnswerConfirmed(true);
+        }
+      } else if (currentScreen === 'sequence-game') {
+        // For sequence mode, if remote answer is marked as confirmed, lock the UI
+        if (!sequenceCompleted) {
+          console.log('[KeypadInterface] 🔒 Marking sequence as completed from remote');
+          setSequenceCompleted(true);
+        }
+      }
+    } else if (!answerSubmitted && lastAppliedAnswerRef.current) {
+      // Reset when answerSubmitted becomes undefined (new round starts)
+      console.log('[KeypadInterface] 🔄 Resetting remote answer sync for new round');
+      lastAppliedAnswerRef.current = undefined;
+
+      if (currentScreen === 'numbers-game' && numbersAnswerConfirmed) {
+        setNumbersAnswerConfirmed(false);
+      }
+      if (currentScreen === 'sequence-game' && sequenceCompleted) {
+        setSequenceCompleted(false);
+      }
+    }
+  }, [answerSubmitted, currentScreen, selectedLetter, selectedAnswers, numbersAnswer, numbersAnswerConfirmed, sequenceCompleted]);
+
   const handleBackFromQuestionTypes = () => {
     setCurrentScreen('config');
   };
@@ -660,6 +721,10 @@ export function KeypadInterface({
 
   const handleLetterSelect = (letter: string) => {
     setSelectedLetter(letter);
+    // Notify parent that a letter answer was selected (auto-confirmed in this mode)
+    if (onAnswerConfirmed) {
+      onAnswerConfirmed(letter);
+    }
   };
 
   const handleKeypadInput = (digit: string) => {
@@ -679,6 +744,11 @@ export function KeypadInterface({
 
     if (newSelected.length === shuffledSequence.length) {
       setSequenceCompleted(true);
+      // Notify parent that sequence was completed (auto-confirmed in this mode)
+      // Send a special marker to indicate sequence completion
+      if (onAnswerConfirmed) {
+        onAnswerConfirmed('SEQUENCE_COMPLETE');
+      }
     }
   };
 
@@ -1765,10 +1835,14 @@ export function KeypadInterface({
 
   // Multiple Choice Game Screen
   if (currentScreen === 'multiple-choice-game') {
-    
+
     const handleAnswerToggle = (letter: string) => {
       // For multiple choice, only allow one answer to be selected
       setSelectedAnswers([letter]);
+      // Notify parent that a multiple-choice answer was selected (auto-confirmed in this mode)
+      if (onAnswerConfirmed) {
+        onAnswerConfirmed(letter);
+      }
     };
 
     const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -1972,7 +2046,11 @@ export function KeypadInterface({
                 onClick={() => {
                   if (numbersAnswer && !numbersAnswerConfirmed) {
                     setNumbersAnswerConfirmed(true);
-                    console.log('Confirmed answer:', numbersAnswer);
+                    console.log('[KeypadInterface] Confirmed answer:', numbersAnswer);
+                    // Notify parent that answer was confirmed locally
+                    if (onAnswerConfirmed) {
+                      onAnswerConfirmed(numbersAnswer);
+                    }
                   }
                 }}
                 disabled={!numbersAnswer || numbersAnswerConfirmed}

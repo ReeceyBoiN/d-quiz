@@ -5681,6 +5681,14 @@ export function QuizHost() {
               onTimerStart={handleGameTimerStart}
               onSelectQuestionType={handleSelectQuestionType}
               externalCurrentScreen={keypadCurrentScreen}
+              answerSubmitted={flowState.answerSubmitted}
+              onAnswerConfirmed={(answer) => {
+                // When user confirms answer locally, update flowState
+                setFlowState(prev => ({
+                  ...prev,
+                  answerSubmitted: answer
+                }));
+              }}
             />
           </div>
           {/* Show fastest team display as an overlay on top of keypad */}
