@@ -19,7 +19,7 @@ export interface HostFlow {
   pictureSent: boolean;
   questionSent: boolean;
   answerSubmitted?: string;     // Type 2: on-the-spot host's answer
-  selectedQuestionType?: 'letters' | 'numbers' | 'multiple-choice'; // On-the-spot question type
+  selectedQuestionType?: 'letters' | 'numbers' | 'multiple-choice' | 'sequence'; // On-the-spot question type
 }
 
 export const initialFlow: HostFlow = {

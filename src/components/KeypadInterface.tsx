@@ -56,6 +56,7 @@ interface KeypadInterfaceProps {
   onGameAnswerSelected?: (selected: boolean) => void; // Notify parent when user has selected an answer
   onTimerStart?: (startTime: number) => void; // Notify parent when timer starts for response time calculation
   onSelectQuestionType?: (type: 'letters' | 'numbers' | 'multiple-choice' | 'sequence') => void; // Notify parent when host selects question type in on-the-spot mode
+  externalCurrentScreen?: string; // External control of current screen (when admin command sets it remotely)
 }
 
 export function KeypadInterface({
@@ -93,7 +94,8 @@ export function KeypadInterface({
   onTeamsAnsweredCorrectly,
   onGameAnswerSelected,
   onTimerStart,
-  onSelectQuestionType
+  onSelectQuestionType,
+  externalCurrentScreen
 }: KeypadInterfaceProps) {
   const {
     defaultPoints,
@@ -178,7 +180,11 @@ export function KeypadInterface({
 
   // Guard against duplicate reveal calls from simultaneous event handlers
   const answerRevealInProgressRef = useRef<boolean>(false);
-  
+
+  // Track when an external screen change is being applied to prevent echoing back to parent
+  // This breaks the feedback loop: external change -> local state update -> parent notification -> external change again
+  const externalScreenChangeRef = useRef<string | undefined>(undefined);
+
   // Get keypad design from settings context
   const { keypadDesign } = useSettings();
   
@@ -1546,11 +1552,30 @@ export function KeypadInterface({
   }, [isTimerRunning, onGameTimerStateChange]);
 
   // Notify parent of current screen changes for navigation bar visibility
+  // Skip notification if this change originated from an external source (admin command)
+  // to prevent feedback loops where: parent broadcasts -> remote sends command -> external screen change applied -> parent notified -> broadcasts again
   useEffect(() => {
     if (onCurrentScreenChange) {
+      // Skip notify if this change was just applied from externalCurrentScreen
+      if (externalScreenChangeRef.current === currentScreen) {
+        console.log('[KeypadInterface] Skipping parent notification for echo from external screen change:', currentScreen);
+        externalScreenChangeRef.current = undefined;
+        return;
+      }
       onCurrentScreenChange(currentScreen);
     }
   }, [currentScreen, onCurrentScreenChange]);
+
+  // Listen for external screen changes from admin commands (remote control)
+  // When the host remote selects a question type, this updates the local screen to match
+  useEffect(() => {
+    if (externalCurrentScreen && externalCurrentScreen !== currentScreen) {
+      console.log('[KeypadInterface] External screen change from admin command:', externalCurrentScreen);
+      // Mark this as an external change so the currentScreen effect knows not to echo it back
+      externalScreenChangeRef.current = externalCurrentScreen;
+      setCurrentScreen(externalCurrentScreen as any);
+    }
+  }, [externalCurrentScreen, currentScreen]);
 
   // Notify parent of timer values for navigation bar display
   useEffect(() => {

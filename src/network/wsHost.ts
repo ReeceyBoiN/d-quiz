@@ -475,17 +475,21 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
       isQuizPackMode: questionData?.isQuizPackMode,
       selectedQuestionType: questionData?.selectedQuestionType,
       answerSubmitted: questionData?.answerSubmitted,
+      keypadCurrentScreen: questionData?.keypadCurrentScreen,
     },
     timestamp: Date.now()
   };
 
-  console.log('[wsHost] 📦 FLOW_STATE payload ready', {
-    flow: payload.data.flow,
-    isQuestionMode: payload.data.isQuestionMode,
-    totalTime: payload.data.totalTime,
-    targetDeviceId: deviceId,
-    payloadSize: JSON.stringify(payload).length,
-  });
+  const DEBUG = process.env.REACT_APP_DEBUG_MODE === 'true' || (window as any).__DEBUG_MODE__;
+  if (DEBUG) {
+    console.log('[wsHost] 📦 FLOW_STATE payload ready', {
+      flow: payload.data.flow,
+      isQuestionMode: payload.data.isQuestionMode,
+      totalTime: payload.data.totalTime,
+      targetDeviceId: deviceId,
+      payloadSize: JSON.stringify(payload).length,
+    });
+  }
 
   // Try IPC method first (Electron)
   try {
@@ -507,6 +511,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
             isQuizPackMode: payload.data.isQuizPackMode,
             selectedQuestionType: questionData?.selectedQuestionType,
             answerSubmitted: questionData?.answerSubmitted,
+            keypadCurrentScreen: questionData?.keypadCurrentScreen,
             // Include question count for navigation arrows (but not full array to keep payload small)
             loadedQuizQuestions: questionData?.loadedQuizQuestions ?
               questionData.loadedQuizQuestions.map((q: any, idx: number) => ({ id: q.id, index: idx })) :
@@ -541,8 +546,6 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
       }
     }
 
-    console.log('[wsHost] Using backend URL:', resolvedBackendUrl);
-
     // Format payload correctly for backend endpoint: {deviceId, messageType, data}
     // IMPORTANT: Exclude loadedQuizQuestions to avoid 413 Payload Too Large error
     const httpPayload = {
@@ -556,6 +559,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
         currentLoadedQuestionIndex: payload.data.currentLoadedQuestionIndex,
         isQuizPackMode: payload.data.isQuizPackMode,
         selectedQuestionType: questionData?.selectedQuestionType,
+        keypadCurrentScreen: questionData?.keypadCurrentScreen,
         // Include question count for navigation arrows (but not full array to keep payload small)
         loadedQuizQuestions: questionData?.loadedQuizQuestions ?
           questionData.loadedQuizQuestions.map((q: any, idx: number) => ({ id: q.id, index: idx })) :
@@ -577,11 +581,9 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
     }
 
     const result = await response.json();
-    console.log('[wsHost] ✅ FLOW_STATE sent via HTTP API successfully:', {
-      flow: result.flow,
-      deviceId: result.deviceId,
-      timestamp: result.timestamp,
-    });
+    if (DEBUG) {
+      console.log('[wsHost] ✅ FLOW_STATE sent via HTTP API successfully');
+    }
   } catch (err) {
     console.error('[wsHost] ❌ Error sending FLOW_STATE via HTTP API:', err);
   }

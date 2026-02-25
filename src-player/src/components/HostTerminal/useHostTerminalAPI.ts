@@ -128,7 +128,7 @@ export function useHostTerminalAPI({
    * Commands for on-the-spot mode
    */
   const selectQuestionType = useCallback(
-    (type: 'letters' | 'numbers' | 'multiple-choice') => {
+    (type: 'letters' | 'numbers' | 'multiple-choice' | 'sequence') => {
       return sendAdminCommand('select-question-type', { type });
     },
     [sendAdminCommand]

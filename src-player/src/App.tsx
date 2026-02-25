@@ -82,6 +82,7 @@ export default function App() {
     isQuizPackMode?: boolean;
     selectedQuestionType?: 'letters' | 'numbers' | 'multiple-choice';
     answerSubmitted?: string;
+    keypadCurrentScreen?: string; // Current screen in KeypadInterface (config, question-types, etc.)
   } | null>(null); // Track flow state for host controller
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -248,9 +249,6 @@ export default function App() {
   }, []);
 
   const handleMessage = useCallback((message: HostMessage) => {
-    console.log('[handleMessage] Callback executed');
-    console.log('[handleMessage] - Current teamName:', teamName);
-    console.log('[handleMessage] - Current isApproved:', isApproved);
 
     // Handle PLAYER_BUZZER_SELECT broadcasts from other players
     if ((message.type as any) === 'PLAYER_BUZZER_SELECT') {
@@ -270,10 +268,6 @@ export default function App() {
     switch (message.type) {
       case 'CONTROLLER_AUTH_SUCCESS':
         try {
-          console.log('[Player] 🔐🔐🔐 CONTROLLER_AUTH_SUCCESS HANDLER ENTERED 🔐🔐🔐');
-          console.log('[Player] Host controller PIN authenticated successfully!');
-          console.log('[Player] Transitioning to host terminal screen...');
-
           // Set controller authentication status
           setIsHostController(true);
           setControllerAuthError(null);
@@ -283,8 +277,6 @@ export default function App() {
 
           // Transition to host terminal screen
           setCurrentScreen('host-terminal');
-
-          console.log('[Player] ✅ Host controller authenticated and host terminal screen active');
         } catch (err) {
           console.error('[Player] ❌ Error in CONTROLLER_AUTH_SUCCESS handler:', err);
           setControllerAuthError('Failed to authenticate as host controller');
@@ -293,10 +285,7 @@ export default function App() {
 
       case 'CONTROLLER_AUTH_FAILED':
         try {
-          console.log('[Player] ❌ CONTROLLER_AUTH_FAILED HANDLER ENTERED');
-          console.log('[Player] Host controller PIN authentication failed!');
           const errorMsg = message.data?.message || 'Host controller PIN authentication failed';
-          console.log('[Player] Error message:', errorMsg);
 
           // Set error state
           setIsHostController(false);
@@ -305,8 +294,6 @@ export default function App() {
           // Show error and reset to team entry
           setCurrentScreen('team-entry');
           setTeamName('');
-
-          console.log('[Player] Reset to team entry screen after auth failure');
         } catch (err) {
           console.error('[Player] ❌ Error in CONTROLLER_AUTH_FAILED handler:', err);
         }
@@ -314,37 +301,21 @@ export default function App() {
 
       case 'TEAM_APPROVED':
         try {
-          console.log('[Player] 🎉🎉🎉 TEAM_APPROVED HANDLER ENTERED 🎉🎉🎉');
-          console.log('[Player] - Current teamName state:', teamName);
-          console.log('[Player] - Current isApproved state:', isApproved);
-          console.log('[Player] - Current screen:', currentScreen);
-          console.log('[Player] - Message object:', JSON.stringify(message).substring(0, 200));
-          console.log('[Player] - message.data:', message.data);
-          console.log('[Player] - displayData:', message.data?.displayData);
-
-          console.log('[Player] 🔄 About to call setIsApproved(true)');
           setIsApproved(true);
-          console.log('[Player] ✅ setIsApproved(true) called successfully (state update queued)');
           // Cache team name for recovery on page refresh
           if (teamName) {
             localStorage.setItem('popquiz_last_team_name', teamName);
-            console.log('[Player] Cached team name for recovery:', teamName);
           }
 
           // Check if there's a current game state (late joiner sync)
           const displayData = message.data?.displayData;
-          console.log('[Player] 📊 displayData received:', displayData ? 'YES' : 'NO');
           const currentGameState = displayData?.currentGameState;
-          console.log('[Player] 🎮 currentGameState received:', currentGameState ? 'YES' : 'NO');
-          console.log('[Player] ❓ currentQuestion in currentGameState:', currentGameState?.currentQuestion ? 'YES' : 'NO');
 
           // Check if we're currently in buzzer selection screen
           const isInBuzzerSelection = currentScreen === 'buzzer-selection';
-          console.log('[Player] 🎺 In buzzer selection screen:', isInBuzzerSelection);
 
           if (currentGameState?.currentQuestion) {
             // Late joiner - show current question immediately
-            console.log('[Player] 🚀 Late joiner: Showing current question immediately');
 
             const questionData = {
               ...currentGameState.currentQuestion,
@@ -361,14 +332,12 @@ export default function App() {
 
             // If timer is running, show it with remaining time
             if (currentGameState.timerState?.isRunning) {
-              console.log('[Player] Late joiner: Timer is running, showing timer with remaining time:', currentGameState.timerState.timeRemaining);
               setTotalTimerLength(currentGameState.timerState.totalTime);
               setTimeRemaining(currentGameState.timerState.timeRemaining);
               setShowTimer(true);
             }
           } else if (isInBuzzerSelection) {
             // Buzzer selection in progress - save approval data without changing screen
-            console.log('[Player] ⏸️  Buzzer selection in progress - saving approval data for later');
 
             // Extract and save display mode data
             if (displayData) {
@@ -380,7 +349,6 @@ export default function App() {
                   rotationInterval: rotationInterval || 10000,
                   leaderboardScores: scores || [],
                 };
-                console.log('[Player] Saved pending approval data:', approvalData);
                 setPendingApprovalData(approvalData);
               } catch (dataErr) {
                 console.error('❌ [Player] Error extracting displayData during buzzer selection:', dataErr);
@@ -392,7 +360,6 @@ export default function App() {
                 });
               }
             } else {
-              console.log('[Player] No displayData, saving default pending approval data');
               setPendingApprovalData({
                 displayMode: 'basic',
                 slideshowImages: [],
@@ -402,13 +369,9 @@ export default function App() {
             }
 
             // Don't change screen - stay in buzzer-selection to let user select
-            console.log('[Player] Staying in buzzer-selection screen to allow user to select buzzer');
           } else {
             // Normal approval flow - show approval screen
-            console.log('[Player] ✅ Normal approval flow: Showing approval screen for team:', teamName);
-            console.log('[Player] 🔄 About to call setCurrentScreen("approval")');
             setCurrentScreen('approval');
-            console.log('[Player] ✅ setCurrentScreen("approval") called (state update queued)');
 
             // Extract display mode data from the approval message
             if (displayData) {
@@ -416,11 +379,9 @@ export default function App() {
                 const { mode, images, rotationInterval, scores } = displayData;
 
                 if (mode) {
-                  console.log('[Player] Setting initial display mode from approval:', mode);
                   setDisplayMode(mode);
                 }
                 if (mode === 'slideshow' && images) {
-                  console.log('[Player] Setting initial slideshow images:', images.length);
                   setSlideshowImages(images);
                   if (rotationInterval) {
                     setRotationInterval(rotationInterval);
@@ -433,31 +394,22 @@ export default function App() {
               } catch (dataErr) {
                 console.error('❌ [Player] Error extracting displayData from TEAM_APPROVED:', dataErr);
               }
-            } else {
-              console.log('[Player] No displayData in TEAM_APPROVED, using defaults');
             }
 
             // Clear any existing approval timer
             if (approvalTimerRef.current) {
               clearTimeout(approvalTimerRef.current);
-              console.log('[Player] 🧹 Cleared existing approval timer');
             }
 
             // Set new approval screen transition timer
-            console.log('[Player] ⏱️  Setting 2-second timer to transition from approval screen to display');
             approvalTimerRef.current = setTimeout(() => {
               try {
-                console.log('[Player] ✅ 2-second approval timer FIRED - transitioning to display screen');
-                console.log('[Player] 🔄 About to call setCurrentScreen("display")');
                 setCurrentScreen('display');
-                console.log('[Player] ✅ setCurrentScreen("display") called (state update queued)');
                 approvalTimerRef.current = null;
               } catch (screenErr) {
                 console.error('❌ [Player] Error during approval screen transition:', screenErr);
               }
             }, 2000);
-
-            console.log('[Player] ✅ 2-second timer scheduled successfully for approval screen transition');
           }
         } catch (approvalErr) {
           console.error('❌ [Player] ERROR in TEAM_APPROVED handler:', approvalErr);
@@ -891,6 +843,7 @@ export default function App() {
               isQuizPackMode: message.data?.isQuizPackMode,
               selectedQuestionType: message.data?.selectedQuestionType,
               answerSubmitted: message.data?.answerSubmitted,
+              keypadCurrentScreen: message.data?.keypadCurrentScreen,
             });
             console.log('[Player] ✨ flowState updated, GameControlsPanel should re-render', {
               flow: message.data.flow,
@@ -899,6 +852,7 @@ export default function App() {
               hasCurrentQuestion: !!message.data?.currentQuestion,
               loadedQuestionsCount: message.data?.loadedQuizQuestions?.length,
               isQuizPackMode: message.data?.isQuizPackMode,
+              keypadCurrentScreen: message.data?.keypadCurrentScreen,
             });
           } else {
             console.log('[Player] ❌ FLOW_STATE missing required fields', {
@@ -932,7 +886,6 @@ export default function App() {
       currentScreen !== 'declined'
     ) {
       // App still has team info in memory - auto-rejoin without re-entering name
-      console.log(`[Player] Auto-rejoin: Device ${deviceId} reconnecting as "${teamName}"`);
       const rejoinPayload: any = {
         type: 'PLAYER_JOIN',
         playerId,
@@ -943,21 +896,13 @@ export default function App() {
 
       if (settings.teamPhoto) {
         rejoinPayload.teamPhoto = settings.teamPhoto;
-        console.log('[App] Auto-rejoin PLAYER_JOIN payload includes teamPhoto: true, Length:', rejoinPayload.teamPhoto.length, 'bytes');
-        console.log('[App] Team photo prefix (first 100 chars):', rejoinPayload.teamPhoto.substring(0, 100));
-      } else {
-        console.log('[App] Auto-rejoin PLAYER_JOIN payload includes teamPhoto: false');
       }
 
       // Include buzzer sound if set in settings
       if (settings.buzzerSound) {
         rejoinPayload.buzzerSound = settings.buzzerSound;
-        console.log('[App] Auto-rejoin PLAYER_JOIN payload includes buzzer: true, Sound:', settings.buzzerSound);
-      } else {
-        console.log('[App] Auto-rejoin PLAYER_JOIN payload includes buzzer: false');
       }
 
-      console.log('[App] Auto-rejoin: Sending PLAYER_JOIN payload with fields:', Object.keys(rejoinPayload).join(', '));
       wsRef.current.send(JSON.stringify(rejoinPayload));
     }
   }, [isConnected, isApproved, teamName, deviceId, playerId, settings, currentScreen]);
@@ -965,7 +910,6 @@ export default function App() {
   // Player visibility/focus detection - detect when player switches tabs, minimizes window, etc
   useEffect(() => {
     if (!isConnected || !isApproved || !teamName) {
-      console.log('[Player] Visibility detection not active - isConnected:', isConnected, 'isApproved:', isApproved, 'teamName:', teamName);
       return;
     }
 
@@ -1135,18 +1079,6 @@ export default function App() {
 
 
   const handleTeamNameSubmit = (name: string) => {
-    console.log('[App] handleTeamNameSubmit called with name:', name);
-    console.log('[App] Current settings object:', settings);
-    console.log('[App] settings.teamPhoto exists:', !!settings.teamPhoto);
-    console.log('[App] settings.teamPhoto type:', typeof settings.teamPhoto);
-    console.log('[App] settings.teamPhoto length:', settings.teamPhoto?.length);
-    console.log('[App] Full settings state at submission:', JSON.stringify({
-      teamPhoto: settings.teamPhoto ? `<base64 data: ${settings.teamPhoto.length} bytes>` : null,
-      buzzerSound: settings.buzzerSound,
-      theme: settings.theme,
-      keypadColor: settings.keypadColor,
-    }));
-
     setTeamName(name);
     // Clear selected buzzers for fresh buzzer selection and reset confirmed buzzer
     setSelectedBuzzers({});
@@ -1165,23 +1097,13 @@ export default function App() {
       // Include team photo if available
       if (settings.teamPhoto) {
         joinPayload.teamPhoto = settings.teamPhoto;
-        console.log('[App] ✅ PLAYER_JOIN payload includes teamPhoto: true, Length:', joinPayload.teamPhoto.length, 'bytes');
-        console.log('[App] Team photo prefix (first 100 chars):', joinPayload.teamPhoto.substring(0, 100));
-      } else {
-        console.log('[App] ❌ PLAYER_JOIN payload includes teamPhoto: false');
       }
 
-      console.log('[App] Sending PLAYER_JOIN payload with fields:', Object.keys(joinPayload).join(', '));
-      console.log('[App] Full payload:', joinPayload);
       wsRef.current.send(JSON.stringify(joinPayload));
-    } else {
-      console.log('[App] ❌ WebSocket not ready, readyState:', wsRef.current?.readyState);
     }
   };
 
   const handleBuzzerConfirm = (buzzerSound: string) => {
-    console.log('[App] Buzzer selection confirmed:', buzzerSound);
-
     // Store confirmed buzzer in state
     setConfirmedBuzzer(buzzerSound);
 
@@ -1199,7 +1121,6 @@ export default function App() {
         timestamp: Date.now(),
       };
 
-      console.log('[App] 🔊 Sending PLAYER_BUZZER_SELECT:', buzzerSelectPayload);
       wsRef.current.send(JSON.stringify(buzzerSelectPayload));
     }
 

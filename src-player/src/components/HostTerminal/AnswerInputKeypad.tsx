@@ -12,12 +12,12 @@ interface AnswerInputKeypadProps {
     flow: string;
     isQuestionMode: boolean;
     isQuizPackMode?: boolean;
-    selectedQuestionType?: 'letters' | 'numbers' | 'multiple-choice';
+    selectedQuestionType?: 'letters' | 'numbers' | 'multiple-choice' | 'sequence';
     currentQuestion?: any;
   } | null;
 }
 
-type QuestionType = 'letters' | 'numbers' | 'multiple-choice';
+type QuestionType = 'letters' | 'numbers' | 'multiple-choice' | 'sequence';
 
 export function AnswerInputKeypad({
   deviceId,
@@ -46,9 +46,6 @@ export function AnswerInputKeypad({
     (flowState?.currentQuestion ? normalizeQuestionType(flowState.currentQuestion.type) : undefined) as QuestionType | undefined;
 
   if (!shouldShow || !questionType) {
-    if (!questionType && shouldShow) {
-      console.warn('[AnswerInputKeypad] Cannot render: missing selectedQuestionType and currentQuestion.type');
-    }
     return null;
   }
 
@@ -67,12 +64,18 @@ export function AnswerInputKeypad({
         setExpectedAnswer((prev) => (prev + key).slice(0, 10)); // Max 10 digits
       }
     }
-    // Multiple Choice: A-D
+    // Multiple Choice: A through dynamically determined max letter
     else if (questionType === 'multiple-choice') {
-      if (key.match(/^[A-D]$/i)) {
+      const optionCount = flowState?.currentQuestion?.options?.length || 4;
+      const maxLetter = String.fromCharCode(64 + optionCount); // 64 = '@', so 65 = 'A'
+      if (key.match(/^[A-Z]$/i) && key.toUpperCase() <= maxLetter) {
         setExpectedAnswer(key.toUpperCase());
       }
     }
+  };
+
+  const handleSequenceTextChange = (text: string) => {
+    setExpectedAnswer(text);
   };
 
   const handleClear = () => {
@@ -81,11 +84,9 @@ export function AnswerInputKeypad({
 
   const handleSubmit = () => {
     if (!expectedAnswer) {
-      console.warn('[AnswerInputKeypad] No answer selected');
       return;
     }
 
-    console.log('[AnswerInputKeypad] Submitting answer:', expectedAnswer);
     sendAdminCommand('set-expected-answer', { answer: expectedAnswer });
     // Keep the answer visible after submission
   };
@@ -129,7 +130,10 @@ export function AnswerInputKeypad({
   };
 
   const renderMultipleChoiceKeypad = () => {
-    const choices = ['A', 'B', 'C', 'D'];
+    // Dynamically determine number of options from current question
+    const optionCount = flowState?.currentQuestion?.options?.length || 4;
+    // Generate choices based on option count (A, B, C, D, E, F, etc.)
+    const choices = Array.from({ length: optionCount }, (_, i) => String.fromCharCode(65 + i));
     return (
       <div className="grid grid-cols-2 gap-2 mb-4">
         {choices.map((choice) => (
@@ -149,6 +153,20 @@ export function AnswerInputKeypad({
     );
   };
 
+  const renderSequenceInput = () => {
+    return (
+      <div className="w-full mb-4">
+        <input
+          type="text"
+          value={expectedAnswer}
+          onChange={(e) => handleSequenceTextChange(e.target.value)}
+          placeholder="Enter sequence (e.g., 1,2,3 or A,B,C)"
+          className="w-full px-4 py-3 rounded-lg border-2 border-slate-500 bg-slate-800 text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+        />
+      </div>
+    );
+  };
+
   const getKeypadRenderer = () => {
     switch (questionType) {
       case 'letters':
@@ -157,6 +175,8 @@ export function AnswerInputKeypad({
         return renderNumberKeypad;
       case 'multiple-choice':
         return renderMultipleChoiceKeypad;
+      case 'sequence':
+        return renderSequenceInput;
       default:
         return () => null;
     }

@@ -225,7 +225,6 @@ export function LeaderboardPanel({ deviceId, playerId, teamName, wsRef }: Leader
   };
 
   const handleRefresh = () => {
-    console.log('[LeaderboardPanel] Manual refresh triggered');
     fetchAndUpdateLeaderboard();
   };
 

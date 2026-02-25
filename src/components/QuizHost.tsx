@@ -625,6 +625,13 @@ export function QuizHost() {
   const periodicSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasLoadedInitialStateRef = useRef(false);
 
+  // Refs for listener handlers to avoid re-registration (memory leak fix)
+  const authenticatedControllerIdRef = useRef<string | null>(null);
+  const hostControllerEnabledRef = useRef(false);
+  const hostControllerCodeRef = useRef<string>("");
+  const handleApproveTeamRef = useRef<(deviceId: string, teamName: string) => Promise<void>>();
+  const teamPhotosAutoApproveRef = useRef(false);
+
   // Sync refs with state changes to avoid listener re-registration
   useEffect(() => {
     gameTimerStartTimeRef.current = gameTimerStartTime;
@@ -633,6 +640,23 @@ export function QuizHost() {
   useEffect(() => {
     flowStateTotalTimeRef.current = flowState.totalTime;
   }, [flowState.totalTime]);
+
+  // Keep listener refs in sync with state
+  useEffect(() => {
+    authenticatedControllerIdRef.current = authenticatedControllerId;
+  }, [authenticatedControllerId]);
+
+  useEffect(() => {
+    hostControllerEnabledRef.current = hostControllerEnabled;
+  }, [hostControllerEnabled]);
+
+  useEffect(() => {
+    hostControllerCodeRef.current = hostControllerCode;
+  }, [hostControllerCode]);
+
+  useEffect(() => {
+    teamPhotosAutoApproveRef.current = teamPhotosAutoApprove;
+  }, [teamPhotosAutoApprove]);
 
   // Debug effect to log gameTimerRunning state changes
   useEffect(() => {
@@ -738,6 +762,7 @@ export function QuizHost() {
     handleNavBarStartTimer: null as any, // Will be assigned in render
     setCurrentLoadedQuestionIndex: null as any, // Will be assigned in render
     setFlowState: null as any, // Will be assigned in render (for on-the-spot mode)
+    setKeypadCurrentScreen: null as any, // Will be assigned in render (for on-the-spot mode)
     sendFlowStateToController: null as any, // Will be assigned in render (for on-the-spot mode)
   });
 
@@ -759,8 +784,9 @@ export function QuizHost() {
       showBuzzInMode,
       showNearestWinsInterface,
       isQuizPackMode,
+      keypadCurrentScreen,
     };
-  }, [authenticatedControllerId, hostControllerEnabled, hostControllerCode, hostInfo?.baseUrl, gameModeTimers, nearestWinsTimer, loadedQuizQuestions, currentLoadedQuestionIndex, flowState, showKeypadInterface, showQuizPackDisplay, showBuzzInMode, showNearestWinsInterface, isQuizPackMode]);
+  }, [authenticatedControllerId, hostControllerEnabled, hostControllerCode, hostInfo?.baseUrl, gameModeTimers, nearestWinsTimer, loadedQuizQuestions, currentLoadedQuestionIndex, flowState, showKeypadInterface, showQuizPackDisplay, showBuzzInMode, showNearestWinsInterface, isQuizPackMode, keypadCurrentScreen]);
 
   // Auto-load on component mount
   useEffect(() => {
@@ -1220,7 +1246,10 @@ export function QuizHost() {
 
           try {
             const data = JSON.parse(event.data);
-            console.log('[WebSocket Message]', data);
+            const DEBUG = process.env.REACT_APP_DEBUG_MODE === 'true' || (window as any).__DEBUG_MODE__;
+            if (DEBUG) {
+              console.log('[WebSocket Message]', data.type);
+            }
 
             // Forward message to wsHost listeners (PLAYER_JOIN, PLAYER_ANSWER, etc)
             broadcastMessage({
@@ -1595,6 +1624,11 @@ export function QuizHost() {
     }
   };
 
+  // Keep handleApproveTeam ref in sync to avoid listener re-registration
+  useEffect(() => {
+    handleApproveTeamRef.current = handleApproveTeam;
+  }, [handleApproveTeam]);
+
   // Handler to decline a pending team
   const handleDeclineTeam = async (deviceId: string, teamName: string) => {
     try {
@@ -1912,6 +1946,7 @@ export function QuizHost() {
     setShowKeypadInterface(true);
     setActiveTab("teams"); // Change active tab when keypad is opened
     setKeypadInstanceKey(prev => prev + 1); // Force re-render with fresh defaults
+    setFlowState(prev => ({ ...prev, isQuestionMode: true })); // Enable question mode when starting on-the-spot
   };
 
   // Handle keypad interface close
@@ -1929,6 +1964,7 @@ export function QuizHost() {
     setGameAnswerSelected(false);
     setKeypadCurrentScreen('config');
     setActiveTab("home"); // Return to home when keypad is closed
+    setFlowState(prev => ({ ...prev, isQuestionMode: false })); // Disable question mode when closing
   };
 
   // Handle question type selection in on-the-spot mode (from KeypadInterface)
@@ -3011,193 +3047,194 @@ export function QuizHost() {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [showFastestTeamDisplay]);
 
-  // Listen for network player registrations
-  useEffect(() => {
-    const handleNetworkPlayerJoin = (data: any) => {
-      const { deviceId, playerId, teamName } = data;
+  // Wrap PLAYER_JOIN handler in useCallback with minimal deps to prevent re-registration
+  // Uses refs to access frequently-changing state without triggering re-registration
+  const handleNetworkPlayerJoin = useCallback((data: any) => {
+    const { deviceId, playerId, teamName } = data;
 
-      if (!deviceId) {
-        console.warn('PLAYER_JOIN missing deviceId');
-        return;
-      }
+    if (!deviceId) {
+      console.warn('PLAYER_JOIN missing deviceId');
+      return;
+    }
 
-      // LOGGING: Log the PLAYER_JOIN message details
-      console.log('[QuizHost] 📨 Received PLAYER_JOIN from backend:');
-      console.log('[QuizHost] - deviceId:', deviceId);
-      console.log('[QuizHost] - teamName:', teamName);
-      console.log('[QuizHost] - Message fields:', Object.keys(data));
-      console.log('[QuizHost] - Has teamPhoto field:', !!data.teamPhoto);
-      if (data.teamPhoto) {
-        console.log('[QuizHost] - teamPhoto type:', typeof data.teamPhoto);
-        console.log('[QuizHost] - teamPhoto length:', data.teamPhoto.length);
-      }
+    // LOGGING: Log the PLAYER_JOIN message details
+    console.log('[QuizHost] 📨 Received PLAYER_JOIN from backend:');
+    console.log('[QuizHost] - deviceId:', deviceId);
+    console.log('[QuizHost] - teamName:', teamName);
+    console.log('[QuizHost] - Message fields:', Object.keys(data));
+    console.log('[QuizHost] - Has teamPhoto field:', !!data.teamPhoto);
+    if (data.teamPhoto) {
+      console.log('[QuizHost] - teamPhoto type:', typeof data.teamPhoto);
+      console.log('[QuizHost] - teamPhoto length:', data.teamPhoto.length);
+    }
 
-      // PIN VALIDATION: Check if this player is trying to authenticate as host controller
-      console.log('[QuizHost] 🔐 PIN Validation Status:');
-      console.log('[QuizHost] - hostControllerEnabled:', hostControllerEnabled, `(type: ${typeof hostControllerEnabled})`);
-      console.log('[QuizHost] - hostControllerCode:', hostControllerCode, `(type: ${typeof hostControllerCode}, length: ${hostControllerCode?.length})`);
-      console.log('[QuizHost] - teamName:', teamName, `(type: ${typeof teamName}, length: ${teamName?.length})`);
-      console.log('[QuizHost] - PIN Match (teamName === hostControllerCode):', teamName === hostControllerCode);
+    // Use refs to access latest state values without dependencies
+    const currentHostControllerEnabled = hostControllerEnabledRef.current;
+    const currentHostControllerCode = hostControllerCodeRef.current;
 
-      // Detailed comparison for debugging
-      if (teamName !== hostControllerCode && hostControllerCode) {
-        console.log('[QuizHost] - Character-by-character comparison:');
-        console.log('[QuizHost]   - teamName chars:', teamName.split('').map((c, i) => `${i}:"${c}(${c.charCodeAt(0)})`).join(', '));
-        console.log('[QuizHost]   - code chars:', hostControllerCode.split('').map((c, i) => `${i}:"${c}(${c.charCodeAt(0)})`).join(', '));
-      }
+    // PIN VALIDATION: Check if this player is trying to authenticate as host controller
+    console.log('[QuizHost] 🔐 PIN Validation Status:');
+    console.log('[QuizHost] - hostControllerEnabled:', currentHostControllerEnabled, `(type: ${typeof currentHostControllerEnabled})`);
+    console.log('[QuizHost] - hostControllerCode:', currentHostControllerCode, `(type: ${typeof currentHostControllerCode}, length: ${currentHostControllerCode?.length})`);
+    console.log('[QuizHost] - teamName:', teamName, `(type: ${typeof teamName}, length: ${teamName?.length})`);
+    console.log('[QuizHost] - PIN Match (teamName === hostControllerCode):', teamName === currentHostControllerCode);
 
-      if (hostControllerEnabled && hostControllerCode && teamName === hostControllerCode) {
-        console.log('[QuizHost] 🔐 ✅ Controller authentication attempt detected!');
-        console.log('[QuizHost] - PIN match: team name matches controller code');
-        console.log('[QuizHost] - Setting as authenticated controller for deviceId:', deviceId);
+    // Detailed comparison for debugging
+    if (teamName !== currentHostControllerCode && currentHostControllerCode) {
+      console.log('[QuizHost] - Character-by-character comparison:');
+      console.log('[QuizHost]   - teamName chars:', teamName.split('').map((c, i) => `${i}:"${c}(${c.charCodeAt(0)})`).join(', '));
+      console.log('[QuizHost]   - code chars:', currentHostControllerCode.split('').map((c, i) => `${i}:"${c}(${c.charCodeAt(0)})`).join(', '));
+    }
 
-        // Send authentication success message to the player
-        console.log('[QuizHost] 📤 Sending CONTROLLER_AUTH_SUCCESS to device:', deviceId);
-        sendControllerAuthToPlayer(deviceId, true, 'Host controller PIN accepted');
+    if (currentHostControllerEnabled && currentHostControllerCode && teamName === currentHostControllerCode) {
+      console.log('[QuizHost] 🔐 ✅ Controller authentication attempt detected!');
+      console.log('[QuizHost] - PIN match: team name matches controller code');
+      console.log('[QuizHost] - Setting as authenticated controller for deviceId:', deviceId);
 
-        // Set the authenticated controller ID
-        setAuthenticatedControllerId(deviceId);
+      // Send authentication success message to the player
+      console.log('[QuizHost] 📤 Sending CONTROLLER_AUTH_SUCCESS to device:', deviceId);
+      sendControllerAuthToPlayer(deviceId, true, 'Host controller PIN accepted');
 
-        // Send initial flow state to the controller via IPC
-        console.log('[QuizHost] 📤 Sending initial flow state to controller:', { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode, totalTime: flowState.totalTime, deviceId });
-        sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
-          totalTime: flowState.totalTime,
-          currentQuestion: flowState.currentQuestion,
-          currentLoadedQuestionIndex,
-          loadedQuizQuestions,
-          isQuizPackMode,
-        }, deviceId, hostInfo?.baseUrl);
+      // Set the authenticated controller ID
+      setAuthenticatedControllerId(deviceId);
 
-        // Do not add controller to quizzes list - they are not a regular team
-        console.log('[QuizHost] ✨ Controller authenticated, will not add to regular teams list');
-        return;
-      } else {
-        console.log('[QuizHost] ⚠️ Controller authentication failed - conditions not met:');
-        if (!hostControllerEnabled) console.log('[QuizHost]   - hostControllerEnabled is false');
-        if (!hostControllerCode) console.log('[QuizHost]   - hostControllerCode is empty');
-        if (teamName !== hostControllerCode) console.log('[QuizHost]   - teamName does not match hostControllerCode');
-      }
+      // Send initial flow state to the controller via IPC (read current state directly)
+      console.log('[QuizHost] 📤 Sending initial flow state to controller:', { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode, totalTime: flowState.totalTime, deviceId });
+      sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
+        totalTime: flowState.totalTime,
+        currentQuestion: flowState.currentQuestion,
+        currentLoadedQuestionIndex,
+        loadedQuizQuestions,
+        isQuizPackMode,
+      }, deviceId, hostInfo?.baseUrl);
 
-      // Check if team with this deviceId already exists (reconnection case)
-      const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
+      // Do not add controller to quizzes list - they are not a regular team
+      console.log('[QuizHost] ✨ Controller authenticated, will not add to regular teams list');
+      return;
+    } else {
+      console.log('[QuizHost] ⚠️ Controller authentication failed - conditions not met:');
+      if (!currentHostControllerEnabled) console.log('[QuizHost]   - hostControllerEnabled is false');
+      if (!currentHostControllerCode) console.log('[QuizHost]   - hostControllerCode is empty');
+      if (teamName !== currentHostControllerCode) console.log('[QuizHost]   - teamName does not match hostControllerCode');
+    }
 
-      if (existingTeam) {
-        // Reconnection - update existing team, keep score, mark as connected
-        setQuizzes(prev => prev.map(q =>
-          q.id === deviceId
-            ? { ...q, name: teamName, disconnected: false }
-            : q
-        ));
-        console.log(`🔄 Network player reconnected: ${teamName} (${deviceId}) - score preserved: ${existingTeam.score}`);
+    // Check if team with this deviceId already exists (reconnection case)
+    const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
+
+    if (existingTeam) {
+      // Reconnection - update existing team, keep score, mark as connected
+      setQuizzes(prev => prev.map(q =>
+        q.id === deviceId
+          ? { ...q, name: teamName, disconnected: false }
+          : q
+      ));
+      console.log(`🔄 Network player reconnected: ${teamName} (${deviceId}) - score preserved: ${existingTeam.score}`);
+      // Trigger debounced auto-save for crash recovery
+      debouncedSaveGameStateRef.current?.();
+    } else {
+      // New team - check if quiz is in progress (any team has points)
+      const hasStartedQuiz = quizzesRef.current.some(q => (q.score || 0) > 0);
+
+      if (!hasStartedQuiz) {
+        // Quiz hasn't started - auto approve new team
+        console.log('📋 Auto-approving new team (no points yet):', { deviceId, teamName });
+
+        // Add team to quizzes first (without photo - will be set via PHOTO_APPROVAL_UPDATED broadcast)
+        const newTeam: Quiz = {
+          id: deviceId,
+          name: teamName,
+          type: 'test',
+          score: 0,
+          icon: '📱',
+        };
+
+        setQuizzes(prev => {
+          const updated = [...prev, newTeam];
+          // Sort by score after adding
+          return updated.sort((a, b) => (b.score || 0) - (a.score || 0));
+        });
         // Trigger debounced auto-save for crash recovery
-        debouncedSaveGameState();
+        debouncedSaveGameStateRef.current?.();
+
+        // Auto-approve the team
+        // PHASE 3 FIX: Increase setTimeout from 0 to 150ms to prevent race condition
+        // The backend needs time to fully process PLAYER_JOIN and store the player in networkPlayers
+        // before we attempt approval. This ensures synchronization between client and server.
+        console.log(`[QuizHost] ⏱️ Scheduling auto-approval for: ${teamName} (${deviceId}) - will delay by 150ms to ensure backend is ready`);
+        setTimeout(() => {
+          console.log(`[QuizHost] ✨ Executing delayed auto-approval for: ${teamName} (${deviceId})`);
+          handleApproveTeamRef.current?.(deviceId, teamName);
+        }, 150);
+        console.log(`✨ New network player scheduled for auto-approval: ${teamName} (${deviceId})`);
       } else {
-        // New team - check if quiz is in progress (any team has points)
-        const hasStartedQuiz = quizzesRef.current.some(q => (q.score || 0) > 0);
+        // Quiz in progress - require manual approval
+        console.log('⏸️ New team requires manual approval (quiz in progress):', { deviceId, teamName });
+        const normalizedDeviceId = deviceId?.trim();
+        setPendingTeams(prev => {
+          // STRONG DEDUPLICATION: Remove any existing entry with same deviceId, then add new entry
+          // This prevents duplicates even if PLAYER_JOIN is received multiple times
+          const filtered = prev.filter(t => t.deviceId?.trim() !== normalizedDeviceId);
 
-        if (!hasStartedQuiz) {
-          // Quiz hasn't started - auto approve new team
-          console.log('📋 Auto-approving new team (no points yet):', { deviceId, teamName });
+          if (filtered.length < prev.length) {
+            // Team was already in pending list - remove it and re-add with updated timestamp
+            console.log(`[QuizHost] 🔄 Team already pending approval: ${teamName} (${deviceId}) - updating entry with fresh timestamp`);
+          }
 
-          // Add team to quizzes first (without photo - will be set via PHOTO_APPROVAL_UPDATED broadcast)
-          const newTeam: Quiz = {
-            id: deviceId,
-            name: teamName,
-            type: 'test',
-            score: 0,
-            icon: '📱',
-          };
-
-          setQuizzes(prev => {
-            const updated = [...prev, newTeam];
-            // Sort by score after adding
-            return updated.sort((a, b) => (b.score || 0) - (a.score || 0));
-          });
-          // Trigger debounced auto-save for crash recovery
-          debouncedSaveGameState();
-
-          // Auto-approve the team
-          // PHASE 3 FIX: Increase setTimeout from 0 to 150ms to prevent race condition
-          // The backend needs time to fully process PLAYER_JOIN and store the player in networkPlayers
-          // before we attempt approval. This ensures synchronization between client and server.
-          console.log(`[QuizHost] ⏱️ Scheduling auto-approval for: ${teamName} (${deviceId}) - will delay by 150ms to ensure backend is ready`);
-          setTimeout(() => {
-            console.log(`[QuizHost] ✨ Executing delayed auto-approval for: ${teamName} (${deviceId})`);
-            handleApproveTeam(deviceId, teamName);
-          }, 150);
-          console.log(`✨ New network player scheduled for auto-approval: ${teamName} (${deviceId})`);
-        } else {
-          // Quiz in progress - require manual approval
-          console.log('⏸️ New team requires manual approval (quiz in progress):', { deviceId, teamName });
-          const normalizedDeviceId = deviceId?.trim();
-          setPendingTeams(prev => {
-            // STRONG DEDUPLICATION: Remove any existing entry with same deviceId, then add new entry
-            // This prevents duplicates even if PLAYER_JOIN is received multiple times
-            const filtered = prev.filter(t => t.deviceId?.trim() !== normalizedDeviceId);
-
-            if (filtered.length < prev.length) {
-              // Team was already in pending list - remove it and re-add with updated timestamp
-              console.log(`[QuizHost] 🔄 Team already pending approval: ${teamName} (${deviceId}) - updating entry with fresh timestamp`);
-            }
-
-            return [...filtered, { deviceId, playerId, teamName, timestamp: Date.now() }];
-          });
-        }
+          return [...filtered, { deviceId, playerId, teamName, timestamp: Date.now() }];
+        });
       }
-    };
+    }
+  }, [flowState, setAuthenticatedControllerId, setQuizzes, setPendingTeams, currentLoadedQuestionIndex, loadedQuizQuestions, isQuizPackMode, hostInfo?.baseUrl]); // Only deps that are truly needed
 
-    // Register listener and get unsubscribe function
+  // Register PLAYER_JOIN listener with stable handler
+  useEffect(() => {
     const unsubscribe = onNetworkMessage('PLAYER_JOIN', handleNetworkPlayerJoin);
-
-    // Clean up listener on unmount
     return unsubscribe;
-  }, [hostControllerEnabled, hostControllerCode, flowState, setAuthenticatedControllerId, handleApproveTeam, debouncedSaveGameState]); // Re-register when these values change
+  }, [handleNetworkPlayerJoin]); // Only depends on stable handler
 
-  // Listen for network player disconnections
+  // Wrap PLAYER_DISCONNECT handler in useCallback - uses refs to avoid re-registration
+  const handleNetworkPlayerDisconnect = useCallback((data: any) => {
+    const { deviceId, playerId } = data;
+
+    if (!deviceId) {
+      console.warn('PLAYER_DISCONNECT missing deviceId');
+      return;
+    }
+
+    // LOGGING: Log the PLAYER_DISCONNECT message details
+    console.log('[QuizHost] 📨 Received PLAYER_DISCONNECT from backend:');
+    console.log('[QuizHost] - deviceId:', deviceId);
+    console.log('[QuizHost] - playerId:', playerId);
+
+    // Check if this was the authenticated controller and clear it (use ref to check without dependency)
+    if (deviceId === authenticatedControllerIdRef.current) {
+      console.log('[QuizHost] 🔓 Authenticated controller disconnected, clearing controller status');
+      setAuthenticatedControllerId(null);
+    }
+
+    // Check if team with this deviceId exists
+    const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
+
+    if (existingTeam) {
+      // Mark team as disconnected, but preserve all data (name, score, etc)
+      setQuizzes(prev => prev.map(q =>
+        q.id === deviceId
+          ? { ...q, disconnected: true }
+          : q
+      ));
+      console.log(`📡 Network player disconnected: ${existingTeam.name} (${deviceId}) - data preserved, score: ${existingTeam.score}`);
+      // Trigger debounced auto-save for crash recovery
+      debouncedSaveGameStateRef.current?.();
+    } else {
+      console.log(`⚠️ PLAYER_DISCONNECT received for unknown team: ${deviceId}`);
+    }
+  }, [setAuthenticatedControllerId, setQuizzes]); // Only depends on setters which don't change
+
+  // Register PLAYER_DISCONNECT listener with stable handler
   useEffect(() => {
-    const handleNetworkPlayerDisconnect = (data: any) => {
-      const { deviceId, playerId } = data;
-
-      if (!deviceId) {
-        console.warn('PLAYER_DISCONNECT missing deviceId');
-        return;
-      }
-
-      // LOGGING: Log the PLAYER_DISCONNECT message details
-      console.log('[QuizHost] 📨 Received PLAYER_DISCONNECT from backend:');
-      console.log('[QuizHost] - deviceId:', deviceId);
-      console.log('[QuizHost] - playerId:', playerId);
-
-      // Check if this was the authenticated controller and clear it
-      if (deviceId === authenticatedControllerId) {
-        console.log('[QuizHost] 🔓 Authenticated controller disconnected, clearing controller status');
-        setAuthenticatedControllerId(null);
-      }
-
-      // Check if team with this deviceId exists
-      const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
-
-      if (existingTeam) {
-        // Mark team as disconnected, but preserve all data (name, score, etc)
-        setQuizzes(prev => prev.map(q =>
-          q.id === deviceId
-            ? { ...q, disconnected: true }
-            : q
-        ));
-        console.log(`📡 Network player disconnected: ${existingTeam.name} (${deviceId}) - data preserved, score: ${existingTeam.score}`);
-        // Trigger debounced auto-save for crash recovery
-        debouncedSaveGameState();
-      } else {
-        console.log(`⚠️ PLAYER_DISCONNECT received for unknown team: ${deviceId}`);
-      }
-    };
-
-    // Register listener and get unsubscribe function
     const unsubscribe = onNetworkMessage('PLAYER_DISCONNECT', handleNetworkPlayerDisconnect);
-
-    // Clean up listener on unmount
     return unsubscribe;
-  }, [authenticatedControllerId]); // Include authenticatedControllerId in dependency array
+  }, [handleNetworkPlayerDisconnect]); // Only depends on stable handler
 
   // Listen for player away state (tab switch, window blur, etc)
   useEffect(() => {
@@ -3294,21 +3331,10 @@ export function QuizHost() {
       const { deviceId, playerId, commandType, commandData } = data;
       const deps = adminListenerDepsRef.current;
 
-      console.log('[QuizHost] 🎮 Admin command received:');
-      console.log('[QuizHost] - deviceId:', deviceId);
-      console.log('[QuizHost] - commandType:', commandType);
-      console.log('[QuizHost] - commandData:', commandData);
-
-      // DIAGNOSTIC: Log authentication check details
-      console.log('[QuizHost] 🔍 AUTH CHECK DETAILS:');
-      console.log('[QuizHost]   - Incoming deviceId:', JSON.stringify(deviceId));
-      console.log('[QuizHost]   - Incoming deviceId type:', typeof deviceId);
-      console.log('[QuizHost]   - Incoming deviceId length:', deviceId?.length);
-      console.log('[QuizHost]   - Stored authenticatedControllerId:', JSON.stringify(deps.authenticatedControllerId));
-      console.log('[QuizHost]   - Stored type:', typeof deps.authenticatedControllerId);
-      console.log('[QuizHost]   - Stored length:', deps.authenticatedControllerId?.length);
-      console.log('[QuizHost]   - Are they === equal?', deviceId === deps.authenticatedControllerId);
-      console.log('[QuizHost]   - Trimmed comparison:', (deviceId?.trim?.() === deps.authenticatedControllerId?.trim?.()));
+      const DEBUG = process.env.REACT_APP_DEBUG_MODE === 'true' || (window as any).__DEBUG_MODE__;
+      if (DEBUG) {
+        console.log('[QuizHost] 🎮 Admin command:', { commandType, deviceId });
+      }
 
       // SECURITY: Verify that this command is from the authenticated controller
       // Trim both strings to handle any whitespace issues
@@ -3336,25 +3362,25 @@ export function QuizHost() {
         switch (commandType) {
           // Universal question controls
           case 'send-question':
-            console.log('[QuizHost] Executing: Send Question');
-            console.log('[QuizHost]   - About to call handlePrimaryAction');
-            console.log('[QuizHost]   - currentLoadedQuestionIndex:', deps.currentLoadedQuestionIndex);
-            console.log('[QuizHost]   - loadedQuizQuestions.length:', deps.loadedQuizQuestions?.length);
+            if (DEBUG) {
+              console.log('[QuizHost] Executing: Send Question', {
+                index: deps.currentLoadedQuestionIndex,
+                total: deps.loadedQuizQuestions?.length
+              });
+            }
             // Call the primary action handler which manages game flow progression
             deps.handlePrimaryAction();
             success = true;
-            console.log('[QuizHost]   - handlePrimaryAction completed, success:', success);
             break;
 
           case 'send-picture':
-            console.log('[QuizHost] Executing: Send Picture');
-            console.log('[QuizHost]   - Current flow state:', deps.flowState.flow);
-            console.log('[QuizHost]   - Current question index:', deps.currentLoadedQuestionIndex);
+            if (DEBUG) {
+              console.log('[QuizHost] Executing: Send Picture');
+            }
             if (deps.isQuizPackMode && deps.loadedQuizQuestions.length > 0) {
               const currentQuestion = deps.loadedQuizQuestions[deps.currentLoadedQuestionIndex];
               // Check if question has an image
               if (currentQuestion && hasQuestionImage(currentQuestion)) {
-                console.log('[QuizHost]   - Question has image, calling handlePrimaryAction');
                 deps.handlePrimaryAction();
                 success = true;
               } else {
@@ -3368,22 +3394,26 @@ export function QuizHost() {
             break;
 
           case 'hide-question':
-            console.log('[QuizHost] Executing: Hide Question');
+            if (DEBUG) {
+              console.log('[QuizHost] Executing: Hide Question');
+            }
             // Call handleHideQuestion to toggle hide mode and progress flow if in ready state
             deps.handleHideQuestion();
             success = true;
             break;
 
           case 'next-question':
-            console.log('[QuizHost] Executing: Next Question');
-            console.log('[QuizHost]   - isQuizPackMode:', deps.isQuizPackMode);
-            console.log('[QuizHost]   - flowState.flow:', deps.flowState.flow);
-            console.log('[QuizHost]   - currentLoadedQuestionIndex:', deps.currentLoadedQuestionIndex);
-            console.log('[QuizHost]   - loadedQuizQuestions.length:', deps.loadedQuizQuestions.length);
+            if (DEBUG) {
+              console.log('[QuizHost] Executing: Next Question', {
+                isQuizPackMode: deps.isQuizPackMode,
+                flow: deps.flowState.flow,
+                index: deps.currentLoadedQuestionIndex,
+                total: deps.loadedQuizQuestions.length,
+              });
+            }
 
             // For quiz pack mode, use handlePrimaryAction to ensure proper state transitions and cleanup
             if (deps.isQuizPackMode) {
-              console.log('[QuizHost] - Quiz pack mode: Calling handlePrimaryAction');
               // handlePrimaryAction will handle the state machine:
               // - In 'fastest' state: advances to next question with full cleanup
               // - In last question: ends the round
@@ -3391,7 +3421,6 @@ export function QuizHost() {
               deps.handlePrimaryAction();
               success = true;
             } else if (!deps.isQuizPackMode) {
-              console.log('[QuizHost] - On-the-spot mode, sending next question');
               // For on-the-spot, reset flow and broadcast next
               // Use default keypad timer as placeholder until user selects next question type
               const defaultOnTheSpotTimer = deps.gameModeTimers.keypad || 30;
@@ -3411,58 +3440,55 @@ export function QuizHost() {
               setFastestTeamRevealTime(null);
               success = true;
             }
-            // Explicitly broadcast the next question state to remote controller
-            setTimeout(() => {
-              deps.sendFlowStateToController?.(deviceId);
-            }, 0);
+            // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
+            // This prevents duplicate broadcasts
             break;
 
           case 'reveal-answer':
-            console.log('[QuizHost] Executing: Reveal Answer');
+            if (DEBUG) {
+              console.log('[QuizHost] Executing: Reveal Answer');
+            }
             // Trigger reveal answer and transition flowState
             deps.handleRevealAnswer();
             // Also call handlePrimaryAction to transition flowState from running/timeup to revealed/fastest
             deps.handlePrimaryAction();
             success = true;
-            // Explicitly broadcast the reveal state to remote controller
-            setTimeout(() => {
-              deps.sendFlowStateToController?.(deviceId);
-            }, 0);
+            // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
+            // This prevents duplicate broadcasts
             break;
 
           case 'show-fastest':
-            console.log('[QuizHost] Executing: Show Fastest Team');
+            if (DEBUG) {
+              console.log('[QuizHost] Executing: Show Fastest Team');
+            }
             // Trigger showing fastest team - call primary action to progress game state
             deps.handlePrimaryAction();
             success = true;
-            // Explicitly broadcast the fastest team state to remote controller
-            setTimeout(() => {
-              deps.sendFlowStateToController?.(deviceId);
-            }, 0);
+            // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
+            // This prevents duplicate broadcasts
             break;
 
           case 'skip-question':
-            console.log('[QuizHost] Executing: Skip Question');
+            if (DEBUG) {
+              console.log('[QuizHost] Executing: Skip Question');
+            }
             sendNextQuestion(); // Skip by going to next
             success = true;
             break;
 
           case 'end-round':
-            console.log('[QuizHost] Executing: End Round');
+            if (DEBUG) {
+              console.log('[QuizHost] Executing: End Round');
+            }
             sendEndRound();
             success = true;
             break;
 
           // Timer controls
           case 'start-silent-timer': {
-            console.log('[QuizHost] Executing: Start Silent Timer');
-            console.log('[QuizHost]   - commandData:', commandData);
-            console.log('[QuizHost] - Current game mode context:');
-            console.log('[QuizHost]   - isQuizPackMode:', deps.flowState.isQuestionMode);
-            console.log('[QuizHost]   - showKeypadInterface:', deps.showKeypadInterface);
-            console.log('[QuizHost]   - showBuzzInMode:', deps.showBuzzInMode);
-            console.log('[QuizHost]   - showNearestWinsInterface:', deps.showNearestWinsInterface);
-            console.log('[QuizHost]   - flowState.totalTime:', deps.flowState.totalTime);
+            if (DEBUG) {
+              console.log('[QuizHost] Executing: Start Silent Timer', { commandData });
+            }
 
             // Determine correct timer duration based on current game mode and settings
             // This ensures the remote trigger uses the same timer as UI buttons
@@ -3473,37 +3499,27 @@ export function QuizHost() {
               // For quiz pack / question mode, use flowState.totalTime (which was set by getTotalTimeForQuestion)
               if (deps.flowState.isQuestionMode || deps.flowState.flow !== 'idle') {
                 timerDuration = deps.flowState.totalTime || 30;
-                console.log('[QuizHost] Using flowState.totalTime for silent timer:', timerDuration);
               } else {
                 // Fallback: shouldn't happen if game is in proper state
                 timerDuration = 30;
-                console.log('[QuizHost] Using fallback 30s for silent timer (no question mode)');
               }
             } else {
               // Custom duration provided (unlikely from remote, but support it)
               timerDuration = validateTimerDuration(commandData.seconds);
-              console.log('[QuizHost] Using custom duration for silent timer:', timerDuration);
             }
 
             // Call handler with explicit duration (same as UI would use)
             deps.handleNavBarSilentTimer(timerDuration);
             success = true;
-            // Explicitly broadcast the timer start state to remote controller
-            setTimeout(() => {
-              deps.sendFlowStateToController?.(deviceId);
-            }, 0);
+            // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
+            // This prevents duplicate broadcasts
             break;
           }
 
           case 'start-normal-timer': {
-            console.log('[QuizHost] Executing: Start Normal Timer');
-            console.log('[QuizHost]   - commandData:', commandData);
-            console.log('[QuizHost] - Current game mode context:');
-            console.log('[QuizHost]   - isQuizPackMode:', deps.flowState.isQuestionMode);
-            console.log('[QuizHost]   - showKeypadInterface:', deps.showKeypadInterface);
-            console.log('[QuizHost]   - showBuzzInMode:', deps.showBuzzInMode);
-            console.log('[QuizHost]   - showNearestWinsInterface:', deps.showNearestWinsInterface);
-            console.log('[QuizHost]   - flowState.totalTime:', deps.flowState.totalTime);
+            if (DEBUG) {
+              console.log('[QuizHost] Executing: Start Normal Timer', { commandData });
+            }
 
             // Determine correct timer duration based on current game mode and settings
             // This ensures the remote trigger uses the same timer as UI buttons
@@ -3514,11 +3530,9 @@ export function QuizHost() {
               // For quiz pack / question mode, use flowState.totalTime (which was set by getTotalTimeForQuestion)
               if (deps.flowState.isQuestionMode || deps.flowState.flow !== 'idle') {
                 timerDuration = deps.flowState.totalTime || 30;
-                console.log('[QuizHost] Using flowState.totalTime for normal timer:', timerDuration);
               } else {
                 // Fallback: shouldn't happen if game is in proper state
                 timerDuration = 30;
-                console.log('[QuizHost] Using fallback 30s for normal timer (no question mode)');
               }
             } else {
               // Custom duration provided (unlikely from remote, but support it)
@@ -3529,10 +3543,8 @@ export function QuizHost() {
             // Call handler with explicit duration (same as UI would use)
             deps.handleNavBarStartTimer(timerDuration);
             success = true;
-            // Explicitly broadcast the timer start state to remote controller
-            setTimeout(() => {
-              deps.sendFlowStateToController?.(deviceId);
-            }, 0);
+            // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
+            // This prevents duplicate broadcasts
             break;
           }
 
@@ -3551,10 +3563,8 @@ export function QuizHost() {
             // Notify players that time is up
             sendTimeUpToPlayers();
             success = true;
-            // Explicitly broadcast the timer stop state to remote controller
-            setTimeout(() => {
-              deps.sendFlowStateToController?.(deviceId);
-            }, 0);
+            // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
+            // This prevents duplicate broadcasts
             break;
 
           case 'pause-timer':
@@ -3719,7 +3729,21 @@ export function QuizHost() {
               // Explicitly broadcast the updated question to the remote controller
               // (state update and flowState update will occur, but we need to send it now)
               setTimeout(() => {
-                deps.sendFlowStateToController?.(deviceId);
+                deps.sendFlowStateToController?.(
+                  deps.flowState.flow,
+                  deps.flowState.isQuestionMode,
+                  {
+                    totalTime: deps.flowState.totalTime,
+                    currentQuestion: deps.flowState.currentQuestion,
+                    currentLoadedQuestionIndex: deps.currentLoadedQuestionIndex,
+                    loadedQuizQuestions: deps.loadedQuizQuestions,
+                    isQuizPackMode: deps.isQuizPackMode,
+                    selectedQuestionType: deps.flowState.selectedQuestionType,
+                    answerSubmitted: deps.flowState.answerSubmitted,
+                  },
+                  deps.authenticatedControllerId,
+                  deps.baseUrl
+                );
               }, 0);
             } else {
               console.warn('[QuizHost] ⚠️  Previous question only available in quiz pack mode');
@@ -3736,7 +3760,21 @@ export function QuizHost() {
               // Explicitly broadcast the updated question to the remote controller
               // (state update and flowState update will occur, but we need to send it now)
               setTimeout(() => {
-                deps.sendFlowStateToController?.(deviceId);
+                deps.sendFlowStateToController?.(
+                  deps.flowState.flow,
+                  deps.flowState.isQuestionMode,
+                  {
+                    totalTime: deps.flowState.totalTime,
+                    currentQuestion: deps.flowState.currentQuestion,
+                    currentLoadedQuestionIndex: deps.currentLoadedQuestionIndex,
+                    loadedQuizQuestions: deps.loadedQuizQuestions,
+                    isQuizPackMode: deps.isQuizPackMode,
+                    selectedQuestionType: deps.flowState.selectedQuestionType,
+                    answerSubmitted: deps.flowState.answerSubmitted,
+                  },
+                  deps.authenticatedControllerId,
+                  deps.baseUrl
+                );
               }, 0);
             } else {
               console.warn('[QuizHost] ⚠️  Next question navigation only available in quiz pack mode');
@@ -3746,36 +3784,52 @@ export function QuizHost() {
 
           // On-the-spot mode commands
           case 'select-question-type':
-            console.log('[QuizHost] Executing: Select Question Type');
             const selectedType = commandData?.type;
             // Validate question type
-            if (!selectedType || !['letters', 'numbers', 'multiple-choice'].includes(selectedType)) {
+            if (!selectedType || !['letters', 'numbers', 'multiple-choice', 'sequence'].includes(selectedType)) {
               console.warn('[QuizHost] ⚠️  SECURITY: Invalid question type:', selectedType);
               success = false;
               break;
             }
 
             if (!isQuizPackMode) {
-              console.log('[QuizHost] - On-the-spot mode: selected type:', selectedType);
               // Set up on-the-spot mode with selected question type
               // Determine correct timer duration based on question type and settings
-              const selectedTypeForTimer = selectedType as 'letters' | 'numbers' | 'multiple-choice';
+              const selectedTypeForTimer = selectedType as 'letters' | 'numbers' | 'multiple-choice' | 'sequence';
               const questionTypeNormalized = selectedTypeForTimer === 'letters' ? 'letters' :
                                               selectedTypeForTimer === 'numbers' ? 'numbers' :
-                                              selectedTypeForTimer === 'multiple-choice' ? 'multi' : 'letters';
+                                              selectedTypeForTimer === 'multiple-choice' ? 'multi' :
+                                              selectedTypeForTimer === 'sequence' ? 'sequence' : 'letters';
               const typedDuration = getTotalTimeForQuestion({ type: questionTypeNormalized }, deps.gameModeTimers);
-              console.log('[QuizHost]   - Question type:', selectedType, 'Timer duration:', typedDuration);
+
+              // Create a placeholder question object to enable keypad rendering
+              const placeholderQuestion = {
+                type: selectedType,
+                q: `Select correct answer (${selectedType})`,
+                options: selectedType === 'multiple-choice' ? ['', '', '', '', '', ''] : undefined,
+              };
+
               // For on-the-spot, we transition directly to 'sent-question' state so timer buttons appear
               // (we skip 'ready' state because there's no pre-written question to send)
-              deps.setFlowState({
-                flow: 'sent-question',
+              const newFlowState = {
+                flow: 'sent-question' as const,
                 isQuestionMode: true,
                 totalTime: typedDuration, // Use Settings-based duration, not hardcoded
-                selectedQuestionType: selectedType as 'letters' | 'numbers' | 'multiple-choice',
-              });
+                selectedQuestionType: selectedType as 'letters' | 'numbers' | 'multiple-choice' | 'sequence',
+                currentQuestion: placeholderQuestion,
+              };
+              deps.setFlowState(newFlowState);
+
+              // Transition the keypad UI to the selected question type's input screen
+              const screenName = selectedType === 'sequence' ? 'sequence-game' : `${selectedType}-game`;
+              // Only update screen if it's actually changing to prevent unnecessary state updates and feedback loops
+              if (deps.keypadCurrentScreen !== screenName) {
+                deps.setKeypadCurrentScreen?.(screenName);
+              }
+
               success = true;
-              // Broadcast flow state change to controller
-              deps.sendFlowStateToController?.(deviceId);
+              // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
+              // This prevents duplicate broadcasts and eliminates the feedback loop
             } else {
               console.warn('[QuizHost] ⚠️  Question type selection only available in on-the-spot mode');
               success = false;
@@ -3783,7 +3837,6 @@ export function QuizHost() {
             break;
 
           case 'set-expected-answer':
-            console.log('[QuizHost] Executing: Set Expected Answer');
             const expectedAnswer = commandData?.answer;
             // Validate answer is a string
             if (typeof expectedAnswer !== 'string' || expectedAnswer.trim().length === 0) {
@@ -3793,14 +3846,14 @@ export function QuizHost() {
             }
 
             if (!isQuizPackMode) {
-              console.log('[QuizHost] - On-the-spot mode: setting expected answer:', expectedAnswer);
               // Store expected answer in flowState for use when revealing answer/scoring
               // Update the local flow state with the expected answer
               setFlowState(prev => ({
                 ...prev,
                 answerSubmitted: expectedAnswer,
               }));
-              console.log('[QuizHost] - Expected answer stored in flowState');
+              // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
+              // This prevents duplicate broadcasts and eliminates the feedback loop
               success = true;
             } else {
               console.warn('[QuizHost] ⚠️  Answer input only available in on-the-spot mode');
@@ -3829,163 +3882,161 @@ export function QuizHost() {
     return unsubscribe;
   }, []); // EMPTY DEPENDENCY ARRAY - listener registers ONCE on mount, never re-registers
 
-  // Listen for team photo updates
-  useEffect(() => {
-    const handleNetworkTeamPhotoUpdated = (data: any) => {
-      try {
-        console.log('[QuizHost] 📸 TEAM_PHOTO_UPDATED received:', data);
-        const { deviceId, playerId, teamName, photoPath } = data;
+  // Wrap TEAM_PHOTO_UPDATED handler in useCallback - uses refs to avoid re-registration
+  const handleNetworkTeamPhotoUpdated = useCallback((data: any) => {
+    try {
+      console.log('[QuizHost] 📸 TEAM_PHOTO_UPDATED received:', data);
+      const { deviceId, playerId, teamName, photoPath } = data;
 
-        if (!photoPath) {
-          console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: No photoPath in payload');
-          return;
-        }
+      if (!photoPath) {
+        console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: No photoPath in payload');
+        return;
+      }
 
-        // Will handle auto-approval after we have convertedPhotoUrl
-        const normalizedDeviceId = (deviceId || '').trim();
+      // Will handle auto-approval after we have convertedPhotoUrl
+      const normalizedDeviceId = (deviceId || '').trim();
 
-        // Determine team to match - try by deviceId, then playerId, then teamName
-        let existingTeam = quizzesRef.current.find(q => q.id === deviceId);
-        let matchMethod = '';
+      // Determine team to match - try by deviceId, then playerId, then teamName
+      let existingTeam = quizzesRef.current.find(q => q.id === deviceId);
+      let matchMethod = '';
 
+      if (existingTeam) {
+        matchMethod = 'deviceId';
+        console.log('[QuizHost] 📸 Matched team by deviceId:', deviceId, '→', existingTeam.name);
+      } else if (playerId) {
+        existingTeam = quizzesRef.current.find(q => q.id === playerId);
         if (existingTeam) {
-          matchMethod = 'deviceId';
-          console.log('[QuizHost] 📸 Matched team by deviceId:', deviceId, '→', existingTeam.name);
-        } else if (playerId) {
-          existingTeam = quizzesRef.current.find(q => q.id === playerId);
-          if (existingTeam) {
-            matchMethod = 'playerId';
-            console.log('[QuizHost] 📸 Matched team by playerId:', playerId, '→', existingTeam.name);
-          }
+          matchMethod = 'playerId';
+          console.log('[QuizHost] 📸 Matched team by playerId:', playerId, '→', existingTeam.name);
         }
+      }
 
-        if (!existingTeam && teamName) {
-          console.log('[QuizHost] 📸 No ID match found, trying teamName fallback:', teamName);
-          existingTeam = quizzesRef.current.find(q => q.name === teamName);
-          if (existingTeam) {
-            matchMethod = 'teamName';
-            console.log('[QuizHost] 📸 Found team by name:', teamName, 'with ID:', existingTeam.id);
-          } else {
-            // Log available teams for debugging
-            const availableTeams = quizzesRef.current.map(q => ({ id: q.id, name: q.name }));
-            console.warn('[QuizHost] ⚠️  Team matching failed. Received teamName:', teamName, 'but not found in available teams:', availableTeams);
-          }
+      if (!existingTeam && teamName) {
+        console.log('[QuizHost] 📸 No ID match found, trying teamName fallback:', teamName);
+        existingTeam = quizzesRef.current.find(q => q.name === teamName);
+        if (existingTeam) {
+          matchMethod = 'teamName';
+          console.log('[QuizHost] 📸 Found team by name:', teamName, 'with ID:', existingTeam.id);
+        } else {
+          // Log available teams for debugging
+          const availableTeams = quizzesRef.current.map(q => ({ id: q.id, name: q.name }));
+          console.warn('[QuizHost] ⚠️  Team matching failed. Received teamName:', teamName, 'but not found in available teams:', availableTeams);
         }
+      }
 
-        // Convert photo path to file:// URL if needed
-        const convertedPhotoUrl = (() => {
-          if (!photoPath) return undefined;
-          if (typeof photoPath !== 'string') return undefined;
+      // Convert photo path to file:// URL if needed
+      const convertedPhotoUrl = (() => {
+        if (!photoPath) return undefined;
+        if (typeof photoPath !== 'string') return undefined;
 
-          // Accept data URLs (no conversion needed)
-          if (photoPath.startsWith('data:')) return photoPath;
+        // Accept data URLs (no conversion needed)
+        if (photoPath.startsWith('data:')) return photoPath;
 
-          // Accept already-proper file:// URLs (starts with file://)
-          if (photoPath.startsWith('file://')) return photoPath;
+        // Accept already-proper file:// URLs (starts with file://)
+        if (photoPath.startsWith('file://')) return photoPath;
 
-          // Accept http(s) URLs as-is
-          if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) return photoPath;
+        // Accept http(s) URLs as-is
+        if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) return photoPath;
 
-          // Convert local paths to proper file:// URL
-          // Handle Windows backslashes by converting to forward slashes
-          let normalizedPath = photoPath.replace(/\\/g, '/');
+        // Convert local paths to proper file:// URL
+        // Handle Windows backslashes by converting to forward slashes
+        let normalizedPath = photoPath.replace(/\\/g, '/');
 
-          // Add file:// protocol if not already there
-          // Windows paths like C:/Users/... need file:///C:/...
-          if (normalizedPath.includes(':') && !normalizedPath.startsWith('file://')) {
-            // Windows absolute path
-            return `file:///${normalizedPath}`;
-          } else if (normalizedPath.startsWith('/')) {
-            // Unix absolute path
-            return `file://${normalizedPath}`;
-          } else {
-            // Relative path - convert to file URL
-            return `file://${normalizedPath}`;
+        // Add file:// protocol if not already there
+        // Windows paths like C:/Users/... need file:///C:/...
+        if (normalizedPath.includes(':') && !normalizedPath.startsWith('file://')) {
+          // Windows absolute path
+          return `file:///${normalizedPath}`;
+        } else if (normalizedPath.startsWith('/')) {
+          // Unix absolute path
+          return `file://${normalizedPath}`;
+        } else {
+          // Relative path - convert to file URL
+          return `file://${normalizedPath}`;
+        }
+      })();
+
+      if (!convertedPhotoUrl) {
+        console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: Could not convert photo URL');
+        return;
+      }
+
+      console.log('[QuizHost] 📸 Converted photo URL (first 50 chars):', convertedPhotoUrl.substring(0, 50) + '...');
+
+      // AUTO-APPROVAL: If enabled, immediately broadcast PHOTO_APPROVAL_UPDATED so quizzes state gets updated with the photo
+      // This ensures the photo displays in the team info tab right away
+      // Use ref to check auto-approval setting without dependency
+      if (teamPhotosAutoApproveRef.current === true && normalizedDeviceId && teamName && convertedPhotoUrl) {
+        console.log('[QuizHost] 📸 Auto-approval ENABLED - immediately broadcasting PHOTO_APPROVAL_UPDATED for:', teamName);
+
+        // Use async IIFE to broadcast the approval event
+        (async () => {
+          try {
+            // Broadcast the approval event immediately with the converted photoUrl
+            const { broadcastMessage } = await import('../network/wsHost');
+            broadcastMessage({
+              type: 'PHOTO_APPROVAL_UPDATED',
+              data: {
+                deviceId: normalizedDeviceId,
+                teamName: teamName,
+                photoUrl: convertedPhotoUrl
+              }
+            });
+            console.log('[QuizHost] ✅ Auto-approval: broadcasted PHOTO_APPROVAL_UPDATED for team:', teamName);
+          } catch (err) {
+            console.error('[QuizHost] Error broadcasting auto-approved photo:', err);
           }
         })();
-
-        if (!convertedPhotoUrl) {
-          console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: Could not convert photo URL');
-          return;
-        }
-
-        console.log('[QuizHost] 📸 Converted photo URL (first 50 chars):', convertedPhotoUrl.substring(0, 50) + '...');
-
-        // AUTO-APPROVAL: If enabled, immediately broadcast PHOTO_APPROVAL_UPDATED so quizzes state gets updated with the photo
-        // This ensures the photo displays in the team info tab right away
-        if (teamPhotosAutoApprove === true && normalizedDeviceId && teamName && convertedPhotoUrl) {
-          console.log('[QuizHost] 📸 Auto-approval ENABLED - immediately broadcasting PHOTO_APPROVAL_UPDATED for:', teamName);
-
-          // Use async IIFE to broadcast the approval event
-          (async () => {
-            try {
-              // Broadcast the approval event immediately with the converted photoUrl
-              const { broadcastMessage } = await import('../network/wsHost');
-              broadcastMessage({
-                type: 'PHOTO_APPROVAL_UPDATED',
-                data: {
-                  deviceId: normalizedDeviceId,
-                  teamName: teamName,
-                  photoUrl: convertedPhotoUrl
-                }
-              });
-              console.log('[QuizHost] ✅ Auto-approval: broadcasted PHOTO_APPROVAL_UPDATED for team:', teamName);
-            } catch (err) {
-              console.error('[QuizHost] Error broadcasting auto-approved photo:', err);
-            }
-          })();
-        } else if (teamPhotosAutoApprove !== true) {
-          console.log('[QuizHost] 🔴 Auto-approval DISABLED - not auto-approving');
-        }
-
-        // NOTE: We intentionally do NOT update photoUrl here from TEAM_PHOTO_UPDATED (unless auto-approved above)
-        // TEAM_PHOTO_UPDATED is sent immediately when a photo is uploaded (BEFORE approval)
-        // We only display the photo in TeamWindow when PHOTO_APPROVAL_UPDATED is received (AFTER approval)
-        // This prevents pending/unapproved photos from appearing as already-accepted in the team info tab
-
-        if (existingTeam && !teamPhotosAutoApprove) {
-          // IMPORTANT: Clear the existing photoUrl if the team has one
-          // This ensures the old photo disappears immediately when a new one is submitted
-          // The team info tab will be empty while the new photo is pending approval
-          if (existingTeam.photoUrl) {
-            console.log('[QuizHost] 📸 Clearing existing photoUrl for team:', existingTeam.name, '(new photo pending approval)');
-            setQuizzes(prev => {
-              const updated = prev.map(q =>
-                q.id === existingTeam.id
-                  ? { ...q, photoUrl: undefined }
-                  : q
-              );
-              return updated;
-            });
-          }
-          console.log('[QuizHost] 📸 Ignoring photoUrl update for team:', existingTeam.name, '(pending approval - will display on PHOTO_APPROVAL_UPDATED)');
-        } else {
-          console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: Team not found by ID or name. deviceId:', deviceId, 'playerId:', playerId, 'teamName:', teamName);
-        }
-      } catch (err) {
-        console.error('[QuizHost] ❌ Error handling TEAM_PHOTO_UPDATED:', err);
+      } else if (teamPhotosAutoApproveRef.current !== true) {
+        console.log('[QuizHost] 🔴 Auto-approval DISABLED - not auto-approving');
       }
-    };
 
-    // Register listener and get unsubscribe function
+      // NOTE: We intentionally do NOT update photoUrl here from TEAM_PHOTO_UPDATED (unless auto-approved above)
+      // TEAM_PHOTO_UPDATED is sent immediately when a photo is uploaded (BEFORE approval)
+      // We only display the photo in TeamWindow when PHOTO_APPROVAL_UPDATED is received (AFTER approval)
+      // This prevents pending/unapproved photos from appearing as already-accepted in the team info tab
+
+      if (existingTeam && !teamPhotosAutoApproveRef.current) {
+        // IMPORTANT: Clear the existing photoUrl if the team has one
+        // This ensures the old photo disappears immediately when a new one is submitted
+        // The team info tab will be empty while the new photo is pending approval
+        if (existingTeam.photoUrl) {
+          console.log('[QuizHost] 📸 Clearing existing photoUrl for team:', existingTeam.name, '(new photo pending approval)');
+          setQuizzes(prev => {
+            const updated = prev.map(q =>
+              q.id === existingTeam.id
+                ? { ...q, photoUrl: undefined }
+                : q
+            );
+            return updated;
+          });
+        }
+        console.log('[QuizHost] 📸 Ignoring photoUrl update for team:', existingTeam.name, '(pending approval - will display on PHOTO_APPROVAL_UPDATED)');
+      } else {
+        console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: Team not found by ID or name. deviceId:', deviceId, 'playerId:', playerId, 'teamName:', teamName);
+      }
+    } catch (err) {
+      console.error('[QuizHost] ❌ Error handling TEAM_PHOTO_UPDATED:', err);
+    }
+  }, [setQuizzes]); // Only depends on setQuizzes which doesn't change
+
+  // Register TEAM_PHOTO_UPDATED listener with stable handler
+  useEffect(() => {
     const unsubscribe = onNetworkMessage('TEAM_PHOTO_UPDATED', handleNetworkTeamPhotoUpdated);
-
-    // Clean up listener on unmount
     return unsubscribe;
-  }, [teamPhotosAutoApprove, handleApproveTeam]); // Re-register when settings or handler changes
+  }, [handleNetworkTeamPhotoUpdated]); // Only depends on stable handler
 
   // Send flow state to host controller whenever it changes
   useEffect(() => {
     if (hostControllerEnabled && authenticatedControllerId) {
-      console.log('[QuizHost] 📡 FLOW_STATE BROADCAST ATTEMPT', {
-        authenticatedControllerId,
-        flow: flowState.flow,
-        isQuestionMode: flowState.isQuestionMode,
-        hasCurrentQuestion: !!currentQuestion,
-        currentQuestionText: currentQuestion?.q || 'N/A',
-        answerSubmitted: flowState.answerSubmitted,
-        baseUrl: hostInfo?.baseUrl,
-      });
+      const DEBUG = process.env.REACT_APP_DEBUG_MODE === 'true' || (window as any).__DEBUG_MODE__;
+      if (DEBUG) {
+        console.log('[QuizHost] 📡 FLOW_STATE:', {
+          flow: flowState.flow,
+          isQuestionMode: flowState.isQuestionMode,
+          isQuizPackMode,
+        });
+      }
       sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
         totalTime: flowState.totalTime,
         currentQuestion: flowState.currentQuestion,
@@ -3994,15 +4045,10 @@ export function QuizHost() {
         isQuizPackMode,
         selectedQuestionType: flowState.selectedQuestionType,
         answerSubmitted: flowState.answerSubmitted,
+        keypadCurrentScreen,
       }, authenticatedControllerId, hostInfo?.baseUrl);
-    } else {
-      console.log('[QuizHost] ⚠️ FLOW_STATE NOT SENT - conditions not met', {
-        hostControllerEnabled,
-        authenticatedControllerId,
-        hasFlowState: !!flowState,
-      });
     }
-  }, [flowState.flow, flowState.isQuestionMode, flowState.currentQuestion, flowState.answerSubmitted, flowState.selectedQuestionType, hostControllerEnabled, authenticatedControllerId, currentLoadedQuestionIndex, loadedQuizQuestions, isQuizPackMode, hostInfo?.baseUrl]);
+  }, [flowState.flow, flowState.isQuestionMode, flowState.currentQuestion, flowState.answerSubmitted, flowState.selectedQuestionType, hostControllerEnabled, authenticatedControllerId, currentLoadedQuestionIndex, loadedQuizQuestions, isQuizPackMode, hostInfo?.baseUrl, keypadCurrentScreen]);
 
   // Listen for player answers via IPC polling
   useEffect(() => {
@@ -5634,6 +5680,7 @@ export function QuizHost() {
               onGameAnswerSelected={setGameAnswerSelected}
               onTimerStart={handleGameTimerStart}
               onSelectQuestionType={handleSelectQuestionType}
+              externalCurrentScreen={keypadCurrentScreen}
             />
           </div>
           {/* Show fastest team display as an overlay on top of keypad */}
@@ -5847,6 +5894,7 @@ export function QuizHost() {
   adminListenerDepsRef.current.handleNavBarSilentTimer = handleNavBarSilentTimer;
   adminListenerDepsRef.current.setCurrentLoadedQuestionIndex = setCurrentLoadedQuestionIndex;
   adminListenerDepsRef.current.setFlowState = setFlowState;
+  adminListenerDepsRef.current.setKeypadCurrentScreen = setKeypadCurrentScreen;
   adminListenerDepsRef.current.sendFlowStateToController = (deviceId?: string) => {
     sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
       totalTime: flowState.totalTime,
@@ -5856,6 +5904,7 @@ export function QuizHost() {
       isQuizPackMode,
       selectedQuestionType: flowState.selectedQuestionType,
       answerSubmitted: flowState.answerSubmitted,
+      keypadCurrentScreen,
     }, deviceId, hostInfo?.baseUrl);
   };
 

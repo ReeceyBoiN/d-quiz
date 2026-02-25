@@ -16,6 +16,7 @@ interface GameControlsPanelProps {
     loadedQuizQuestions?: any[];
     isQuizPackMode?: boolean;
   } | null;
+  showQuestionPreview?: boolean;
 }
 
 interface ActionButtonConfig {
@@ -164,13 +165,12 @@ function getButtonLayout(flowState: any): ButtonLayoutConfig {
   }
 }
 
-export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowState }: GameControlsPanelProps) {
+export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowState, showQuestionPreview = true }: GameControlsPanelProps) {
   // Timer duration is now pulled from flowState.totalTime (Settings-based) sent by host
   // Falls back to 30 only if flowState not available (shouldn't happen in normal flow)
   const timerDuration = flowState?.totalTime ?? 30;
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
-  const { sendAdminCommand, previousQuestionNav, nextQuestionNav, nextQuestion, startSilentTimer, startNormalTimer, stopTimer } = useHostTerminalAPI({
+  const { sendAdminCommand, previousQuestionNav, nextQuestionNav } = useHostTerminalAPI({
     deviceId,
     playerId,
     teamName,
@@ -197,17 +197,13 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
   };
 
   const handleNextQuestion = () => {
-    console.log('[HostTerminal] Navigate to next question');
     nextQuestionNav();
   };
 
   const executeCommand = (commandType: string) => {
     if (!commandType) {
-      console.log('[HostTerminal] No command to execute');
       return;
     }
-
-    console.log('[HostTerminal] Executing command:', commandType);
 
     // Map commands to their respective handlers
     switch (commandType) {
@@ -247,40 +243,15 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
     executeCommand(button.commandType);
   };
 
-  const handleStartNormalTimer = () => {
-    console.log('[HostTerminal] Start Normal Timer with duration:', timerDuration);
-    startNormalTimer(timerDuration);
-  };
-
-  const handleStartSilentTimer = () => {
-    console.log('[HostTerminal] Start Silent Timer with duration:', timerDuration);
-    startSilentTimer(timerDuration);
-  };
-
-  const handleStopTimer = () => {
-    console.log('[HostTerminal] Stop Timer');
-    stopTimer();
-  };
-
-  const toggleSection = (section: string) => {
-    setExpandedSection(expandedSection === section ? null : section);
-  };
-
-  // Diagnostic logging for GameControlsPanel render
-  console.log('[GameControlsPanel] 📊 Component rendering with:', {
-    flowState: flowState ? { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode } : null,
-    buttonLayout: buttonLayout.layout,
-    buttonCount: buttonLayout.buttons.length,
-    firstButtonLabel: buttonLayout.buttons[0]?.label,
-  });
 
   return (
-    <div className="flex flex-col h-full p-6 bg-slate-800 overflow-auto">
-      <h2 className="text-xl font-bold text-white mb-6">Game Controls</h2>
+    <div className="flex flex-col h-full p-6 bg-slate-800 overflow-auto items-center">
+      <div className="w-full max-w-2xl">
+        <h2 className="text-xl font-bold text-white mb-6">Game Controls</h2>
 
-      {/* Navigation Arrows - Quiz Pack Mode Only */}
-      {showNavigation && (
-        <div className="mb-6 flex items-center justify-between gap-3">
+        {/* Navigation Arrows - Quiz Pack Mode Only */}
+        {showNavigation && (
+          <div className="mb-6 flex items-center justify-between gap-3">
           {/* Check if timer is running to disable navigation */}
           {(() => {
             const isTimerRunning = flowState?.flow === 'running';
@@ -336,22 +307,24 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
               </>
             );
           })()}
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* Question Preview Panel */}
-      <QuestionPreviewPanel
-        currentQuestion={flowState?.currentQuestion}
-        currentQuestionIndex={currentQuestionIndex}
-        totalQuestions={totalQuestions}
-        isQuizPackMode={isQuizPackMode}
-      />
+        {/* Question Preview Panel - hidden when Answer Input is displayed */}
+        {showQuestionPreview && (
+          <QuestionPreviewPanel
+            currentQuestion={flowState?.currentQuestion}
+            currentQuestionIndex={currentQuestionIndex}
+            totalQuestions={totalQuestions}
+            isQuizPackMode={isQuizPackMode}
+          />
+        )}
 
-      {/* Dynamic Action Buttons */}
-      <div className="mb-6">
-        {buttonLayout.layout === 'single' && (
-          <>
-            {(() => {
+        {/* Dynamic Action Buttons */}
+        <div className="mb-6">
+          {buttonLayout.layout === 'single' && (
+            <>
+              {(() => {
               // For 'Reveal Answer' button: disable if timer is still running
               // Allow clicking when timer is 'running' but protect against accidental clicks during timer
               const isRevealAnswerButton = buttonLayout.buttons[0].commandType === 'reveal-answer';
@@ -384,13 +357,13 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
                   </p>
                 </>
               );
-            })()}
-          </>
-        )}
+              })()}
+            </>
+          )}
 
-        {buttonLayout.layout === 'question-choice' && (
-          <>
-            <div className="flex gap-3">
+          {buttonLayout.layout === 'question-choice' && (
+            <>
+              <div className="flex gap-3">
               <button
                 onClick={() => handleButtonClick(buttonLayout.buttons[0])}
                 disabled={buttonLayout.buttons[0].disabled}
@@ -425,14 +398,14 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
                 <span className="text-xl">{buttonLayout.buttons[1].emoji}</span>
                 {buttonLayout.buttons[1].label}
               </button>
-            </div>
-            <p className="text-slate-400 text-sm mt-2 text-center">Choose action to proceed</p>
-          </>
-        )}
+              </div>
+              <p className="text-slate-400 text-sm mt-2 text-center">Choose action to proceed</p>
+            </>
+          )}
 
-        {buttonLayout.layout === 'timer-dual' && (
-          <>
-            <div className="flex gap-3">
+          {buttonLayout.layout === 'timer-dual' && (
+            <>
+              <div className="flex gap-3">
               <button
                 onClick={() => handleButtonClick(buttonLayout.buttons[0])}
                 disabled={buttonLayout.buttons[0].disabled}
@@ -468,13 +441,13 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
                 {buttonLayout.buttons[1].label}
               </button>
             </div>
-            <p className="text-slate-400 text-sm mt-2 text-center">Choose timer mode to begin</p>
-          </>
-        )}
+              <p className="text-slate-400 text-sm mt-2 text-center">Choose timer mode to begin</p>
+            </>
+          )}
 
-        {buttonLayout.layout === 'disabled' && (
-          <>
-            <button
+          {buttonLayout.layout === 'disabled' && (
+            <>
+              <button
               disabled={true}
               className="w-full px-6 py-4 text-white font-bold text-lg rounded-lg bg-slate-600 cursor-not-allowed opacity-50 transition-all pointer-events-none"
               style={{
@@ -483,53 +456,15 @@ export function GameControlsPanel({ deviceId, playerId, teamName, wsRef, flowSta
                 cursor: 'not-allowed'
               }}
             >
-              <span className="text-2xl mr-2">{buttonLayout.buttons[0].emoji}</span>
-              {buttonLayout.buttons[0].label}
-            </button>
-            <p className="text-slate-400 text-sm mt-2 text-center">Waiting to start quiz</p>
-          </>
-        )}
-      </div>
-
-      {/* Timer Controls Section - Only visible when question has been sent */}
-      {flowState?.flow === 'sent-question' && (
-        <div className="mb-6">
-          <button
-            onClick={() => toggleSection('timer')}
-            className="w-full flex items-center justify-between p-3 bg-slate-700 rounded-lg border border-slate-600 hover:border-slate-500 transition-colors"
-          >
-            <span className="font-bold text-white">⏱️ Timer Controls</span>
-            <span className="text-slate-400">{expandedSection === 'timer' ? '▼' : '▶'}</span>
-          </button>
-
-          {expandedSection === 'timer' && (
-            <div className="mt-3 space-y-3">
-              <div className="px-3 py-2 bg-slate-700 rounded border border-slate-600">
-                <p className="text-slate-300 text-sm mb-1">Timer Duration (from host settings):</p>
-                <p className="text-white text-lg font-semibold">{timerDuration} seconds</p>
-              </div>
-              <button
-                onClick={handleStartSilentTimer}
-                className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded transition-colors"
-              >
-                🔇 Start Silent Timer
+                <span className="text-2xl mr-2">{buttonLayout.buttons[0].emoji}</span>
+                {buttonLayout.buttons[0].label}
               </button>
-              <button
-                onClick={handleStartNormalTimer}
-                className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded transition-colors"
-              >
-                🔊 Start Normal Timer
-              </button>
-              <button
-                onClick={handleStopTimer}
-                className="w-full px-4 py-3 bg-slate-600 hover:bg-slate-700 text-white font-semibold rounded transition-colors"
-              >
-                ⏹️ Stop Timer
-              </button>
-            </div>
+              <p className="text-slate-400 text-sm mt-2 text-center">Waiting to start quiz</p>
+            </>
           )}
         </div>
-      )}
+
+      </div>
     </div>
   );
 }

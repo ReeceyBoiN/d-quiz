@@ -16,7 +16,7 @@ interface QuestionTypeSelectorProps {
 }
 
 interface QuestionTypeConfig {
-  id: 'letters' | 'numbers' | 'multiple-choice';
+  id: 'letters' | 'numbers' | 'multiple-choice' | 'sequence';
   label: string;
   description: string;
   emoji: string;
@@ -44,6 +44,13 @@ const QUESTION_TYPES: QuestionTypeConfig[] = [
     description: 'A/B/C/D options',
     emoji: '📋',
     example: 'Answer: A, B, C, or D'
+  },
+  {
+    id: 'sequence',
+    label: 'Sequence',
+    description: 'Order the options',
+    emoji: '🔗',
+    example: 'Answer: Put items in the correct order'
   }
 ];
 
@@ -70,7 +77,7 @@ export function QuestionTypeSelector({
     return null;
   }
 
-  const handleSelectType = (typeId: 'letters' | 'numbers' | 'multiple-choice') => {
+  const handleSelectType = (typeId: 'letters' | 'numbers' | 'multiple-choice' | 'sequence') => {
     console.log('[QuestionTypeSelector] Selecting question type:', typeId);
     sendAdminCommand('select-question-type', { type: typeId });
   };

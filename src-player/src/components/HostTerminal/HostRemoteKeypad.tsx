@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useHostTerminalAPI } from './useHostTerminalAPI';
 
 interface HostRemoteKeypadProps {
@@ -10,11 +10,13 @@ interface HostRemoteKeypadProps {
   flowState?: {
     flow: string;
     isQuestionMode: boolean;
-    selectedQuestionType?: 'letters' | 'numbers' | 'multiple-choice';
+    currentQuestion?: any;
+    answerSubmitted?: string;
+    selectedQuestionType?: 'letters' | 'numbers' | 'multiple-choice' | 'sequence';
   } | null;
 }
 
-type QuestionType = 'letters' | 'numbers' | 'multiple-choice';
+type QuestionType = 'letters' | 'numbers' | 'multiple-choice' | 'sequence';
 
 // Letter grid with combined buttons for less common letters
 const LETTERS_GRID = [
@@ -36,13 +38,20 @@ export function HostRemoteKeypad({
 }: HostRemoteKeypadProps) {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [confirmedAnswer, setConfirmedAnswer] = useState<string | null>(null);
-  
+
   const { sendAdminCommand } = useHostTerminalAPI({
     deviceId,
     playerId,
     teamName,
     wsRef,
   });
+
+  // Sync confirmed answer with flowState when host submits the answer
+  useEffect(() => {
+    if (flowState?.answerSubmitted && !confirmedAnswer) {
+      setConfirmedAnswer(flowState.answerSubmitted);
+    }
+  }, [flowState?.answerSubmitted, confirmedAnswer]);
 
   // Only show during appropriate states in on-the-spot mode
   const questionType = flowState?.selectedQuestionType;
@@ -72,11 +81,9 @@ export function HostRemoteKeypad({
 
   const handleSubmit = () => {
     if (!selectedAnswer || isDisabled || isTimerRunning) {
-      console.warn('[HostRemoteKeypad] Cannot submit: no answer selected, disabled, or timer running');
       return;
     }
 
-    console.log('[HostRemoteKeypad] Submitting answer:', selectedAnswer);
     // Send the answer to the host
     sendAdminCommand('set-expected-answer', { answer: selectedAnswer });
     // Lock the keypad after submission
@@ -192,7 +199,12 @@ export function HostRemoteKeypad({
   };
 
   const renderMultipleChoiceKeypad = () => {
-    const choices = ['A', 'B', 'C', 'D'];
+    // Dynamically determine number of options from current question
+    // If currentQuestion has options array, use its length; otherwise default to 4
+    const optionCount = flowState?.currentQuestion?.options?.length || 4;
+    // Generate choices based on option count (A, B, C, D, E, F, etc.)
+    const choices = Array.from({ length: optionCount }, (_, i) => String.fromCharCode(65 + i));
+
     return (
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-5">
         {choices.map((choice) => {

@@ -48,8 +48,6 @@ export function SettingsBar() {
   useEffect(() => {
     const loadBuzzers = async () => {
       try {
-        console.log('[SettingsBar] Loading buzzers from API...');
-
         // Get host info to construct correct API URL
         const hostInfoResponse = await fetch('/api/host-info');
         const hostInfo = await hostInfoResponse.json();
@@ -61,7 +59,6 @@ export function SettingsBar() {
         }
 
         const data = await response.json();
-        console.log('[SettingsBar] Loaded buzzers:', data.buzzers);
         setBuzzerList(data.buzzers || []);
       } catch (error) {
         console.error('[SettingsBar] Error loading buzzer list:', error);
@@ -76,15 +73,11 @@ export function SettingsBar() {
 
   // Handle team photo upload
   const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('[SettingsBar] handlePhotoUpload called');
     const file = event.target.files?.[0];
-    console.log('[SettingsBar] File selected:', file?.name, file?.size, file?.type);
     if (!file) {
-      console.log('[SettingsBar] No file selected, returning');
       return;
     }
 
-    console.log('[SettingsBar] File size check:', file.size);
     // Check file size (1GB max)
     const MAX_PHOTO_SIZE = 1024 * 1024 * 1024; // 1GB
     if (file.size > MAX_PHOTO_SIZE) {
@@ -94,33 +87,14 @@ export function SettingsBar() {
     }
 
     try {
-      console.log('[SettingsBar] Creating FileReader...');
       const reader = new FileReader();
 
       reader.onload = (e) => {
-        console.log('[SettingsBar] FileReader onload fired');
         const base64 = e.target?.result as string;
-        console.log('[SettingsBar] Base64 data received, length:', base64?.length);
-        console.log('[SettingsBar] Base64 prefix (first 100 chars):', base64?.substring(0, 100));
-        console.log('[SettingsBar] Calling updateTeamPhoto...');
         updateTeamPhoto(base64);
-        console.log('[SettingsBar] ✅ Team photo uploaded and saved');
-        console.log('[SettingsBar] Current settings after upload:', {
-          teamPhoto: settings.teamPhoto ? `<base64 data: ${settings.teamPhoto.length} bytes>` : null,
-          buzzerSound: settings.buzzerSound,
-          theme: settings.theme,
-          keypadColor: settings.keypadColor,
-        });
 
         // Send TEAM_PHOTO_UPDATE message to host if connected
-        console.log('[SettingsBar] About to send TEAM_PHOTO_UPDATE - Checking conditions...');
-        console.log('[SettingsBar] - isConnected:', isConnected);
-        console.log('[SettingsBar] - sendMessage function exists:', !!sendMessage);
-        console.log('[SettingsBar] - deviceId:', deviceId);
-        console.log('[SettingsBar] - teamName:', teamName);
-
         if (isConnected && sendMessage && deviceId && teamName) {
-          console.log('[SettingsBar] 🚀 All conditions met, constructing TEAM_PHOTO_UPDATE payload...');
           const updatePayload = {
             type: 'TEAM_PHOTO_UPDATE',
             playerId,
@@ -129,22 +103,7 @@ export function SettingsBar() {
             photoData: base64,
             timestamp: Date.now(),
           };
-          console.log('[SettingsBar] Payload constructed successfully');
-          console.log('[SettingsBar] - type:', updatePayload.type);
-          console.log('[SettingsBar] - playerId:', updatePayload.playerId);
-          console.log('[SettingsBar] - deviceId:', updatePayload.deviceId);
-          console.log('[SettingsBar] - teamName:', updatePayload.teamName);
-          console.log('[SettingsBar] - photoData length:', updatePayload.photoData.length, 'bytes');
-          console.log('[SettingsBar] Calling sendMessage function...');
-          console.log('[SettingsBar] NOTE: WebSocket state and bufferedAmount will be logged in sendMessage');
           sendMessage(updatePayload);
-          console.log('[SettingsBar] ✅ TEAM_PHOTO_UPDATE message sent via sendMessage');
-        } else {
-          console.warn('[SettingsBar] ❌ Cannot send TEAM_PHOTO_UPDATE - Missing conditions:');
-          console.warn('[SettingsBar] - isConnected:', isConnected);
-          console.warn('[SettingsBar] - sendMessage:', !!sendMessage);
-          console.warn('[SettingsBar] - deviceId:', !!deviceId);
-          console.warn('[SettingsBar] - teamName:', !!teamName);
         }
       };
 
@@ -153,9 +112,7 @@ export function SettingsBar() {
         alert('Error reading file');
       };
 
-      console.log('[SettingsBar] Calling readAsDataURL...');
       reader.readAsDataURL(file);
-      console.log('[SettingsBar] readAsDataURL called successfully');
     } catch (error) {
       console.error('[SettingsBar] Error uploading photo:', error);
       alert('Error uploading photo');
@@ -171,8 +128,6 @@ export function SettingsBar() {
       const hostInfoResponse = await fetch('/api/host-info');
       const hostInfo = await hostInfoResponse.json();
       const audioUrl = `http://${hostInfo.localIP}:${hostInfo.port}/api/buzzers/${buzzerName}`;
-
-      console.log('[SettingsBar] Playing buzzer from:', audioUrl);
 
       if (audioRef.current) {
         audioRef.current.src = audioUrl;
@@ -191,11 +146,9 @@ export function SettingsBar() {
   // Handle buzzer selection - update local settings and send to host
   const handleSelectBuzzer = (buzzerName: string) => {
     updateBuzzerSound(buzzerName);
-    console.log('[SettingsBar] Selected buzzer:', buzzerName);
 
     // Send PLAYER_BUZZER_SELECT message to host
     if (isConnected && sendMessage && deviceId && teamName) {
-      console.log('[SettingsBar] Sending PLAYER_BUZZER_SELECT message...');
       const buzzerSelectPayload = {
         type: 'PLAYER_BUZZER_SELECT',
         playerId,
@@ -204,14 +157,7 @@ export function SettingsBar() {
         buzzerSound: buzzerName,
         timestamp: Date.now(),
       };
-      console.log('[SettingsBar] Sending PLAYER_BUZZER_SELECT:', buzzerSelectPayload);
       sendMessage(buzzerSelectPayload);
-    } else {
-      console.warn('[SettingsBar] Cannot send PLAYER_BUZZER_SELECT - Missing conditions:');
-      console.warn('[SettingsBar] - isConnected:', isConnected);
-      console.warn('[SettingsBar] - sendMessage:', !!sendMessage);
-      console.warn('[SettingsBar] - deviceId:', !!deviceId);
-      console.warn('[SettingsBar] - teamName:', !!teamName);
     }
   };
 

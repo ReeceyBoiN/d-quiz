@@ -143,8 +143,6 @@ export function TeamManagementPanel({ deviceId, playerId, teamName, wsRef }: Tea
 
   const handleRemoveTeam = (teamId: string) => {
     if (confirm('Are you sure you want to remove this team?')) {
-      console.log('[HostTerminal] Removing team:', teamId);
-
       // Send remove command to backend
       sendAdminCommand('remove-team', { teamId });
 

@@ -121,35 +121,8 @@ export function useNetworkConnection({
               return;
             }
 
-            console.log('[Player] ✅ Successfully parsed message type:', message.type);
-            console.log('[Player] 📨 Incoming message:', {
-              type: message.type,
-              hasData: !!message.data,
-              dataKeys: message.data ? Object.keys(message.data).slice(0, 10) : [],
-              timestamp: message.timestamp,
-            });
-
-            // Special logging for critical message types
-            if (message.type === 'FLOW_STATE') {
-              console.log('[Player] 🎯 FLOW_STATE MESSAGE RECEIVED ON WEBSOCKET:', {
-                type: message.type,
-                flow: message.data?.flow,
-                isQuestionMode: message.data?.isQuestionMode,
-                timestamp: message.timestamp,
-              });
-            }
-
-            if (message.type === 'TEAM_APPROVED') {
-              console.log('🎉 [Player] 🎉 🎉 🎉 TEAM_APPROVED RECEIVED! 🎉 🎉 🎉');
-              console.log('[Player] TEAM_APPROVED full message:', JSON.stringify(message).substring(0, 300) + '...');
-              console.log('[Player] TEAM_APPROVED has displayData:', !!message.data?.displayData);
-              console.log('[Player] About to call onMessage callback with TEAM_APPROVED');
-            }
-
             try {
-              console.log('[Player] [wsInstance.onmessage] Calling onMessage with message type:', message.type);
               onMessageRef.current?.(message);
-              console.log('[Player] [wsInstance.onmessage] onMessage callback completed successfully for type:', message.type);
             } catch (callbackErr) {
               console.error('[Player] ❌ Error calling onMessage callback:', callbackErr);
               throw callbackErr;
