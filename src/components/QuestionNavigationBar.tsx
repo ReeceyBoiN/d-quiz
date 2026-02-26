@@ -387,13 +387,13 @@ export function QuestionNavigationBar({
               {/* Start Silent Timer button */}
               <Button
                 onClick={onSilentTimer}
-                disabled={isTimerRunning}
+                disabled={actualTimerIsRunning}
                 className="px-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white border-0 shadow-sm text-sm font-semibold rounded flex items-center gap-1.5 whitespace-nowrap"
                 title="Start timer without sound (silent countdown)"
                 style={{
-                  opacity: isTimerRunning ? 0.5 : 1,
-                  pointerEvents: isTimerRunning ? 'none' : 'auto',
-                  cursor: isTimerRunning ? 'not-allowed' : 'pointer'
+                  opacity: actualTimerIsRunning ? 0.5 : 1,
+                  pointerEvents: actualTimerIsRunning ? 'none' : 'auto',
+                  cursor: actualTimerIsRunning ? 'not-allowed' : 'pointer'
                 }}
               >
                 <Volume2 className="h-4 w-4" />
@@ -403,13 +403,13 @@ export function QuestionNavigationBar({
               {/* Start Timer button */}
               <Button
                 onClick={onStartTimer}
-                disabled={isTimerRunning}
+                disabled={actualTimerIsRunning}
                 className="px-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white border-0 shadow-sm text-sm font-semibold rounded flex items-center gap-1.5 whitespace-nowrap"
                 title="Start timer with sound countdown"
                 style={{
-                  opacity: isTimerRunning ? 0.5 : 1,
-                  pointerEvents: isTimerRunning ? 'none' : 'auto',
-                  cursor: isTimerRunning ? 'not-allowed' : 'pointer'
+                  opacity: actualTimerIsRunning ? 0.5 : 1,
+                  pointerEvents: actualTimerIsRunning ? 'none' : 'auto',
+                  cursor: actualTimerIsRunning ? 'not-allowed' : 'pointer'
                 }}
               >
                 <Timer className="h-4 w-4" />

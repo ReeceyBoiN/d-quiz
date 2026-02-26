@@ -46,7 +46,7 @@ interface KeypadInterfaceProps {
   currentQuestionIndex?: number; // Current question index from loaded quiz
   onQuestionComplete?: () => void; // Callback when a question is completed
   isQuizPackMode?: boolean; // Is this in quiz pack mode with pre-loaded answers
-  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: () => void; silentTimer: () => void; revealFastestTeam: () => void }) => void; // Pass action handlers to parent for nav bar
+  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: (customDuration?: number) => void; silentTimer: (customDuration?: number) => void; revealFastestTeam: () => void; previousQuestion?: () => void }) => void; // Pass action handlers to parent for nav bar
   onGameTimerStateChange?: (isTimerRunning: boolean) => void; // Notify parent of timer state changes
   onCurrentScreenChange?: (screen: string) => void; // Notify parent of current screen changes
   onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
@@ -60,6 +60,7 @@ interface KeypadInterfaceProps {
   externalCurrentScreen?: string; // External control of current screen (when admin command sets it remotely)
   answerSubmitted?: string; // Answer confirmed by remote (from flowState.answerSubmitted)
   onAnswerConfirmed?: (answer: string) => void; // Callback when user confirms an answer locally
+  showCountdownTimer?: boolean; // Whether to show countdown timer progress bar (default: true)
 }
 
 export function KeypadInterface({
@@ -100,7 +101,8 @@ export function KeypadInterface({
   onSelectQuestionType,
   externalCurrentScreen,
   answerSubmitted,
-  onAnswerConfirmed
+  onAnswerConfirmed,
+  showCountdownTimer = false
 }: KeypadInterfaceProps) {
   const {
     defaultPoints,
@@ -154,7 +156,10 @@ export function KeypadInterface({
   
   // SHIFT key state for Fast Track feature
   const [isShiftPressed, setIsShiftPressed] = useState(false);
-  
+
+  // Remote submitted answer backup state (fallback for answers submitted via remote)
+  const [remoteSubmittedAnswer, setRemoteSubmittedAnswer] = useState<string | undefined>();
+
   // No need for local reset function - scores are managed by parent component
   
   // Numbers game state
@@ -298,10 +303,11 @@ export function KeypadInterface({
       }
     }
     // Fallback to host's selected answers for on-the-spot mode
-    return questionType === 'letters' ? selectedLetter :
-           questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
-           questionType === 'numbers' ? numbersAnswer : null;
-  }, [isQuizPackMode, currentLoadedQuestion, questionType, selectedLetter, selectedAnswers, numbersAnswer]);
+    // Use remoteSubmittedAnswer as backup if local state is empty
+    return questionType === 'letters' ? (selectedLetter || remoteSubmittedAnswer) :
+           questionType === 'multiple-choice' ? (selectedAnswers.join(', ') || remoteSubmittedAnswer) :
+           questionType === 'numbers' ? (numbersAnswer || remoteSubmittedAnswer) : null;
+  }, [isQuizPackMode, currentLoadedQuestion, questionType, selectedLetter, selectedAnswers, numbersAnswer, remoteSubmittedAnswer]);
 
   // Handle timer completion and update team answer statuses
   useEffect(() => {
@@ -627,6 +633,9 @@ export function KeypadInterface({
       console.log('[KeypadInterface] ✅ Syncing remote answer confirmation:', answerSubmitted);
       lastAppliedAnswerRef.current = answerSubmitted;
 
+      // Always capture remote answer as fallback, regardless of current screen
+      setRemoteSubmittedAnswer(answerSubmitted);
+
       // Apply remote answer to appropriate local state based on current screen/game mode
       if (currentScreen === 'letters-game') {
         // For letters mode, update selectedLetter if different
@@ -659,21 +668,32 @@ export function KeypadInterface({
         }
       }
     } else if (!answerSubmitted && lastAppliedAnswerRef.current) {
-      // Reset when answerSubmitted becomes undefined (new round starts)
-      console.log('[KeypadInterface] 🔄 Resetting remote answer sync for new round');
-      lastAppliedAnswerRef.current = undefined;
+      // Only reset when explicitly starting a NEW round (not during results or same-round transitions)
+      // IMPORTANT: Preserve answer state during results display and game-to-results transition
+      // Only reset when back at question selection screens
+      const shouldResetAnswerState = currentScreen === 'question-types' || currentScreen === 'config';
 
-      if (currentScreen === 'numbers-game' && numbersAnswerConfirmed) {
-        setNumbersAnswerConfirmed(false);
-      }
-      if (currentScreen === 'sequence-game' && sequenceCompleted) {
-        setSequenceCompleted(false);
+      if (shouldResetAnswerState) {
+        console.log('[KeypadInterface] 🔄 Resetting remote answer sync for new round (transitioning away from game)');
+        lastAppliedAnswerRef.current = undefined;
+        setRemoteSubmittedAnswer(undefined);
+
+        if (currentScreen === 'numbers-game' && numbersAnswerConfirmed) {
+          setNumbersAnswerConfirmed(false);
+        }
+        if (currentScreen === 'sequence-game' && sequenceCompleted) {
+          setSequenceCompleted(false);
+        }
+      } else {
+        // Still preserve answer state when in results or game screens
+        console.log('[KeypadInterface] 🛡️ Protecting answer state during results/game display, not resetting');
       }
     }
   }, [answerSubmitted, currentScreen, selectedLetter, selectedAnswers, numbersAnswer, numbersAnswerConfirmed, sequenceCompleted]);
 
   const handleBackFromQuestionTypes = () => {
     setCurrentScreen('config');
+    setRemoteSubmittedAnswer(undefined);
   };
 
   const handleBackFromGame = () => {
@@ -774,6 +794,8 @@ export function KeypadInterface({
     // Can now start timer without requiring an answer first
     // Use provided duration (from admin command/host flowState) or fall back to Settings-based default or 30s
     const timerLength = customDuration ?? gameModeTimers.keypad ?? 30;
+    console.log('[KeypadInterface] handleStartTimer called with customDuration:', customDuration, 'gameModeTimers.keypad:', gameModeTimers.keypad, 'finalTimerLength:', timerLength);
+
     setTotalTimerLength(timerLength); // Set total timer length for progress bar
     setIsTimerRunning(true);
     setTimerFinished(false);
@@ -792,6 +814,7 @@ export function KeypadInterface({
       onTimerLockChange(false);
     }
 
+    console.log('[KeypadInterface] Setting countdown to:', timerLength);
     setCountdown(timerLength);
 
     // Notify parent about timer state
@@ -818,11 +841,13 @@ export function KeypadInterface({
     }
 
     // Play countdown audio - normal timer with sound (voice countdown if enabled)
+    console.log('[KeypadInterface] Playing countdown audio with length:', timerLength);
     playCountdownAudio(timerLength, false).catch(error => {
       console.error('[Keypad] Error playing countdown audio:', error);
     });
 
     // Start the countdown with smooth animation (update every 100ms like useTimer hook)
+    console.log('[KeypadInterface] Starting countdown timer interval for timerLength:', timerLength);
     const timer = setInterval(() => {
       setCountdown(prev => {
         if (prev === null) return null;
@@ -1297,6 +1322,7 @@ export function KeypadInterface({
     setNumbersAnswerConfirmed(false);
     setTimerFinished(false);
     setTimerLocked(false); // Reset timer lock for next question
+    setRemoteSubmittedAnswer(undefined);
     setTimerStartTime(null); // Reset timer start time for next question
 
     // Reset broadcast guard to allow broadcasting the next question type
@@ -1353,6 +1379,7 @@ export function KeypadInterface({
     setNumbersAnswerConfirmed(false);
     setTimerFinished(false);
     setTimerLocked(false); // Reset timer lock for previous question
+    setRemoteSubmittedAnswer(undefined);
     setTimerStartTime(null); // Reset timer start time for previous question
 
     // Reset broadcast guard to allow broadcasting the previous question type
@@ -1451,6 +1478,7 @@ export function KeypadInterface({
     setFastestTeamRevealed(false);
     setTeamAnswers({});
     setTeamAnswerTimes({});
+    setRemoteSubmittedAnswer(undefined);
     setCurrentScreen('config');
     setQuestionType(null);
 
@@ -1743,7 +1771,7 @@ export function KeypadInterface({
         </div>
 
         {/* Timer Display */}
-        {isTimerRunning && countdown !== null && (
+        {showCountdownTimer && isTimerRunning && countdown !== null && (
           <div className="flex justify-center mb-6">
             <CountdownTimer
               currentTime={Math.ceil(countdown)}
@@ -1882,7 +1910,7 @@ export function KeypadInterface({
         </div>
 
         {/* Timer Display */}
-        {isTimerRunning && countdown !== null && (
+        {showCountdownTimer && isTimerRunning && countdown !== null && (
           <div className="flex justify-center mb-6">
             <CountdownTimer
               currentTime={Math.ceil(countdown)}
@@ -1979,7 +2007,7 @@ export function KeypadInterface({
         </div>
 
         {/* Timer Display */}
-        {isTimerRunning && countdown !== null && (
+        {showCountdownTimer && isTimerRunning && countdown !== null && (
           <div className="flex justify-center mb-6">
             <CountdownTimer
               currentTime={Math.ceil(countdown)}
@@ -2150,7 +2178,7 @@ export function KeypadInterface({
         </div>
 
         {/* Timer Display */}
-        {isTimerRunning && countdown !== null && (
+        {showCountdownTimer && isTimerRunning && countdown !== null && (
           <div className="flex justify-center mb-6">
             <CountdownTimer
               currentTime={Math.ceil(countdown)}
@@ -2671,9 +2699,9 @@ export function KeypadInterface({
                 ) : isQuizPackMode ? (
                   currentLoadedQuestion?.answerText || 'No answer'
                 ) : (
-                  questionType === 'letters' ? selectedLetter :
-                  questionType === 'multiple-choice' ? selectedAnswers.join(', ') :
-                  questionType === 'numbers' ? numbersAnswer : 'Unknown'
+                  questionType === 'letters' ? (selectedLetter || remoteSubmittedAnswer || 'Unknown') :
+                  questionType === 'multiple-choice' ? (selectedAnswers.length > 0 ? selectedAnswers.join(', ') : (remoteSubmittedAnswer || 'Unknown')) :
+                  questionType === 'numbers' ? (numbersAnswer || remoteSubmittedAnswer || 'Unknown') : 'Unknown'
                 )}
               </div>
             </div>

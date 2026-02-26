@@ -603,8 +603,8 @@ export function QuizHost() {
   const [gameActionHandlers, setGameActionHandlers] = useState<{
     reveal?: () => void;
     nextQuestion?: () => void;
-    startTimer?: () => void;
-    silentTimer?: () => void;
+    startTimer?: (customDuration?: number) => void;
+    silentTimer?: (customDuration?: number) => void;
     revealFastestTeam?: () => void;
     previousQuestion?: () => void;
   } | null>(null);
@@ -1980,29 +1980,48 @@ export function QuizHost() {
   const handleSelectQuestionType = (type: 'letters' | 'numbers' | 'multiple-choice' | 'sequence') => {
     console.log('[QuizHost] Host selected question type:', type);
 
-    // Compute timer duration based on question type
-    // Map the selected type to a game mode to get the correct timer from settings
-    let totalTime = gameModeTimers.keypad || 30; // Default for letters, multiple-choice, sequence
-    if (type === 'numbers') {
-      totalTime = gameModeTimers.nearestwins || 10; // Numbers uses nearestwins timer
-    }
+    // Normalize type for getTotalTimeForQuestion (it uses 'multi' instead of 'multiple-choice')
+    const questionTypeNormalized = type === 'letters' ? 'letters' :
+                                    type === 'numbers' ? 'numbers' :
+                                    type === 'multiple-choice' ? 'multi' :
+                                    type === 'sequence' ? 'sequence' : 'letters';
 
-    console.log('[QuizHost] Setting flowState for selected type:', type, 'with duration:', totalTime);
+    // Get the correct timer duration based on question type and settings
+    const typedDuration = getTotalTimeForQuestion({ type: questionTypeNormalized }, gameModeTimers);
+
+    console.log('[QuizHost] Setting flowState for selected type:', type, 'with duration:', typedDuration);
+
+    // Create a placeholder question object to enable keypad rendering
+    // This matches what the admin command handler does for consistency
+    const placeholderQuestion = {
+      type: type,
+      q: `Select correct answer (${type})`,
+      options: type === 'multiple-choice' ? ['', '', '', '', '', ''] : undefined,
+    };
 
     // Update flowState to transition from idle -> sent-question with the selected type
     // This will trigger sendFlowStateToController to broadcast to remote
-    setFlowState({
+    // IMPORTANT: Preserve answerSubmitted to avoid losing confirmed answers during active game
+    setFlowState(prev => ({
+      ...prev,  // Preserve existing state including any confirmed answer
       flow: 'sent-question',
       isQuestionMode: true,
       selectedQuestionType: type,
-      totalTime: totalTime,
-      timeRemaining: totalTime,
-      currentQuestionIndex: flowState.currentQuestionIndex,
-      currentQuestion: flowState.currentQuestion,
+      totalTime: typedDuration,
+      timeRemaining: typedDuration,
+      currentQuestion: placeholderQuestion,
       pictureSent: false,
       questionSent: true, // We're sending the question type to players
-      answerSubmitted: undefined,
-    });
+      // REMOVED: answerSubmitted: undefined - this was causing answer loss!
+    }));
+
+    // Transition the keypad UI to the selected question type's input screen
+    // This ensures the remote and host app have consistent UI states
+    const screenName = type === 'sequence' ? 'sequence-game' : `${type}-game`;
+    // Only update screen if it's actually changing to prevent unnecessary state updates
+    if (keypadCurrentScreen !== screenName) {
+      setKeypadCurrentScreen(screenName);
+    }
   };
 
   // Handle quiz pack display navigation
@@ -2561,7 +2580,12 @@ export function QuizHost() {
    * Wrapper for nav bar's onStartTimer - handles both quiz pack and on-the-spot modes
    */
   const handleNavBarStartTimer = useCallback((customDuration?: number) => {
-    if (isQuizPackMode || flowState.isQuestionMode) {
+    console.log('[QuizHost] handleNavBarStartTimer called with customDuration:', customDuration, 'isQuizPackMode:', isQuizPackMode, 'isQuestionMode:', flowState.isQuestionMode, 'showKeypadInterface:', showKeypadInterface, 'showNearestWinsInterface:', showNearestWinsInterface, 'showBuzzInMode:', showBuzzInMode, 'showQuizPackDisplay:', showQuizPackDisplay);
+
+    // For quiz pack mode: check isQuizPackMode (quiz pack specific) AND showQuizPackDisplay (UI is visible)
+    // Note: flowState.isQuestionMode can be true for both quiz pack AND on-the-spot modes, so don't use it here
+    if (isQuizPackMode && showQuizPackDisplay) {
+      console.log('[QuizHost] -> Quiz Pack Mode branch');
       // For quiz pack mode, use the timer parameters (custom duration from admin command or flow state)
       const timerDuration = validateTimerDuration(
         customDuration ?? flowState.totalTime,
@@ -2583,29 +2607,43 @@ export function QuizHost() {
         console.error('[QuizHost] Error executing normal timer handler:', error);
       });
     } else if (showKeypadInterface || showNearestWinsInterface || showBuzzInMode) {
+      console.log('[QuizHost] -> On-the-Spot Mode branch', 'gameTimerRunning:', gameTimerRunning, 'gameTimerFinished:', gameTimerFinished, 'gameActionHandlers:', gameActionHandlers ? 'exists' : 'NULL');
       // For on-the-spot modes, determine which handler to call based on game state
       if (!gameTimerRunning && !gameTimerFinished) {
         // Timer not started yet - start the timer
         // Pass the customDuration (from admin command) to the game action handler
+        console.log('[QuizHost] Calling gameActionHandlers.startTimer with duration:', customDuration);
         gameActionHandlers?.startTimer?.(customDuration);
       } else if (gameTimerFinished && !gameAnswerRevealed) {
         // Timer finished, next action is reveal answer
+        console.log('[QuizHost] Calling gameActionHandlers.reveal (timer finished, answer not revealed)');
         gameActionHandlers?.reveal?.();
       } else if (gameTimerFinished && gameAnswerRevealed && !gameFastestRevealed && teamsAnsweredCorrectly) {
         // Answer revealed and teams answered correctly, next action is fastest team
+        console.log('[QuizHost] Calling gameActionHandlers.reveal (fastest team)');
         gameActionHandlers?.reveal?.();
       } else if (gameFastestRevealed || (gameAnswerRevealed && !teamsAnsweredCorrectly)) {
         // Either fastest team revealed OR answer revealed but no correct teams - next action is next question
+        console.log('[QuizHost] Calling gameActionHandlers.nextQuestion');
         gameActionHandlers?.nextQuestion?.();
+      } else {
+        console.log('[QuizHost] No handler matched in on-the-spot mode. State: gameTimerFinished:', gameTimerFinished, 'gameAnswerRevealed:', gameAnswerRevealed, 'gameFastestRevealed:', gameFastestRevealed);
       }
+    } else {
+      console.log('[QuizHost] -> No matching mode! isQuizPackMode:', isQuizPackMode, 'isQuestionMode:', flowState.isQuestionMode, 'showKeypadInterface:', showKeypadInterface, 'showNearestWinsInterface:', showNearestWinsInterface, 'showBuzzInMode:', showBuzzInMode);
     }
-  }, [isQuizPackMode, flowState.isQuestionMode, flowState.totalTime, gameActionHandlers, gameTimerRunning, gameTimerFinished, gameAnswerRevealed, gameFastestRevealed, teamsAnsweredCorrectly, showKeypadInterface, showNearestWinsInterface, showBuzzInMode, externalWindow]);
+  }, [isQuizPackMode, showQuizPackDisplay, flowState.totalTime, gameActionHandlers, gameTimerRunning, gameTimerFinished, gameAnswerRevealed, gameFastestRevealed, teamsAnsweredCorrectly, showKeypadInterface, showNearestWinsInterface, showBuzzInMode, externalWindow]);
 
   /**
    * Wrapper for nav bar's onSilentTimer - handles both quiz pack and on-the-spot modes
    */
   const handleNavBarSilentTimer = useCallback((customDuration?: number) => {
-    if (isQuizPackMode || flowState.isQuestionMode) {
+    console.log('[QuizHost] handleNavBarSilentTimer called with customDuration:', customDuration, 'isQuizPackMode:', isQuizPackMode, 'isQuestionMode:', flowState.isQuestionMode, 'showKeypadInterface:', showKeypadInterface, 'showQuizPackDisplay:', showQuizPackDisplay);
+
+    // For quiz pack mode: check isQuizPackMode (quiz pack specific) AND showQuizPackDisplay (UI is visible)
+    // Note: flowState.isQuestionMode can be true for both quiz pack AND on-the-spot modes, so don't use it here
+    if (isQuizPackMode && showQuizPackDisplay) {
+      console.log('[QuizHost] -> Quiz Pack Mode branch for silent timer');
       // For quiz pack mode: play silent timer audio and start timer
       const timerDuration = validateTimerDuration(
         customDuration ?? flowState.totalTime,
@@ -2627,11 +2665,12 @@ export function QuizHost() {
         console.error('[QuizHost] Error executing silent timer handler:', error);
       });
     } else if (gameActionHandlers?.silentTimer) {
+      console.log('[QuizHost] -> On-the-Spot Mode branch for silent timer');
       // For on-the-spot modes, use the game-specific silent timer handler
       // Pass the customDuration (from admin command) to the game action handler
       gameActionHandlers.silentTimer(customDuration);
     }
-  }, [isQuizPackMode, flowState.totalTime, flowState.isQuestionMode, externalWindow, gameActionHandlers]);
+  }, [isQuizPackMode, flowState.totalTime, showQuizPackDisplay, showKeypadInterface, externalWindow, gameActionHandlers]);
 
   /**
    * Hide question handler - prevents question from being sent to players and external display.
@@ -3458,7 +3497,19 @@ export function QuizHost() {
               console.log('[QuizHost] Executing: Reveal Answer');
             }
             // Trigger reveal answer and transition flowState
-            deps.handleRevealAnswer();
+            // For on-the-spot mode (keypad), call gameActionHandlers.reveal() to trigger KeypadInterface's reveal
+            // For quiz pack mode, call handleRevealAnswer() to handle quiz pack scoring
+            if (!deps.isQuizPackMode && deps.gameActionHandlers?.reveal) {
+              if (DEBUG) {
+                console.log('[QuizHost] Reveal Answer: Using gameActionHandlers.reveal for on-the-spot mode');
+              }
+              deps.gameActionHandlers.reveal();
+            } else {
+              if (DEBUG) {
+                console.log('[QuizHost] Reveal Answer: Using handleRevealAnswer for quiz pack mode');
+              }
+              deps.handleRevealAnswer();
+            }
             // Also call handlePrimaryAction to transition flowState from running/timeup to revealed/fastest
             deps.handlePrimaryAction();
             success = true;
@@ -3573,10 +3624,14 @@ export function QuizHost() {
               flowStateTotalTime: deps.flowState.totalTime,
               finalTimerDuration: timerDuration,
               isQuestionMode: deps.flowState.isQuestionMode,
-              flowState: deps.flowState.flow
+              flowState: deps.flowState.flow,
+              showKeypadInterface: deps.showKeypadInterface,
+              showNearestWinsInterface: deps.showNearestWinsInterface,
+              showBuzzInMode: deps.showBuzzInMode
             });
 
             // Call handler with explicit duration (same as UI would use)
+            console.log('[QuizHost] Calling handleNavBarStartTimer with duration:', timerDuration, 'gameActionHandlers:', gameActionHandlers ? 'exists' : 'NULL', 'gameTimerRunning:', gameTimerRunning, 'gameTimerFinished:', gameTimerFinished);
             deps.handleNavBarStartTimer(timerDuration);
 
             // Also update main flowState to 'running' so Reveal Answer button appears
@@ -5736,6 +5791,7 @@ export function QuizHost() {
                   answerSubmitted: answer
                 }));
               }}
+              showCountdownTimer={false}
             />
           </div>
           {/* Show fastest team display as an overlay on top of keypad */}
@@ -5947,6 +6003,8 @@ export function QuizHost() {
   adminListenerDepsRef.current.handleQuizPackPrevious = handleQuizPackPrevious;
   adminListenerDepsRef.current.handleNavBarStartTimer = handleNavBarStartTimer;
   adminListenerDepsRef.current.handleNavBarSilentTimer = handleNavBarSilentTimer;
+  adminListenerDepsRef.current.gameActionHandlers = gameActionHandlers;
+  adminListenerDepsRef.current.isQuizPackMode = isQuizPackMode;
   adminListenerDepsRef.current.setCurrentLoadedQuestionIndex = setCurrentLoadedQuestionIndex;
   adminListenerDepsRef.current.setFlowState = setFlowState;
   adminListenerDepsRef.current.setKeypadCurrentScreen = setKeypadCurrentScreen;

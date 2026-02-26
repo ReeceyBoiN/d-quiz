@@ -121,14 +121,37 @@ async function getAudioUrl(isSilent: boolean): Promise<string> {
  */
 export async function playCountdownAudio(timerDuration: number, isSilent: boolean = false): Promise<void> {
   try {
+    // Defensive check: Extract numeric duration if an object is passed
+    // This handles cases where duration might be wrapped in an object
+    let finalDuration = timerDuration;
+    if (typeof timerDuration === 'object' && timerDuration !== null) {
+      console.warn('[CountdownAudio] ⚠️  DEFENSIVE: Object passed as timerDuration, extracting numeric value:', timerDuration);
+      // Try to extract numeric value from common object structures
+      if ('duration' in timerDuration) {
+        finalDuration = (timerDuration as any).duration;
+      } else if ('value' in timerDuration) {
+        finalDuration = (timerDuration as any).value;
+      } else if (typeof timerDuration?.[0] === 'number') {
+        finalDuration = (timerDuration as any)[0]; // Array case
+      } else {
+        console.error('[CountdownAudio] Could not extract numeric duration from object:', timerDuration);
+        finalDuration = 30; // Fallback to default
+      }
+    } else if (typeof timerDuration === 'string') {
+      console.warn('[CountdownAudio] ⚠️  DEFENSIVE: String passed as timerDuration, converting:', timerDuration);
+      finalDuration = parseInt(timerDuration, 10) || 30;
+    }
+
     // Validate timerDuration is a valid positive number
-    if (!Number.isFinite(timerDuration) || timerDuration <= 0) {
-      console.error('[CountdownAudio] Invalid timerDuration received:', {
-        timerDuration,
-        type: typeof timerDuration,
-        isFinite: Number.isFinite(timerDuration)
+    if (!Number.isFinite(finalDuration) || finalDuration <= 0) {
+      console.error('[CountdownAudio] Invalid finalDuration received:', {
+        originalDuration: timerDuration,
+        finalDuration,
+        type: typeof finalDuration,
+        isFinite: Number.isFinite(finalDuration)
       });
-      throw new Error(`Invalid timer duration: ${timerDuration}`);
+      console.warn('[CountdownAudio] Falling back to 30 seconds');
+      finalDuration = 30;
     }
 
     // Stop any currently playing audio
@@ -197,22 +220,22 @@ export async function playCountdownAudio(timerDuration: number, isSilent: boolea
         audioUrl,
         audioReadyState: audio.readyState,
         audioNetworkState: audio.networkState,
-        timerDuration
+        finalDuration
       });
       console.warn('[CountdownAudio] This will cause the ENTIRE audio file to play regardless of timer duration!');
     }
 
     // Calculate start time: always play from the END of the audio, working backwards
-    // startTime = audioDuration - (timerDuration + 1)
-    // This ensures we play the last (timerDuration + 1) seconds of the audio
+    // startTime = audioDuration - (finalDuration + 1)
+    // This ensures we play the last (finalDuration + 1) seconds of the audio
     // If duration is 0 (metadata didn't load), start from beginning
-    const startTime = Math.max(0, audioDuration - (timerDuration + 1));
+    const startTime = Math.max(0, audioDuration - (finalDuration + 1));
 
     console.log('[CountdownAudio] Calculated startTime:', {
-      timerDuration,
+      finalDuration,
       audioDuration,
-      timerDurationPlusBufer: timerDuration + 1,
-      calculatedStartTime: audioDuration - (timerDuration + 1),
+      finalDurationPlusBufer: finalDuration + 1,
+      calculatedStartTime: audioDuration - (finalDuration + 1),
       finalStartTime: startTime,
       durationToPlay: audioDuration - startTime
     });
@@ -221,7 +244,7 @@ export async function playCountdownAudio(timerDuration: number, isSilent: boolea
     if (!Number.isFinite(startTime)) {
       console.error('[CountdownAudio] Invalid startTime calculated:', {
         startTime,
-        timerDuration,
+        finalDuration,
         audioDuration
       });
       throw new Error(`Invalid start time: ${startTime}`);
@@ -240,7 +263,7 @@ export async function playCountdownAudio(timerDuration: number, isSilent: boolea
 
     console.log('[CountdownAudio] Audio playback started successfully:', {
       isSilent,
-      timerDuration,
+      finalDuration,
       audioDuration,
       startTime,
       durationToPlay: audioDuration - startTime,
