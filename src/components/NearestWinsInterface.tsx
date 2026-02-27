@@ -18,7 +18,7 @@ interface NearestWinsInterfaceProps {
   onCurrentRoundWinnerPointsChange?: (winnerPoints: number) => void; // Handler for winner points changes
   onTimerLockChange?: (isLocked: boolean) => void; // Timer lock state callback
   externalWindow?: Window | null; // External display window
-  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: (isSilent?: boolean) => void; silentTimer?: () => void }) => void; // Pass action handlers to parent for nav bar
+  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: (duration?: number) => void; silentTimer?: (duration?: number) => void }) => void; // Pass action handlers to parent for nav bar
   onGameTimerStateChange?: (isTimerRunning: boolean, duration?: number) => void; // Notify parent of timer state changes
   onCurrentScreenChange?: (screen: string) => void; // Notify parent of current screen changes
   onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
@@ -45,7 +45,8 @@ export function NearestWinsInterface({
   onFlowStateChange,
   onAnswerConfirmed
 }: NearestWinsInterfaceProps) {
-  const { nearestWinsTimer, gameModePoints, voiceCountdown, keypadDesign } = useSettings();
+  const { gameModeTimers, gameModePoints, voiceCountdown, keypadDesign } = useSettings();
+  const nearestWinsTimer = gameModeTimers?.nearestwins || 30;
 
   // Wrapper function to clear team answers when going back
   const handleBackWithCleanup = () => {
@@ -173,7 +174,7 @@ export function NearestWinsInterface({
   const [submissions, setSubmissions] = useState<Array<{id: string, name: string, guess: number, submitted: boolean, difference?: number}>>([]);
   const [answerRevealed, setAnswerRevealed] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
-  const [totalTimerLength, setTotalTimerLength] = useState<number>(10); // Track total timer length for progress bar
+  const [totalTimerLength, setTotalTimerLength] = useState<number>(30); // Track total timer length for progress bar
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerHasBeenStarted, setTimerHasBeenStarted] = useState(false); // Track if timer was ever started
   const [answer, setAnswer] = useState('');
@@ -388,17 +389,29 @@ export function NearestWinsInterface({
   };
 
   // Start timer for submissions
-  const handleStartTimer = useCallback((isSilent: boolean = false) => {
+  const handleStartTimer = useCallback((duration?: number | boolean, isSilentParam?: boolean) => {
+    let durationToUse = nearestWinsTimer;
+    let isSilent = false;
+
+    if (typeof duration === 'number') {
+      durationToUse = duration;
+      isSilent = !!isSilentParam;
+    } else if (typeof duration === 'boolean') {
+      isSilent = duration;
+    } else if (isSilentParam !== undefined) {
+      isSilent = isSilentParam;
+    }
+
     // Stop any existing countdown audio first
     stopCountdownAudio();
 
     // Play countdown audio
     // The audio utility handles the +1 buffer automatically
-    playCountdownAudio(nearestWinsTimer, isSilent).catch(err =>
+    playCountdownAudio(durationToUse, isSilent).catch(err =>
       console.error('[NearestWins] Audio playback error:', err)
     );
 
-    setTotalTimerLength(nearestWinsTimer); // Set total timer length for progress bar
+    setTotalTimerLength(durationToUse); // Set total timer length for progress bar
     setIsTimerRunning(true);
     setTimerHasBeenStarted(true); // Mark timer as started
     setTimerLocked(false); // Unlock timer when starting
@@ -408,22 +421,23 @@ export function NearestWinsInterface({
       onTimerLockChange(false);
     }
 
-    setCountdown(nearestWinsTimer); // Use setting from context
+    setCountdown(durationToUse); // Use setting from context
 
     const initialDisplayData = {
-      timerValue: nearestWinsTimer,
+      timerValue: durationToUse,
       targetNumber: targetNumber[0],
       gameInfo: {
         targetNumber: targetNumber[0],
         tolerance: tolerance[0],
-        totalTime: nearestWinsTimer
+        totalTime: durationToUse
       },
       gameMode: 'nearestwins'
     };
 
     console.log('NearestWins: Starting timer and sending initial display update', {
       nearestWinsTimer,
-      initialTimerValue: nearestWinsTimer,
+      durationToUse,
+      initialTimerValue: durationToUse,
       displayData: initialDisplayData,
       externalWindow: !!externalWindow,
       windowClosed: externalWindow ? externalWindow.closed : 'no window',
@@ -744,8 +758,8 @@ export function NearestWinsInterface({
       onGetActionHandlers({
         reveal: () => handlersRef.current.reveal(),
         nextQuestion: () => handlersRef.current.nextQuestion(),
-        startTimer: (isSilent?: boolean) => handlersRef.current.startTimer(isSilent),
-        silentTimer: () => handlersRef.current.startTimer(true),
+        startTimer: (duration?: number) => handlersRef.current.startTimer(duration, false),
+        silentTimer: (duration?: number) => handlersRef.current.startTimer(duration, true),
       });
     }
   }, [onGetActionHandlers]);

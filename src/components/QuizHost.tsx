@@ -2664,8 +2664,8 @@ export function QuizHost() {
       // For on-the-spot modes, determine which handler to call based on game state
       if (!gameTimerRunning && !gameTimerFinished) {
         // Timer not started yet - start the timer
-        // Pass the customDuration (from admin command) or fall back to flowState.totalTime
-        const durationToPass = customDuration ?? flowState.totalTime;
+        // Pass the customDuration (from admin command) or undefined to let the component use its own settings
+        const durationToPass = customDuration;
         console.log('[QuizHost] Calling gameActionHandlers.startTimer with duration:', durationToPass);
         gameActionHandlers?.startTimer?.(durationToPass);
       } else if (gameTimerFinished && !gameAnswerRevealed) {
@@ -2723,8 +2723,8 @@ export function QuizHost() {
     } else if (gameActionHandlers?.silentTimer) {
       console.log('[QuizHost] -> On-the-Spot Mode branch for silent timer');
       // For on-the-spot modes, use the game-specific silent timer handler
-      // Pass the customDuration (from admin command) or fall back to flowState.totalTime
-      const durationToPass = customDuration ?? flowState.totalTime;
+      // Pass the customDuration (from admin command) or undefined to let the component use its own settings
+      const durationToPass = customDuration;
       gameActionHandlers.silentTimer(durationToPass);
     }
   }, [isQuizPackMode, flowState.totalTime, showQuizPackDisplay, showKeypadInterface, externalWindow, gameActionHandlers]);
@@ -2867,9 +2867,15 @@ export function QuizHost() {
     setCurrentRoundWinnerPoints(gameModePoints.nearestwins); // Initialize winner points to settings default value
     setShowNearestWinsInterface(true);
     setActiveTab("teams"); // Switch to teams tab when nearest wins starts
-    
+
     // Ensure external display stays on basic mode when in config
     handleExternalDisplayUpdate('basic');
+  };
+
+  // Handle nearest wins interface close
+  const handleNearestWinsClose = () => {
+    setShowNearestWinsInterface(false);
+    setActiveTab("home"); // Return to home when nearest wins is closed
   };
 
   // Handle buzzers management open
@@ -6006,7 +6012,7 @@ export function QuizHost() {
         <div className="flex-1 overflow-hidden">
           <NearestWinsInterface
             teams={quizzes}
-            onBack={handleNearestWinsClick}
+            onBack={handleNearestWinsClose}
             currentRoundWinnerPoints={currentRoundWinnerPoints}
             onWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
             externalWindow={externalWindow}
