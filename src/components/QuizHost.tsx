@@ -45,6 +45,7 @@ import { executeStartNormalTimer, executeStartSilentTimer, validateTimerDuration
 import { calculateTeamPoints, rankCorrectTeams, shouldAutoDisableGoWide, type ScoringConfig } from "../utils/scoringEngine";
 import { getAnswerText, createHandleComputeAndAwardScores, createHandleApplyEvilModePenalty } from "../utils/quizHostHelpers";
 import { saveGameState, loadGameState, clearGameState, createGameStateSnapshot, type RoundSettings } from "../utils/gameStatePersistence";
+import { getBuzzerFilePath, getBuzzerUrl } from "../utils/api";
 import { Resizable } from "re-resizable";
 import { Button } from "./ui/button";
 import { ChevronRight } from "lucide-react";
@@ -319,6 +320,28 @@ export function QuizHost() {
   // External display popup window state
   const [externalWindow, setExternalWindow] = useState<Window | null>(null);
   const [isExternalDisplayOpen, setIsExternalDisplayOpen] = useState(false);
+
+  // Buzzer audio ref and playback helper
+  const buzzerAudioRef = useRef<HTMLAudioElement>(null);
+  const playFastestTeamBuzzer = useCallback(async (buzzerSound?: string) => {
+    if (!buzzerSound) return;
+    try {
+      let audioUrl: string | null = null;
+      try {
+        audioUrl = await getBuzzerFilePath(buzzerSound);
+      } catch (e) {
+        if (hostInfo) audioUrl = getBuzzerUrl(hostInfo, buzzerSound);
+      }
+      if (!audioUrl) return;
+
+      if (buzzerAudioRef.current) {
+        buzzerAudioRef.current.src = audioUrl;
+        await buzzerAudioRef.current.play().catch(err => console.error('[QuizHost] Error playing buzzer:', err));
+      }
+    } catch (err) {
+      console.error('[QuizHost] Error playing fastest team buzzer:', err);
+    }
+  }, [hostInfo]);
 
   // Listen for external display window being closed via Ctrl+V
   useEffect(() => {
@@ -2416,6 +2439,11 @@ export function QuizHost() {
           if (fastestTeam) {
             sendFastestToDisplay(fastestTeam.name, currentLoadedQuestionIndex + 1, fastestTeam.photoUrl);
 
+            // Play fastest team buzzer
+            if (fastestTeam.buzzerSound) {
+              playFastestTeamBuzzer(fastestTeam.buzzerSound);
+            }
+
             // Broadcast fastest team to player devices
             if ((window as any).api?.network?.broadcastFastest) {
               try {
@@ -2995,14 +3023,17 @@ export function QuizHost() {
   const handleFastestTeamReveal = useCallback((fastestTeam: { team: Quiz; responseTime: number }) => {
     // Ensure team data is synced with the latest info from quizzes array (includes photoUrl, name, etc.)
     const currentTeam = quizzes.find(q => q.id === fastestTeam.team.id);
-    if (currentTeam) {
-      setFastestTeamData({ team: currentTeam, responseTime: fastestTeam.responseTime });
-    } else {
-      setFastestTeamData(fastestTeam);
+    const teamToUse = currentTeam || fastestTeam.team;
+    setFastestTeamData({ team: teamToUse, responseTime: fastestTeam.responseTime });
+
+    // Play the team's buzzer sound
+    if (teamToUse.buzzerSound) {
+      playFastestTeamBuzzer(teamToUse.buzzerSound);
     }
+
     setShowFastestTeamDisplay(true);
     setActiveTab("teams"); // Switch to teams tab to show the display
-  }, [quizzes]);
+  }, [quizzes, playFastestTeamBuzzer]);
 
   // Handle fastest team display close
   const handleFastestTeamClose = useCallback(() => {
@@ -6517,7 +6548,7 @@ export function QuizHost() {
       </AlertDialog>
 
       {/* Next Question button is now handled by QuestionNavigationBar for unified control */}
-
+      <audio ref={buzzerAudioRef} />
     </div>
   );
 }
