@@ -1051,7 +1051,7 @@ export function StatusBar({
 
   return (
     <div
-      className="w-full bg-sidebar-accent border-t border-sidebar-border px-2 py-0 h-[41px] flex items-center justify-center z-40"
+      className="w-full bg-sidebar-accent border-t border-sidebar-border px-2 py-0 h-[60px] flex items-center justify-center z-40"
       style={{ marginTop: '-13px', minHeight: '10px' }}
     >
       {/* END ROUND button - show when any game interface is active */}
@@ -1096,37 +1096,40 @@ export function StatusBar({
           isQuizPackTimerRunning={isQuizPackTimerRunning}
         />
       ) : (
-        <div className="flex-1 h-full flex items-stretch">
-          
+        <div className="flex-1 h-full flex items-stretch w-full">
+
           {/* Home screen toggle buttons - full height with vertical separators */}
           
           {/* Buzzers */}
           <button
-            className="px-3 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
+            className="min-w-0 justify-center px-1.5 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
+            style={{ flex: '10 1 0%' }}
             onClick={() => onOpenBuzzersManagement?.()}
             title="Buzzer Management"
           >
-            <Volume2 className="h-4 w-4" />
-            <span className="text-sm text-center">Buzzers</span>
+            <Volume2 className="h-4 w-4 shrink-0" />
+            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">Buzzers</span>
           </button>
 
           {/* Empty Lobby */}
           <button
-            className="px-3 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
+            className="min-w-0 justify-center px-1.5 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
+            style={{ flex: '11 1 0%' }}
             onClick={() => setShowEmptyLobbyDialog(true)}
             title="Empty Lobby"
           >
-            <UserMinus className="h-4 w-4" />
-            <span className="text-sm text-center">Empty Lobby</span>
+            <UserMinus className="h-4 w-4 shrink-0" />
+            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">Empty Lobby</span>
           </button>
 
           {/* Team Photos */}
           <button
-            className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${
+            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors border-r border-border ${
               hasPendingTeamPhotos
                 ? 'bg-[#ea580c] animate-flash-orange text-white shadow-lg'
                 : 'hover:bg-accent'
             }`}
+            style={{ flex: '11 1 0%' }}
             style={hasPendingTeamPhotos ? {
               backgroundColor: 'rgb(234, 88, 12)',
               color: 'white'
@@ -1134,33 +1137,35 @@ export function StatusBar({
             onClick={() => setShowTeamPhotosPopup(true)}
             title={hasPendingTeamPhotos ? "Team photo pending approval! Click to view" : "Team Photos"}
           >
-            <Camera className="h-4 w-4" />
-            <span className="text-sm text-center">Team Photos</span>
+            <Camera className="h-4 w-4 shrink-0" />
+            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">Team Photos</span>
           </button>
 
           {/* Pause Scores */}
           <button
-            className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${
+            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors border-r border-border ${
               scoresPaused
                 ? 'bg-orange-500 text-white hover:bg-orange-600'
                 : 'hover:bg-accent'
             }`}
+            style={{ flex: '11 1 0%' }}
             onClick={() => onPauseScoresToggle?.()}
             title={scoresPaused ? "Scores are paused - click to unpause" : "Pause all score changes"}
           >
-            <Pause className="h-4 w-4" />
-            <span className="text-sm text-center">{scoresPaused ? 'Scores Paused' : 'Pause Scores'}</span>
+            <Pause className="h-4 w-4 shrink-0" />
+            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">{scoresPaused ? 'Scores Paused' : 'Pause Scores'}</span>
           </button>
 
           {/* Scramble Keypad */}
           <button
-            className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${(() => {
+            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors border-r border-border ${(() => {
               if (!teams || teams.length === 0) return 'hover:bg-accent';
               const scrambledCount = teams.filter(team => team.scrambled).length;
               return scrambledCount > 0
                 ? 'bg-purple-500 text-white hover:bg-purple-600'
                 : 'hover:bg-accent';
             })()}`}
+            style={{ flex: '13 1 0%' }}
             onClick={() => {
               if (onGlobalScrambleKeypad) {
                 onGlobalScrambleKeypad();
@@ -1175,8 +1180,8 @@ export function StatusBar({
               return "Toggle All Keypads";
             })()}
           >
-            <RotateCcw className="h-4 w-4" />
-            <span className="text-sm text-center">
+            <RotateCcw className="h-4 w-4 shrink-0" />
+            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">
               {(() => {
                 if (!teams || teams.length === 0) return "Scramble Keypad";
                 const scrambledCount = teams.filter(team => team.scrambled).length;
@@ -1190,58 +1195,63 @@ export function StatusBar({
 
           {/* Clear Scores */}
           <button
-            className="px-3 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
+            className="min-w-0 justify-center px-1.5 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
+            style={{ flex: '11 1 0%' }}
             onClick={() => setShowClearScoresDialog(true)}
             title="Clear Scores"
           >
-            <Trash2 className="h-4 w-4" />
-            <span className="text-sm text-center">Clear Scores</span>
+            <Trash2 className="h-4 w-4 shrink-0" />
+            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">Clear Scores</span>
           </button>
 
           {/* Hide Scores & Positions */}
           <button
-            className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${
+            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors border-r border-border ${
               scoresHidden
                 ? 'bg-blue-500 text-white hover:bg-blue-600'
                 : 'hover:bg-accent'
             }`}
+            style={{ flex: '14 1 0%' }}
             onClick={() => onToggleHideScores?.()}
             title={scoresHidden ? "Scores are hidden - click to show" : "Hide Scores & Positions"}
           >
-            <EyeOff className="h-4 w-4" />
-            <span className="text-sm text-center">{scoresHidden ? 'Scores Hidden' : 'Hide Scores & Positions'}</span>
+            <EyeOff className="h-4 w-4 shrink-0" />
+            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">{scoresHidden ? 'Scores Hidden' : 'Hide Scores & Positions'}</span>
           </button>
 
           {/* Font Size Down */}
           <button
-            className="px-2.5 flex items-center justify-center hover:bg-accent transition-colors border-r border-border p-[0px]"
+            className="min-w-0 px-1.5 flex items-center justify-center hover:bg-accent transition-colors border-r border-border p-[0px]"
+            style={{ flex: '3.5 1 0%' }}
             onClick={() => {/* TODO: Add font size down functionality */}}
             title="Font Size Down"
           >
-            <Minus className="h-4 w-4" />
+            <Minus className="h-4 w-4 shrink-0" />
           </button>
 
           {/* Font Size Label */}
-          <div className="px-2.5 flex items-center justify-center text-sm text-muted-foreground border-r border-border text-center">
+          <div className="min-w-0 px-1.5 flex items-center justify-center text-[11px] leading-tight break-words whitespace-normal text-muted-foreground border-r border-border text-center" style={{ flex: '7 1 0%' }}>
             Font Size
           </div>
 
           {/* Font Size Up */}
           <button
-            className="px-2.5 flex items-center justify-center hover:bg-accent transition-colors border-r border-border p-[0px]"
+            className="min-w-0 px-1.5 flex items-center justify-center hover:bg-accent transition-colors border-r border-border p-[0px]"
+            style={{ flex: '3.5 1 0%' }}
             onClick={() => {/* TODO: Add font size up functionality */}}
             title="Font Size Up"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4 shrink-0" />
           </button>
 
           {/* Change Teams Layout */}
           <button
-            className={`px-3 flex items-center gap-1.5 transition-colors border-r border-border ${
+            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors border-r border-border ${
               teamLayoutMode !== 'default'
                 ? 'bg-blue-500 text-white hover:bg-blue-600'
                 : 'hover:bg-accent'
             }`}
+            style={{ flex: '14 1 0%' }}
             onClick={() => onChangeTeamLayout?.()}
             title={
               teamLayoutMode === 'default' ? 'Change Teams Layout' :
@@ -1249,8 +1259,8 @@ export function StatusBar({
               'Teams in random order - click for default'
             }
           >
-            <LayoutGrid className="h-4 w-4" />
-            <span className="text-sm text-center">
+            <LayoutGrid className="h-4 w-4 shrink-0" />
+            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">
               {teamLayoutMode === 'default' ? 'Change Teams Layout' :
                teamLayoutMode === 'alphabetical' ? 'Layout: Alphabetical' :
                'Layout: Random'}
@@ -1259,13 +1269,14 @@ export function StatusBar({
 
           {/* Host Controller */}
           <button
-            className={`px-3 flex items-center gap-1.5 transition-colors ${
+            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors ${
               hostControllerEnabled && hostControllerAuthenticated
                 ? 'bg-green-500 text-white hover:bg-green-600'
                 : hostControllerEnabled
                 ? 'bg-yellow-500 text-white hover:bg-yellow-600'
                 : 'hover:bg-accent'
             }`}
+            style={{ flex: '14 1 0%' }}
             onClick={() => onToggleHostController?.()}
             title={
               hostControllerEnabled && hostControllerAuthenticated
@@ -1275,8 +1286,8 @@ export function StatusBar({
                 : "Enable Host Controller"
             }
           >
-            <Gamepad2 className="h-4 w-4" />
-            <span className="text-sm text-center">
+            <Gamepad2 className="h-4 w-4 shrink-0" />
+            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">
               {hostControllerEnabled && hostControllerAuthenticated
                 ? `✓ Controller (${hostControllerCode})`
                 : hostControllerEnabled
