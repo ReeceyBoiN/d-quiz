@@ -20,13 +20,9 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   Buzzer needs to play on the fastest team reveal
 
-  --nearest wins timer sound doesnt work
-
   Scramble keypad doesnt scramble the keypad for players
 
   Send question is triggering start timer
-
-  nearest wins quiz pack mode needs making and to calculate the closest team's guess + on the spot mode isnt calculating the nearest team
 
   Cancel button doesnt work after a question i think on the nearest wins on the spot mode
 
@@ -41,6 +37,8 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
   in setting, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
 
   in settings, waiting room should have the ability to display waiting room images.
+
+  nearest wins quiz pack mode needs making and to calculate the closest team's guess + on the spot mode isnt calculating the nearest team
 
   Music round?
 
