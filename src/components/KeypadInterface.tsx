@@ -47,7 +47,7 @@ interface KeypadInterfaceProps {
   onQuestionComplete?: () => void; // Callback when a question is completed
   isQuizPackMode?: boolean; // Is this in quiz pack mode with pre-loaded answers
   onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: (customDuration?: number) => void; silentTimer: (customDuration?: number) => void; revealFastestTeam: () => void; previousQuestion?: () => void }) => void; // Pass action handlers to parent for nav bar
-  onGameTimerStateChange?: (isTimerRunning: boolean) => void; // Notify parent of timer state changes
+  onGameTimerStateChange?: (isTimerRunning: boolean, duration?: number) => void; // Notify parent of timer state changes
   onCurrentScreenChange?: (screen: string) => void; // Notify parent of current screen changes
   onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
   onGameTimerFinished?: (finished: boolean) => void; // Notify parent when on-the-spot timer finishes
@@ -59,6 +59,7 @@ interface KeypadInterfaceProps {
   onSelectQuestionType?: (type: 'letters' | 'numbers' | 'multiple-choice' | 'sequence') => void; // Notify parent when host selects question type in on-the-spot mode
   externalCurrentScreen?: string; // External control of current screen (when admin command sets it remotely)
   answerSubmitted?: string; // Answer confirmed by remote (from flowState.answerSubmitted)
+  externalQuestionType?: 'letters' | 'numbers' | 'multiple-choice' | 'sequence' | null; // Question type from remote (from flowState.selectedQuestionType)
   onAnswerConfirmed?: (answer: string) => void; // Callback when user confirms an answer locally
   showCountdownTimer?: boolean; // Whether to show countdown timer progress bar (default: true)
 }
@@ -100,6 +101,7 @@ export function KeypadInterface({
   onTimerStart,
   onSelectQuestionType,
   externalCurrentScreen,
+  externalQuestionType,
   answerSubmitted,
   onAnswerConfirmed,
   showCountdownTimer = false
@@ -138,7 +140,15 @@ export function KeypadInterface({
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerFinished, setTimerFinished] = useState(false);
   const [questionType, setQuestionType] = useState<'letters' | 'multiple-choice' | 'numbers' | 'sequence' | null>(null);
-  
+
+  // Synchronize external question type changes to local state
+  useEffect(() => {
+    if (externalQuestionType !== undefined && externalQuestionType !== questionType) {
+      console.log('[KeypadInterface] External question type change:', externalQuestionType);
+      setQuestionType(externalQuestionType as any);
+    }
+  }, [externalQuestionType, questionType]);
+
   // Add state for correct answer revelation
   const [answerRevealed, setAnswerRevealed] = useState(false);
 
@@ -304,9 +314,11 @@ export function KeypadInterface({
     }
     // Fallback to host's selected answers for on-the-spot mode
     // Use remoteSubmittedAnswer as backup if local state is empty
-    return questionType === 'letters' ? (selectedLetter || remoteSubmittedAnswer) :
-           questionType === 'multiple-choice' ? (selectedAnswers.join(', ') || remoteSubmittedAnswer) :
-           questionType === 'numbers' ? (numbersAnswer || remoteSubmittedAnswer) : null;
+    const qType = (questionType || '').toLowerCase();
+    return qType === 'letters' ? (selectedLetter || remoteSubmittedAnswer) :
+           qType === 'multiple-choice' ? (selectedAnswers.join(', ') || remoteSubmittedAnswer) :
+           qType === 'numbers' ? (numbersAnswer || remoteSubmittedAnswer) :
+           qType === 'sequence' ? (selectedSequence.length > 0 ? selectedSequence.join(', ') : remoteSubmittedAnswer) : null;
   }, [isQuizPackMode, currentLoadedQuestion, questionType, selectedLetter, selectedAnswers, numbersAnswer, remoteSubmittedAnswer]);
 
   // Handle timer completion and update team answer statuses
@@ -629,12 +641,14 @@ export function KeypadInterface({
   // 1. Tracking lastAppliedAnswerRef to prevent re-applying the same answer
   // 2. Not calling onAnswerConfirmed when applying remote answer (to prevent echo back to parent)
   useEffect(() => {
+    if (answerSubmitted) {
+      // Always capture remote answer as fallback, regardless of current screen
+      setRemoteSubmittedAnswer(answerSubmitted);
+    }
+
     if (answerSubmitted && answerSubmitted !== lastAppliedAnswerRef.current) {
       console.log('[KeypadInterface] ✅ Syncing remote answer confirmation:', answerSubmitted);
       lastAppliedAnswerRef.current = answerSubmitted;
-
-      // Always capture remote answer as fallback, regardless of current screen
-      setRemoteSubmittedAnswer(answerSubmitted);
 
       // Apply remote answer to appropriate local state based on current screen/game mode
       if (currentScreen === 'letters-game') {
@@ -790,7 +804,9 @@ export function KeypadInterface({
 
 
 
-  const handleStartTimer = useCallback((customDuration?: number) => {
+  const handleStartTimer = useCallback((customDurationOrEvent?: number | any) => {
+    // Prevent passing React event objects as duration
+    const customDuration = typeof customDurationOrEvent === 'number' ? customDurationOrEvent : undefined;
     // Can now start timer without requiring an answer first
     // Use provided duration (from admin command/host flowState) or fall back to Settings-based default or 30s
     const timerLength = customDuration ?? gameModeTimers.keypad ?? 30;
@@ -856,14 +872,14 @@ export function KeypadInterface({
 
         // Notify parent about timer state change
         if (onTimerStateChange) {
-          onTimerStateChange(true, newValue, gameModeTimers.keypad);
+          onTimerStateChange(true, newValue, timerLength);
         }
 
         // Update external display with new timer value
         if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
           onExternalDisplayUpdate('timer', {
             timerValue: newValue < 0 ? 0 : Number(newValue.toFixed(2)),
-            totalTime: gameModeTimers.keypad,
+            totalTime: timerLength,
             questionInfo: {
               number: currentQuestion,
               type: questionType === 'letters' ? 'Letters Question' :
@@ -945,7 +961,9 @@ export function KeypadInterface({
   }, [externalWindow, onExternalDisplayUpdate, calculateAnswerStats, currentQuestion, questionType]);
 
   // Add function to handle silent timer (no countdown audio)
-  const handleSilentTimer = useCallback((customDuration?: number) => {
+  const handleSilentTimer = useCallback((customDurationOrEvent?: number | any) => {
+    // Prevent passing React event objects as duration
+    const customDuration = typeof customDurationOrEvent === 'number' ? customDurationOrEvent : undefined;
     // Can now start timer without requiring an answer first
     // Use provided duration (from admin command/host flowState) or fall back to Settings-based default or 30s
     const timerLength = customDuration ?? gameModeTimers.keypad ?? 30;
@@ -1004,14 +1022,14 @@ export function KeypadInterface({
 
         // Notify parent about timer state change
         if (onTimerStateChange) {
-          onTimerStateChange(true, newValue, gameModeTimers.keypad);
+          onTimerStateChange(true, newValue, timerLength);
         }
 
         // Update external display with new timer value
         if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
           onExternalDisplayUpdate('timer', {
             timerValue: newValue < 0 ? 0 : Number(newValue.toFixed(2)),
-            totalTime: gameModeTimers.keypad,
+            totalTime: timerLength,
             questionInfo: {
               number: currentQuestion,
               type: questionType === 'letters' ? 'Letters Question' :
@@ -1650,9 +1668,9 @@ export function KeypadInterface({
   useEffect(() => {
     console.log('[KeypadInterface] Timer state changed, isTimerRunning:', isTimerRunning);
     if (onGameTimerStateChange) {
-      onGameTimerStateChange(isTimerRunning);
+      onGameTimerStateChange(isTimerRunning, isTimerRunning ? totalTimerLength : undefined);
     }
-  }, [isTimerRunning, onGameTimerStateChange]);
+  }, [isTimerRunning, totalTimerLength, onGameTimerStateChange]);
 
   // Notify parent of current screen changes for navigation bar visibility
   // Skip notification if this change originated from an external source (admin command)
@@ -2699,9 +2717,10 @@ export function KeypadInterface({
                 ) : isQuizPackMode ? (
                   currentLoadedQuestion?.answerText || 'No answer'
                 ) : (
-                  questionType === 'letters' ? (selectedLetter || remoteSubmittedAnswer || 'Unknown') :
-                  questionType === 'multiple-choice' ? (selectedAnswers.length > 0 ? selectedAnswers.join(', ') : (remoteSubmittedAnswer || 'Unknown')) :
-                  questionType === 'numbers' ? (numbersAnswer || remoteSubmittedAnswer || 'Unknown') : 'Unknown'
+                  (questionType || '').toLowerCase() === 'letters' ? (selectedLetter || remoteSubmittedAnswer || 'Unknown') :
+                  (questionType || '').toLowerCase() === 'multiple-choice' ? (selectedAnswers.length > 0 ? selectedAnswers.join(', ') : (remoteSubmittedAnswer || 'Unknown')) :
+                  (questionType || '').toLowerCase() === 'numbers' ? (numbersAnswer || remoteSubmittedAnswer || 'Unknown') :
+                  (questionType || '').toLowerCase() === 'sequence' ? (selectedSequence.length > 0 ? selectedSequence.join(', ') : (remoteSubmittedAnswer || 'Unknown')) : (remoteSubmittedAnswer || 'Unknown')
                 )}
               </div>
             </div>

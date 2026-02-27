@@ -18,7 +18,7 @@ interface NearestWinsInterfaceProps {
   onTimerLockChange?: (isLocked: boolean) => void; // Timer lock state callback
   externalWindow?: Window | null; // External display window
   onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: () => void }) => void; // Pass action handlers to parent for nav bar
-  onGameTimerStateChange?: (isTimerRunning: boolean) => void; // Notify parent of timer state changes
+  onGameTimerStateChange?: (isTimerRunning: boolean, duration?: number) => void; // Notify parent of timer state changes
   onCurrentScreenChange?: (screen: string) => void; // Notify parent of current screen changes
   onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
 }

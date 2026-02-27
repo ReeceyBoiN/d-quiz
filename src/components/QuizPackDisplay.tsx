@@ -32,7 +32,7 @@ interface QuizPackDisplayProps {
   onSpeedBonusChange?: (speedBonus: number) => void; // Callback when speed bonus slider changes
   currentRoundPoints?: number | null; // Current round points from parent
   currentRoundSpeedBonus?: number | null; // Current round speed bonus from parent
-  onGameTimerStateChange?: (isRunning: boolean) => void; // Notify parent when timer state changes
+  onGameTimerStateChange?: (isRunning: boolean, duration?: number) => void; // Notify parent when timer state changes
 }
 
 export function QuizPackDisplay({

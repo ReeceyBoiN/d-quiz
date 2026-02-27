@@ -1079,6 +1079,31 @@ export function QuizHost() {
     }
   }, [showQuizPackDisplay, flowState.isQuestionMode, loadedQuizQuestions, gameModeTimers, timer, goWideEnabled]);
 
+  // Strict Mid-Session Settings Sync: Actively recalculate timer duration when settings change mid-session
+  // but only if the timer hasn't started yet.
+  useEffect(() => {
+    // Only apply if in active question state but not running/finished
+    if (flowState.isQuestionMode && (flowState.flow === 'ready' || flowState.flow === 'sent-question')) {
+      const questionForTimer = flowState.currentQuestion || (flowState.selectedQuestionType ? { type: flowState.selectedQuestionType } : null);
+
+      if (questionForTimer) {
+        const calculatedTime = getTotalTimeForQuestion(questionForTimer, gameModeTimers);
+
+        // If the settings-derived time differs from current flow state time, update it instantly
+        if (calculatedTime !== flowState.totalTime) {
+          console.log(`[QuizHost] Strict Mid-Session Settings Sync: Updating timer duration from ${flowState.totalTime}s to ${calculatedTime}s to match settings`);
+          setFlowState(prev => ({
+            ...prev,
+            totalTime: calculatedTime,
+            // Update timeRemaining if it hasn't ticked down yet
+            timeRemaining: prev.timeRemaining === prev.totalTime ? calculatedTime : prev.timeRemaining
+          }));
+          timer.reset(calculatedTime); // ensure timer component resets to new duration
+        }
+      }
+    }
+  }, [gameModeTimers, flowState.isQuestionMode, flowState.flow, flowState.currentQuestion, flowState.selectedQuestionType, flowState.totalTime, timer]);
+
   // Handle timer when flow state changes to 'running'
   useEffect(() => {
     if ((flowState.flow as any) === 'running') {
@@ -1149,6 +1174,25 @@ export function QuizHost() {
       setShowFastestTeamDisplay(false);
     }
   }, [keypadCurrentScreen, showFastestTeamDisplay]);
+
+  // Sync on-the-spot mode game states to flow state
+  useEffect(() => {
+    if (!isQuizPackMode && (showKeypadInterface || showNearestWinsInterface || showBuzzInMode)) {
+      if (!gameTimerRunning && gameTimerFinished && !gameAnswerRevealed && flowState.flow === 'running') {
+        setFlowState(prev => ({ ...prev, flow: 'timeup' }));
+      } else if (gameAnswerRevealed && !gameFastestRevealed && flowState.flow !== 'revealed') {
+        if (!teamsAnsweredCorrectly) {
+          setFlowState(prev => ({ ...prev, flow: 'fastest' }));
+        } else {
+          setFlowState(prev => ({ ...prev, flow: 'revealed' }));
+        }
+      } else if (gameFastestRevealed && flowState.flow !== 'fastest') {
+        setFlowState(prev => ({ ...prev, flow: 'fastest' }));
+      } else if (!gameTimerRunning && !gameTimerFinished && !gameAnswerRevealed && !gameFastestRevealed && flowState.flow !== 'idle' && flowState.flow !== 'sent-question') {
+        setFlowState(prev => ({ ...prev, flow: 'idle' }));
+      }
+    }
+  }, [gameTimerRunning, gameTimerFinished, gameAnswerRevealed, gameFastestRevealed, teamsAnsweredCorrectly, isQuizPackMode, showKeypadInterface, showNearestWinsInterface, showBuzzInMode, flowState.flow]);
 
   // Cleanup effect for timer voice announcements on unmount
   useEffect(() => {
@@ -1973,7 +2017,13 @@ export function QuizHost() {
     setGameAnswerSelected(false);
     setKeypadCurrentScreen('config');
     setActiveTab("home"); // Return to home when keypad is closed
-    setFlowState(prev => ({ ...prev, isQuestionMode: false })); // Disable question mode when closing
+    setFlowState(prev => ({
+      ...prev,
+      isQuestionMode: false,
+      flow: 'idle',
+      currentQuestion: null,
+      selectedQuestionType: undefined
+    })); // Reset flow state completely when closing
   };
 
   // Handle question type selection in on-the-spot mode (from KeypadInterface)
@@ -2579,7 +2629,9 @@ export function QuizHost() {
   /**
    * Wrapper for nav bar's onStartTimer - handles both quiz pack and on-the-spot modes
    */
-  const handleNavBarStartTimer = useCallback((customDuration?: number) => {
+  const handleNavBarStartTimer = useCallback((customDurationOrEvent?: number | any) => {
+    // Prevent passing React event objects as duration
+    const customDuration = typeof customDurationOrEvent === 'number' ? customDurationOrEvent : undefined;
     console.log('[QuizHost] handleNavBarStartTimer called with customDuration:', customDuration, 'isQuizPackMode:', isQuizPackMode, 'isQuestionMode:', flowState.isQuestionMode, 'showKeypadInterface:', showKeypadInterface, 'showNearestWinsInterface:', showNearestWinsInterface, 'showBuzzInMode:', showBuzzInMode, 'showQuizPackDisplay:', showQuizPackDisplay);
 
     // For quiz pack mode: check isQuizPackMode (quiz pack specific) AND showQuizPackDisplay (UI is visible)
@@ -2611,9 +2663,10 @@ export function QuizHost() {
       // For on-the-spot modes, determine which handler to call based on game state
       if (!gameTimerRunning && !gameTimerFinished) {
         // Timer not started yet - start the timer
-        // Pass the customDuration (from admin command) to the game action handler
-        console.log('[QuizHost] Calling gameActionHandlers.startTimer with duration:', customDuration);
-        gameActionHandlers?.startTimer?.(customDuration);
+        // Pass the customDuration (from admin command) or fall back to flowState.totalTime
+        const durationToPass = customDuration ?? flowState.totalTime;
+        console.log('[QuizHost] Calling gameActionHandlers.startTimer with duration:', durationToPass);
+        gameActionHandlers?.startTimer?.(durationToPass);
       } else if (gameTimerFinished && !gameAnswerRevealed) {
         // Timer finished, next action is reveal answer
         console.log('[QuizHost] Calling gameActionHandlers.reveal (timer finished, answer not revealed)');
@@ -2637,7 +2690,9 @@ export function QuizHost() {
   /**
    * Wrapper for nav bar's onSilentTimer - handles both quiz pack and on-the-spot modes
    */
-  const handleNavBarSilentTimer = useCallback((customDuration?: number) => {
+  const handleNavBarSilentTimer = useCallback((customDurationOrEvent?: number | any) => {
+    // Prevent passing React event objects as duration
+    const customDuration = typeof customDurationOrEvent === 'number' ? customDurationOrEvent : undefined;
     console.log('[QuizHost] handleNavBarSilentTimer called with customDuration:', customDuration, 'isQuizPackMode:', isQuizPackMode, 'isQuestionMode:', flowState.isQuestionMode, 'showKeypadInterface:', showKeypadInterface, 'showQuizPackDisplay:', showQuizPackDisplay);
 
     // For quiz pack mode: check isQuizPackMode (quiz pack specific) AND showQuizPackDisplay (UI is visible)
@@ -2667,8 +2722,9 @@ export function QuizHost() {
     } else if (gameActionHandlers?.silentTimer) {
       console.log('[QuizHost] -> On-the-Spot Mode branch for silent timer');
       // For on-the-spot modes, use the game-specific silent timer handler
-      // Pass the customDuration (from admin command) to the game action handler
-      gameActionHandlers.silentTimer(customDuration);
+      // Pass the customDuration (from admin command) or fall back to flowState.totalTime
+      const durationToPass = customDuration ?? flowState.totalTime;
+      gameActionHandlers.silentTimer(durationToPass);
     }
   }, [isQuizPackMode, flowState.totalTime, showQuizPackDisplay, showKeypadInterface, externalWindow, gameActionHandlers]);
 
@@ -2850,47 +2906,42 @@ export function QuizHost() {
     // This ensures new content appears on top and old modals don't linger behind
     handleCloseAllOverlays();
 
-    // If keypad interface is open and user clicks home, close keypad interface
-    if (showKeypadInterface && tab === "home") {
-      setShowKeypadInterface(false);
-    }
-    // If quiz pack display is open and user clicks home, close quiz pack display and reset flow state
-    if (showQuizPackDisplay && tab === "home") {
-      setShowQuizPackDisplay(false);
+    // If user clicks home, completely reset game states and close all interfaces
+    if (tab === "home") {
+      // Force reset the flow state so remote knows we're back on home
       setFlowState(prev => ({
         ...prev,
-        isQuestionMode: false,
         flow: 'idle',
+        isQuestionMode: false,
+        currentQuestion: null,
+        selectedQuestionType: undefined,
       }));
-    }
-    // If buzz-in interface is open and user clicks home, close buzz-in interface
-    if (showBuzzInInterface && tab === "home") {
+
+      // Close all interfaces
+      setShowKeypadInterface(false);
+      setShowQuizPackDisplay(false);
       setShowBuzzInInterface(false);
-    }
-    // If buzz-in mode is open and user clicks home, close buzz-in mode
-    if (showBuzzInMode && tab === "home") {
       setShowBuzzInMode(false);
-    }
-    // If nearest wins interface is open and user clicks home, close nearest wins interface
-    if (showNearestWinsInterface && tab === "home") {
       setShowNearestWinsInterface(false);
+      setShowWheelSpinnerInterface(false);
+      setShowFastestTeamDisplay(false);
+      setShowBuzzersManagement(false);
+
+      // Reset timers and screens
       setNearestWinsCurrentScreen('config');
       setGameTimerRunning(false);
       setGameTimerTimeRemaining(0);
       setGameTimerTotalTime(0);
+      setGameTimerStartTime(null);
+      setGameTimerFinished(false);
+      setGameAnswerRevealed(false);
+      setGameFastestRevealed(false);
+      setTeamsAnsweredCorrectly(false);
+      setGameAnswerSelected(false);
+      setKeypadCurrentScreen('config');
+      setIsQuizPackMode(false);
     }
-    // If wheel spinner interface is open and user clicks home, close wheel spinner interface
-    if (showWheelSpinnerInterface && tab === "home") {
-      setShowWheelSpinnerInterface(false);
-    }
-    // If fastest team display is open and user clicks home, close fastest team display
-    if (showFastestTeamDisplay && tab === "home") {
-      setShowFastestTeamDisplay(false);
-    }
-    // If buzzers management is open and user clicks home, close buzzers management
-    if (showBuzzersManagement && tab === "home") {
-      setShowBuzzersManagement(false);
-    }
+
     setActiveTab(tab);
   };
 
@@ -3416,6 +3467,14 @@ export function QuizHost() {
                 total: deps.loadedQuizQuestions?.length
               });
             }
+
+            // Prevent rapid double-clicks
+            if (deps.flowState.flow === 'sent-question' || deps.flowState.flow === 'running') {
+              console.log('[QuizHost] Ignoring send-question: Already sent or running');
+              success = true;
+              break;
+            }
+
             // Call the primary action handler which manages game flow progression
             deps.handlePrimaryAction();
             success = true;
@@ -3472,12 +3531,19 @@ export function QuizHost() {
               // For on-the-spot, reset flow and broadcast next
               // Use default keypad timer as placeholder until user selects next question type
               const defaultOnTheSpotTimer = deps.gameModeTimers.keypad || 30;
-              deps.setFlowState({
+              deps.setFlowState(prev => ({
+                ...prev,
                 flow: 'idle',
                 isQuestionMode: true, // Keep in question mode for next type selection
                 totalTime: defaultOnTheSpotTimer, // Use settings default, not hardcoded
                 selectedQuestionType: undefined, // Clear question type for next round
-              });
+                answerSubmitted: undefined, // Clear submitted answer
+              }));
+
+              if (deps.gameActionHandlers?.nextQuestion) {
+                deps.gameActionHandlers.nextQuestion();
+              }
+
               sendNextQuestion();
               // Reset team answers/times for next round
               setTeamAnswers({});
@@ -3496,6 +3562,14 @@ export function QuizHost() {
             if (DEBUG) {
               console.log('[QuizHost] Executing: Reveal Answer');
             }
+
+            // Prevent rapid double-clicks/feedback loops
+            if (deps.flowState.flow === 'revealed' || deps.flowState.flow === 'fastest') {
+              console.log('[QuizHost] Ignoring reveal-answer: Already revealed');
+              success = true;
+              break;
+            }
+
             // Trigger reveal answer and transition flowState
             // For on-the-spot mode (keypad), call gameActionHandlers.reveal() to trigger KeypadInterface's reveal
             // For quiz pack mode, call handleRevealAnswer() to handle quiz pack scoring
@@ -3509,9 +3583,9 @@ export function QuizHost() {
                 console.log('[QuizHost] Reveal Answer: Using handleRevealAnswer for quiz pack mode');
               }
               deps.handleRevealAnswer();
+              // Also call handlePrimaryAction to transition flowState from running/timeup to revealed/fastest
+              deps.handlePrimaryAction();
             }
-            // Also call handlePrimaryAction to transition flowState from running/timeup to revealed/fastest
-            deps.handlePrimaryAction();
             success = true;
             // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
             // This prevents duplicate broadcasts
@@ -3521,8 +3595,25 @@ export function QuizHost() {
             if (DEBUG) {
               console.log('[QuizHost] Executing: Show Fastest Team');
             }
-            // Trigger showing fastest team - call primary action to progress game state
-            deps.handlePrimaryAction();
+
+            // Prevent rapid double-clicks
+            if (deps.flowState.flow === 'fastest') {
+              console.log('[QuizHost] Ignoring show-fastest: Already showing fastest');
+              success = true;
+              break;
+            }
+
+            // For on-the-spot mode (keypad), call gameActionHandlers.revealFastestTeam() to trigger KeypadInterface's fastest team logic
+            if (!deps.isQuizPackMode && deps.gameActionHandlers?.revealFastestTeam) {
+              if (DEBUG) {
+                console.log('[QuizHost] Show Fastest Team: Using gameActionHandlers.revealFastestTeam for on-the-spot mode');
+              }
+              deps.gameActionHandlers.revealFastestTeam();
+            } else {
+              // For quiz pack mode, handlePrimaryAction handles state progression
+              deps.handlePrimaryAction();
+            }
+
             success = true;
             // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
             // This prevents duplicate broadcasts
@@ -3550,27 +3641,30 @@ export function QuizHost() {
               console.log('[QuizHost] Executing: Start Silent Timer', { commandData });
             }
 
-            // Determine correct timer duration based on current game mode and settings
-            // This ensures the remote trigger uses the same timer as UI buttons
-            let timerDuration: number;
-
-            if (!commandData?.seconds) {
-              // No explicit duration provided - determine from game mode and settings
-              // For quiz pack / question mode, use flowState.totalTime (which was set by getTotalTimeForQuestion)
-              if (deps.flowState.isQuestionMode || deps.flowState.flow !== 'idle') {
-                timerDuration = deps.flowState.totalTime || 30;
-              } else {
-                // Fallback: shouldn't happen if game is in proper state
-                timerDuration = 30;
-              }
-            } else {
-              // Custom duration provided (unlikely from remote, but support it)
-              timerDuration = validateTimerDuration(commandData.seconds);
+            // Prevent feedback loops/rapid clicks
+            if (deps.flowState.flow === 'running') {
+              console.log('[QuizHost] Ignoring start-silent-timer: Timer already running');
+              success = true;
+              break;
             }
 
-            console.log('[QuizHost] Silent timer - resolved duration:', {
-              commandDataSeconds: commandData?.seconds,
-              flowStateTotalTime: deps.flowState.totalTime,
+            // Determine correct timer duration strictly from host settings
+            // This ensures the remote trigger uses exactly the same timer as UI buttons
+            let timerDuration = deps.flowState.totalTime || 30;
+
+            if (!deps.isQuizPackMode && deps.gameModeTimers) {
+              if (deps.showKeypadInterface) {
+                timerDuration = deps.gameModeTimers.keypad || timerDuration;
+              } else if (deps.showNearestWinsInterface) {
+                timerDuration = deps.gameModeTimers.nearestWins || timerDuration;
+              } else if (deps.showBuzzInMode) {
+                timerDuration = deps.gameModeTimers.buzzin || timerDuration;
+              }
+            }
+
+            console.log('[QuizHost] Silent timer - resolved duration (Host Authoritative):', {
+              ignoredRemoteSeconds: commandData?.seconds,
+              hostTotalTime: deps.flowState.totalTime,
               finalTimerDuration: timerDuration,
               isQuestionMode: deps.flowState.isQuestionMode,
               flowState: deps.flowState.flow
@@ -3600,28 +3694,30 @@ export function QuizHost() {
               console.log('[QuizHost] Executing: Start Normal Timer', { commandData });
             }
 
-            // Determine correct timer duration based on current game mode and settings
-            // This ensures the remote trigger uses the same timer as UI buttons
-            let timerDuration: number;
-
-            if (!commandData?.seconds) {
-              // No explicit duration provided - determine from game mode and settings
-              // For quiz pack / question mode, use flowState.totalTime (which was set by getTotalTimeForQuestion)
-              if (deps.flowState.isQuestionMode || deps.flowState.flow !== 'idle') {
-                timerDuration = deps.flowState.totalTime || 30;
-              } else {
-                // Fallback: shouldn't happen if game is in proper state
-                timerDuration = 30;
-              }
-            } else {
-              // Custom duration provided (unlikely from remote, but support it)
-              timerDuration = validateTimerDuration(commandData.seconds);
-              console.log('[QuizHost] Using custom duration for normal timer:', timerDuration);
+            // Prevent feedback loops/rapid clicks
+            if (deps.flowState.flow === 'running') {
+              console.log('[QuizHost] Ignoring start-normal-timer: Timer already running');
+              success = true;
+              break;
             }
 
-            console.log('[QuizHost] Normal timer - resolved duration:', {
-              commandDataSeconds: commandData?.seconds,
-              flowStateTotalTime: deps.flowState.totalTime,
+            // Determine correct timer duration strictly from host settings
+            // This ensures the remote trigger uses exactly the same timer as UI buttons
+            let timerDuration = deps.flowState.totalTime || 30;
+
+            if (!deps.isQuizPackMode && deps.gameModeTimers) {
+              if (deps.showKeypadInterface) {
+                timerDuration = deps.gameModeTimers.keypad || timerDuration;
+              } else if (deps.showNearestWinsInterface) {
+                timerDuration = deps.gameModeTimers.nearestWins || timerDuration;
+              } else if (deps.showBuzzInMode) {
+                timerDuration = deps.gameModeTimers.buzzin || timerDuration;
+              }
+            }
+
+            console.log('[QuizHost] Normal timer - resolved duration (Host Authoritative):', {
+              ignoredRemoteSeconds: commandData?.seconds,
+              hostTotalTime: deps.flowState.totalTime,
               finalTimerDuration: timerDuration,
               isQuestionMode: deps.flowState.isQuestionMode,
               flowState: deps.flowState.flow,
@@ -3652,6 +3748,14 @@ export function QuizHost() {
 
           case 'stop-timer':
             console.log('[QuizHost] Executing: Stop Timer');
+
+            // Prevent redundant stop commands which could cause feedback loops
+            if (deps.flowState.flow !== 'running') {
+              console.log('[QuizHost] Ignoring stop-timer: Timer not running');
+              success = true;
+              break;
+            }
+
             // Stop countdown audio on host
             stopCountdownAudio();
             // Clear timer start time
@@ -5769,7 +5873,17 @@ export function QuizHost() {
               currentQuestionIndex={currentLoadedQuestionIndex}
               isQuizPackMode={isQuizPackMode}
               onGetActionHandlers={setGameActionHandlers}
-              onGameTimerStateChange={setGameTimerRunning}
+              onGameTimerStateChange={(isRunning, duration) => {
+                setGameTimerRunning(isRunning);
+                if (isRunning) setGameTimerFinished(false);
+                if (isRunning && !isQuizPackMode) {
+                  setFlowState(prev => ({
+                    ...prev,
+                    flow: 'running',
+                    ...(duration !== undefined ? { totalTime: duration } : {})
+                  }));
+                }
+              }}
               onCurrentScreenChange={setKeypadCurrentScreen}
               onGameTimerUpdate={(remaining, total) => {
                 setGameTimerTimeRemaining(remaining);
@@ -5783,6 +5897,7 @@ export function QuizHost() {
               onTimerStart={handleGameTimerStart}
               onSelectQuestionType={handleSelectQuestionType}
               externalCurrentScreen={keypadCurrentScreen}
+              externalQuestionType={flowState.selectedQuestionType as any}
               answerSubmitted={flowState.answerSubmitted}
               onAnswerConfirmed={(answer) => {
                 // When user confirms answer locally, update flowState
@@ -5848,7 +5963,16 @@ export function QuizHost() {
             onSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
             currentRoundPoints={currentRoundPoints}
             currentRoundSpeedBonus={currentRoundSpeedBonus}
-            onGameTimerStateChange={setGameTimerRunning}
+            onGameTimerStateChange={(isRunning, duration) => {
+              setGameTimerRunning(isRunning);
+              if (isRunning && !isQuizPackMode) {
+                setFlowState(prev => ({
+                  ...prev,
+                  flow: 'running',
+                  ...(duration !== undefined ? { totalTime: duration } : {})
+                }));
+              }
+            }}
           />
         </div>
       );
@@ -5884,7 +6008,16 @@ export function QuizHost() {
             onExternalDisplayUpdate={handleExternalDisplayUpdate}
             onAwardPoints={handleNearestWinsAwardPoints}
             onGetActionHandlers={setGameActionHandlers}
-            onGameTimerStateChange={setGameTimerRunning}
+            onGameTimerStateChange={(isRunning, duration) => {
+              setGameTimerRunning(isRunning);
+              if (isRunning && !isQuizPackMode) {
+                setFlowState(prev => ({
+                  ...prev,
+                  flow: 'running',
+                  ...(duration !== undefined ? { totalTime: duration } : {})
+                }));
+              }
+            }}
             onCurrentScreenChange={setNearestWinsCurrentScreen}
             onGameTimerUpdate={(remaining, total) => {
               setGameTimerTimeRemaining(remaining);
@@ -6136,30 +6269,40 @@ export function QuizHost() {
             onSilentTimer={handleNavBarSilentTimer}
             onHideQuestion={handleHideQuestion}
             onSendQuestion={handlePrimaryAction}
-            onReveal={
-              isQuizPackMode || flowState.isQuestionMode
-                ? () => {
-                    handleRevealAnswer();
-                    handlePrimaryAction();
-                  }
-                : gameActionHandlers?.reveal ?? (() => {})
-            }
+            onReveal={() => {
+              if (isQuizPackMode) {
+                handleRevealAnswer();
+                handlePrimaryAction();
+              } else {
+                gameActionHandlers?.reveal?.();
+              }
+            }}
             onNextAction={() => {
-              if (isQuizPackMode || flowState.isQuestionMode) {
+              if (isQuizPackMode) {
                 // Quiz pack mode - use primary action handler which manages flow state machine
                 handlePrimaryAction();
-              } else if (gameActionHandlers?.nextQuestion) {
-                // On-the-spot mode - use game action handlers
-                gameActionHandlers.nextQuestion();
+              } else {
+                // On-the-spot mode - use game action handlers AND update flow state
+                gameActionHandlers?.nextQuestion?.();
+                const defaultOnTheSpotTimer = gameModeTimers.keypad || 30;
+                setFlowState(prev => ({
+                  ...prev,
+                  flow: 'idle',
+                  isQuestionMode: true,
+                  totalTime: defaultOnTheSpotTimer,
+                  selectedQuestionType: undefined,
+                  answerSubmitted: undefined,
+                }));
+                sendNextQuestion();
               }
             }}
             onRevealFastestTeam={() => {
-              if (isQuizPackMode || flowState.isQuestionMode) {
+              if (isQuizPackMode) {
                 // Quiz pack mode - use primary action handler to transition flow state
                 handlePrimaryAction();
-              } else if (gameActionHandlers?.revealFastestTeam) {
-                // On-the-spot mode - use game action handlers
-                gameActionHandlers.revealFastestTeam();
+              } else {
+                // On-the-spot mode - use game action handlers AND update flow state
+                gameActionHandlers?.revealFastestTeam?.();
               }
             }}
             onPreviousQuestion={() => {
@@ -6172,8 +6315,18 @@ export function QuizHost() {
             onNextQuestion={() => {
               if (isQuizPackMode) {
                 handleQuizPackNext();
-              } else if (gameActionHandlers?.nextQuestion) {
-                gameActionHandlers.nextQuestion();
+              } else {
+                gameActionHandlers?.nextQuestion?.();
+                const defaultOnTheSpotTimer = gameModeTimers.keypad || 30;
+                setFlowState(prev => ({
+                  ...prev,
+                  flow: 'idle',
+                  isQuestionMode: true,
+                  totalTime: defaultOnTheSpotTimer,
+                  selectedQuestionType: undefined,
+                  answerSubmitted: undefined,
+                }));
+                sendNextQuestion();
               }
             }}
             showNavigationArrows={

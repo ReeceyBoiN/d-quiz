@@ -69,7 +69,10 @@ export function useNetworkConnection({
           const response = await fetch(apiUrl, { signal: AbortSignal.timeout(5000) });
           if (response.ok) {
             const hostInfo = await response.json();
-            wsUrl = hostInfo.wsUrl;
+            // Use the host we successfully reached, rather than the one the server guesses
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const port = hostInfo.port || 4310;
+            wsUrl = `${wsProtocol}//${currentHost}:${port}/events`;
             console.log(`✅ [Player] Got host info from server - Using WebSocket URL: ${wsUrl}`);
           } else {
             console.warn(`⚠️  [Player] Host info endpoint returned status ${response.status}`);

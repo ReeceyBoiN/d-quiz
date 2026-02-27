@@ -65,71 +65,48 @@ interface SettingsProviderProps {
 export function SettingsProvider({ children }: SettingsProviderProps) {
   // Application version - read-only, not saved to localStorage
   const version = "25.12.10";
-  
-  const [defaultPoints, setDefaultPoints] = useState(4);
-  const [defaultSpeedBonus, setDefaultSpeedBonus] = useState(2);
-  const [gameModePoints, setGameModePoints] = useState<GameModePoints>({
+
+  // Helper to get initial settings synchronously
+  const getInitialSettings = () => {
+    try {
+      const savedSettings = localStorage.getItem('quizHostSettings');
+      if (savedSettings) {
+        return JSON.parse(savedSettings);
+      }
+    } catch (e) {
+      console.error('Failed to parse saved settings:', e);
+    }
+    return {};
+  };
+
+  const initialSettings = getInitialSettings();
+
+  const [defaultPoints, setDefaultPoints] = useState(initialSettings.defaultPoints !== undefined ? initialSettings.defaultPoints : 4);
+  const [defaultSpeedBonus, setDefaultSpeedBonus] = useState(initialSettings.defaultSpeedBonus !== undefined ? initialSettings.defaultSpeedBonus : 2);
+  const [gameModePoints, setGameModePoints] = useState<GameModePoints>(initialSettings.gameModePoints || {
     keypad: 4,
     buzzin: 4,
     nearestwins: 4,
     wheelspinner: 4
   });
-  const [gameModeTimers, setGameModeTimers] = useState<GameModeTimers>({
+  const [gameModeTimers, setGameModeTimers] = useState<GameModeTimers>(initialSettings.gameModeTimers || {
     keypad: 30,
     buzzin: 30,
     nearestwins: 10
   });
-  const [nearestWinsTimer, setNearestWinsTimer] = useState(10);
-  const [keypadDesign, setKeypadDesign] = useState<KeypadDesign>("neon-glow"); // Default to Neon Glow
-  const [responseTimesEnabled, setResponseTimesEnabled] = useState(true); // Default to true for testing
-  const [teamPhotosAutoApprove, setTeamPhotosAutoApprove] = useState(false);
-  const [goWideEnabled, setGoWideEnabled] = useState(false);
-  const [evilModeEnabled, setEvilModeEnabled] = useState(false);
-  const [staggeredEnabled, setStaggeredEnabled] = useState(false);
-  const [punishmentEnabled, setPunishmentEnabled] = useState(false);
-  const [voiceCountdown, setVoiceCountdown] = useState(true);
-  const [hideQuizPackAnswers, setHideQuizPackAnswers] = useState(false);
-  const [buzzerFolderPath, setBuzzerFolderPath] = useState<string | null>(null);
+  const [nearestWinsTimer, setNearestWinsTimer] = useState(initialSettings.nearestWinsTimer || 10);
+  const [keypadDesign, setKeypadDesign] = useState<KeypadDesign>(initialSettings.keypadDesign || "neon-glow"); // Default to Neon Glow
+  const [responseTimesEnabled, setResponseTimesEnabled] = useState(initialSettings.responseTimesEnabled !== undefined ? initialSettings.responseTimesEnabled : true); // Default to true for testing
+  const [teamPhotosAutoApprove, setTeamPhotosAutoApprove] = useState(initialSettings.teamPhotosAutoApprove === true || initialSettings.teamPhotosAutoApprove === 'true');
+  const [goWideEnabled, setGoWideEnabled] = useState(initialSettings.goWideEnabled || false);
+  const [evilModeEnabled, setEvilModeEnabled] = useState(initialSettings.evilModeEnabled || false);
+  const [staggeredEnabled, setStaggeredEnabled] = useState(initialSettings.staggeredEnabled || false);
+  const [punishmentEnabled, setPunishmentEnabled] = useState(initialSettings.punishmentEnabled || false);
+  const [voiceCountdown, setVoiceCountdown] = useState(initialSettings.voiceCountdown !== undefined ? initialSettings.voiceCountdown : true);
+  const [hideQuizPackAnswers, setHideQuizPackAnswers] = useState(initialSettings.hideQuizPackAnswers || false);
+  const [buzzerFolderPath, setBuzzerFolderPath] = useState<string | null>(initialSettings.buzzerFolderPath || null);
 
-  // Load settings from localStorage on mount
-  useEffect(() => {
-    const savedSettings = localStorage.getItem('quizHostSettings');
-    if (savedSettings) {
-      try {
-        const parsed = JSON.parse(savedSettings);
-        const newGameModePoints = parsed.gameModePoints || {
-          keypad: 4,
-          buzzin: 4,
-          nearestwins: 4,
-          wheelspinner: 4
-        };
-        const newGameModeTimers = parsed.gameModeTimers || {
-          keypad: 30,
-          buzzin: 30,
-          nearestwins: 10
-        };
-        
-        setDefaultPoints(parsed.defaultPoints !== undefined ? parsed.defaultPoints : 4);
-        setDefaultSpeedBonus(parsed.defaultSpeedBonus !== undefined ? parsed.defaultSpeedBonus : 2);
-        setGameModePoints(newGameModePoints);
-        setGameModeTimers(newGameModeTimers);
-        setNearestWinsTimer(parsed.nearestWinsTimer || 10);
-        setKeypadDesign(parsed.keypadDesign || "neon-glow");
-        setResponseTimesEnabled(parsed.responseTimesEnabled !== undefined ? parsed.responseTimesEnabled : true);
-        setTeamPhotosAutoApprove(parsed.teamPhotosAutoApprove === true || parsed.teamPhotosAutoApprove === 'true');
-        setGoWideEnabled(parsed.goWideEnabled || false);
-        setEvilModeEnabled(parsed.evilModeEnabled || false);
-        setStaggeredEnabled(parsed.staggeredEnabled || false);
-        setPunishmentEnabled(parsed.punishmentEnabled || false);
-        setVoiceCountdown(parsed.voiceCountdown !== undefined ? parsed.voiceCountdown : true);
-        setHideQuizPackAnswers(parsed.hideQuizPackAnswers || false);
-        setBuzzerFolderPath(parsed.buzzerFolderPath || null);
-      } catch (error) {
-        console.error('Failed to parse saved settings:', error);
-      }
-    }
-  }, []);
-
+  // Remove the useEffect that loads settings on mount as it is now done synchronously
   // Listen for storage changes (when settings are updated in Settings component)
   useEffect(() => {
     const handleStorageChange = () => {
