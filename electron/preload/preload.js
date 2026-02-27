@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 // ============================================================
 // 🧱 Internal helpers
@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('api', {
     minimize: () => invoke('window/minimize'),
     maximize: () => invoke('window/maximize'),
     close: () => invoke('window/close'),
+    setZoomLevel: (level) => webFrame.setZoomLevel(level),
+    getZoomLevel: () => webFrame.getZoomLevel(),
   },
 
   // --- Quiz actions ---

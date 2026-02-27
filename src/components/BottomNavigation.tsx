@@ -1108,7 +1108,7 @@ export function StatusBar({
             title="Buzzer Management"
           >
             <Volume2 className="h-4 w-4 shrink-0" />
-            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">Buzzers</span>
+            <span className="text-[10px] leading-tight break-words whitespace-normal text-center">Buzzers</span>
           </button>
 
           {/* Empty Lobby */}
@@ -1119,7 +1119,7 @@ export function StatusBar({
             title="Empty Lobby"
           >
             <UserMinus className="h-4 w-4 shrink-0" />
-            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">Empty Lobby</span>
+            <span className="text-[10px] leading-tight break-words whitespace-normal text-center">Empty Lobby</span>
           </button>
 
           {/* Team Photos */}
@@ -1138,7 +1138,7 @@ export function StatusBar({
             title={hasPendingTeamPhotos ? "Team photo pending approval! Click to view" : "Team Photos"}
           >
             <Camera className="h-4 w-4 shrink-0" />
-            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">Team Photos</span>
+            <span className="text-[10px] leading-tight break-words whitespace-normal text-center">Team Photos</span>
           </button>
 
           {/* Pause Scores */}
@@ -1153,7 +1153,7 @@ export function StatusBar({
             title={scoresPaused ? "Scores are paused - click to unpause" : "Pause all score changes"}
           >
             <Pause className="h-4 w-4 shrink-0" />
-            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">{scoresPaused ? 'Scores Paused' : 'Pause Scores'}</span>
+            <span className="text-[10px] leading-tight break-words whitespace-normal text-center">{scoresPaused ? 'Scores Paused' : 'Pause Scores'}</span>
           </button>
 
           {/* Scramble Keypad */}
@@ -1181,7 +1181,7 @@ export function StatusBar({
             })()}
           >
             <RotateCcw className="h-4 w-4 shrink-0" />
-            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">
+            <span className="text-[10px] leading-tight break-words whitespace-normal text-center">
               {(() => {
                 if (!teams || teams.length === 0) return "Scramble Keypad";
                 const scrambledCount = teams.filter(team => team.scrambled).length;
@@ -1201,7 +1201,7 @@ export function StatusBar({
             title="Clear Scores"
           >
             <Trash2 className="h-4 w-4 shrink-0" />
-            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">Clear Scores</span>
+            <span className="text-[10px] leading-tight break-words whitespace-normal text-center">Clear Scores</span>
           </button>
 
           {/* Hide Scores & Positions */}
@@ -1216,7 +1216,7 @@ export function StatusBar({
             title={scoresHidden ? "Scores are hidden - click to show" : "Hide Scores & Positions"}
           >
             <EyeOff className="h-4 w-4 shrink-0" />
-            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">{scoresHidden ? 'Scores Hidden' : 'Hide Scores & Positions'}</span>
+            <span className="text-[10px] leading-tight break-words whitespace-normal text-center">{scoresHidden ? 'Scores Hidden' : 'Hide Scores & Positions'}</span>
           </button>
 
           {/* Font Size Down */}
@@ -1260,7 +1260,7 @@ export function StatusBar({
             }
           >
             <LayoutGrid className="h-4 w-4 shrink-0" />
-            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">
+            <span className="text-[10px] leading-tight break-words whitespace-normal text-center">
               {teamLayoutMode === 'default' ? 'Change Teams Layout' :
                teamLayoutMode === 'alphabetical' ? 'Layout: Alphabetical' :
                'Layout: Random'}
@@ -1287,7 +1287,7 @@ export function StatusBar({
             }
           >
             <Gamepad2 className="h-4 w-4 shrink-0" />
-            <span className="text-[11px] leading-tight break-words whitespace-normal text-center">
+            <span className="text-[10px] leading-tight break-words whitespace-normal text-center">
               {hostControllerEnabled && hostControllerAuthenticated
                 ? `✓ Controller (${hostControllerCode})`
                 : hostControllerEnabled

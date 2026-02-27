@@ -16,6 +16,38 @@ function AppInner() {
     initHostNetwork({ enabled: true });
   }, []);
 
+  // Zoom controls: Ctrl+/Ctrl- keyboard shortcuts
+  useEffect(() => {
+    const handleZoom = (e: KeyboardEvent) => {
+      // Check for Ctrl (Windows/Linux) or Cmd (Mac)
+      if (!(e.ctrlKey || e.metaKey)) return;
+
+      const api = (window as any).api;
+      if (!api?.window?.setZoomLevel || !api?.window?.getZoomLevel) return;
+
+      // Ctrl/Cmd + "+" or "="
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        const currentZoom = api.window.getZoomLevel();
+        api.window.setZoomLevel(currentZoom + 0.5);
+      }
+      // Ctrl/Cmd + "-"
+      else if (e.key === '-') {
+        e.preventDefault();
+        const currentZoom = api.window.getZoomLevel();
+        api.window.setZoomLevel(currentZoom - 0.5);
+      }
+      // Ctrl/Cmd + "0" (reset zoom)
+      else if (e.key === '0') {
+        e.preventDefault();
+        api.window.setZoomLevel(0);
+      }
+    };
+
+    window.addEventListener('keydown', handleZoom);
+    return () => window.removeEventListener('keydown', handleZoom);
+  }, []);
+
   // Sync saved buzzer folder path to backend on app startup
   useEffect(() => {
     const syncBuzzerFolderPathToBackend = async () => {

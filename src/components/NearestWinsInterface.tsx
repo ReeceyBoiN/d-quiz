@@ -24,7 +24,7 @@ interface NearestWinsInterfaceProps {
   onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
   remoteSubmittedAnswer?: string; // Sync remote answer submission
   onFlowStateChange?: (flow: string) => void; // Sync flow state for remote controls
-  onAnswerConfirmed?: (answer: string) => void; // Notify parent of confirmed answer
+  onAnswerConfirmed?: (answer: string | undefined) => void; // Notify parent of confirmed answer
 }
 
 export function NearestWinsInterface({
@@ -73,7 +73,12 @@ export function NearestWinsInterface({
     setCorrectAnswer(null);
     setTeamAnswers({});
     setSubmissions([]);
-    
+
+    // Clear parent flowState answer
+    if (onAnswerConfirmed) {
+      onAnswerConfirmed(undefined);
+    }
+
     // Clear team answers in the parent component (teams column)
     if (onTeamAnswerUpdate) {
       onTeamAnswerUpdate({});
@@ -118,7 +123,12 @@ export function NearestWinsInterface({
     setCorrectAnswer(null);
     setTeamAnswers({});
     setSubmissions([]);
-    
+
+    // Clear parent flowState answer
+    if (onAnswerConfirmed) {
+      onAnswerConfirmed(undefined);
+    }
+
     // Clear team answers in the parent component (teams column)
     if (onTeamAnswerUpdate) {
       onTeamAnswerUpdate({});
@@ -676,6 +686,11 @@ export function NearestWinsInterface({
     setCorrectAnswer(null);
     setTeamAnswers({});
     setQuestionNumber(prev => prev + 1); // Increment question number
+
+    // Clear parent flowState answer
+    if (onAnswerConfirmed) {
+      onAnswerConfirmed(undefined);
+    }
 
     // Reset submissions for all teams
     const teamData = teams.length > 0 ? teams : mockTeams;

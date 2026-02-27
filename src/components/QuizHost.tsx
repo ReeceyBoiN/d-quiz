@@ -1882,16 +1882,17 @@ export function QuizHost() {
     // Stop countdown audio if playing
     stopCountdownAudio();
 
-    // Reset quiz pack flow state if applicable
-    if (showQuizPackDisplay && flowState.isQuestionMode) {
-      setFlowState(prev => ({
-        ...prev,
-        isQuestionMode: false,
-        flow: 'idle',
-      }));
-      setHideQuestionMode(false);
-      timer.stop();
-    }
+    // Reset flow state back to initial values to ensure a clean slate for next round
+    setFlowState(prev => ({
+      ...prev,
+      isQuestionMode: false,
+      flow: 'idle',
+      answerSubmitted: undefined,
+      pictureSent: false,
+      questionSent: false,
+    }));
+    setHideQuestionMode(false);
+    timer.stop();
 
     // Clear loaded quiz questions to prevent on-the-spot mode from auto-detecting previous quiz pack question types
     console.log('[QuizHost] ⚠️  About to clear loadedQuizQuestions');
