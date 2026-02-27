@@ -7,6 +7,7 @@ import { Checkbox } from "./ui/checkbox";
 import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
 import { sendTimeUpToPlayers } from "../network/wsHost";
+import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 interface NearestWinsInterfaceProps {
   onBack: () => void;
   onExternalDisplayUpdate?: (data: any) => void;
@@ -17,13 +18,33 @@ interface NearestWinsInterfaceProps {
   onCurrentRoundWinnerPointsChange?: (winnerPoints: number) => void; // Handler for winner points changes
   onTimerLockChange?: (isLocked: boolean) => void; // Timer lock state callback
   externalWindow?: Window | null; // External display window
-  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: () => void }) => void; // Pass action handlers to parent for nav bar
+  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: (isSilent?: boolean) => void; silentTimer?: () => void }) => void; // Pass action handlers to parent for nav bar
   onGameTimerStateChange?: (isTimerRunning: boolean, duration?: number) => void; // Notify parent of timer state changes
   onCurrentScreenChange?: (screen: string) => void; // Notify parent of current screen changes
   onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
+  remoteSubmittedAnswer?: string; // Sync remote answer submission
+  onFlowStateChange?: (flow: string) => void; // Sync flow state for remote controls
+  onAnswerConfirmed?: (answer: string) => void; // Notify parent of confirmed answer
 }
 
-export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = [], onTeamAnswerUpdate, onAwardPoints, currentRoundWinnerPoints, onCurrentRoundWinnerPointsChange, onTimerLockChange, externalWindow, onGetActionHandlers, onGameTimerStateChange, onCurrentScreenChange, onGameTimerUpdate }: NearestWinsInterfaceProps) {
+export function NearestWinsInterface({
+  onBack,
+  onExternalDisplayUpdate,
+  teams = [],
+  onTeamAnswerUpdate,
+  onAwardPoints,
+  currentRoundWinnerPoints,
+  onCurrentRoundWinnerPointsChange,
+  onTimerLockChange,
+  externalWindow,
+  onGetActionHandlers,
+  onGameTimerStateChange,
+  onCurrentScreenChange,
+  onGameTimerUpdate,
+  remoteSubmittedAnswer,
+  onFlowStateChange,
+  onAnswerConfirmed
+}: NearestWinsInterfaceProps) {
   const { nearestWinsTimer, gameModePoints, voiceCountdown, keypadDesign } = useSettings();
 
   // Wrapper function to clear team answers when going back
@@ -31,6 +52,9 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
     console.log('NearestWins: handleBackWithCleanup called');
     
     // Reset all local state
+    if (onFlowStateChange) {
+      onFlowStateChange('idle');
+    }
     setCurrentScreen('config');
     setGameActive(false);
     setAnswerRevealed(false);
@@ -74,6 +98,9 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
     console.log('NearestWins: handleBackToConfig called');
     
     // Reset game state
+    if (onFlowStateChange) {
+      onFlowStateChange('idle');
+    }
     setGameActive(false);
     setAnswerRevealed(false);
     setCountdown(null);
@@ -146,6 +173,25 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
   const [questionNumber, setQuestionNumber] = useState(1);
   const [timerLocked, setTimerLocked] = useState(false); // Lock state to prevent submissions after timer ends
   
+  // Handle remote answer submission sync
+  useEffect(() => {
+    if (remoteSubmittedAnswer !== undefined && currentScreen === 'playing' && !answerConfirmed) {
+      // Validate it's a number
+      const parsedNumber = parseInt(remoteSubmittedAnswer);
+      if (!isNaN(parsedNumber)) {
+        setAnswer(remoteSubmittedAnswer);
+        setCorrectAnswer(parsedNumber);
+        setAnswerConfirmed(true);
+        console.log('NearestWins: Synced remote answer submission:', remoteSubmittedAnswer);
+
+        // If timer has finished, move to results immediately
+        if (!isTimerRunning && countdown === 0) {
+          setCurrentScreen('results');
+        }
+      }
+    }
+  }, [remoteSubmittedAnswer, currentScreen, answerConfirmed, isTimerRunning, countdown]);
+
   // Keypad Design Configurations (matching KeypadInterface)
   const keypadDesigns = {
     "neon-glow": {
@@ -234,29 +280,33 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
   const currentDesign = keypadDesigns[keypadDesign] || keypadDesigns["neon-glow"];
   
   // Mock team data for demonstration
-  const mockTeams = [
+  const mockTeams = useMemo(() => [
     { id: "1", name: "Ahmad" },
     { id: "2", name: "Fatima" },
     { id: "3", name: "Omar" },
     { id: "4", name: "Aisha" },
     { id: "5", name: "Hassan" }
-  ];
+  ], []);
 
   // Mock results for demonstration
-  const mockResults = {
-    winner: { name: "Ahmad", guess: 52, difference: 2 },
-    runnerUp: { name: "Fatima", guess: 47, difference: 3 },
+  const mockResults = useMemo(() => ({
+    winner: { id: "1", name: "Ahmad", guess: 52, difference: 2 },
+    winners: [{ id: "1", name: "Ahmad", guess: 52, difference: 2 }],
+    runnerUp: { id: "2", name: "Fatima", guess: 47, difference: 3 },
     submissions: [
-      { name: "Ahmad", guess: 52, difference: 2, rank: 1 },
-      { name: "Fatima", guess: 47, difference: 3, rank: 2 },
-      { name: "Omar", guess: 58, difference: 8, rank: 3 },
-      { name: "Aisha", guess: 42, difference: 8, rank: 4 },
-      { name: "Hassan", guess: 65, difference: 15, rank: 5 }
+      { id: "1", name: "Ahmad", guess: 52, difference: 2, rank: 1 },
+      { id: "2", name: "Fatima", guess: 47, difference: 3, rank: 2 },
+      { id: "3", name: "Omar", guess: 58, difference: 8, rank: 3 },
+      { id: "4", name: "Aisha", guess: 42, difference: 8, rank: 4 },
+      { id: "5", name: "Hassan", guess: 65, difference: 15, rank: 5 }
     ]
-  };
+  }), []);
 
   // Start the round
   const handleStartRound = () => {
+    if (onFlowStateChange) {
+      onFlowStateChange('sent-question');
+    }
     setCurrentScreen('playing');
     setGameActive(true);
     setAnswerRevealed(false);
@@ -328,19 +378,28 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
   };
 
   // Start timer for submissions
-  const handleStartTimer = () => {
+  const handleStartTimer = useCallback((isSilent: boolean = false) => {
+    // Stop any existing countdown audio first
+    stopCountdownAudio();
+
+    // Play countdown audio
+    // The audio utility handles the +1 buffer automatically
+    playCountdownAudio(nearestWinsTimer, isSilent).catch(err =>
+      console.error('[NearestWins] Audio playback error:', err)
+    );
+
     setTotalTimerLength(nearestWinsTimer); // Set total timer length for progress bar
     setIsTimerRunning(true);
     setTimerHasBeenStarted(true); // Mark timer as started
     setTimerLocked(false); // Unlock timer when starting
-    
+
     // Notify parent component about timer lock state
     if (onTimerLockChange) {
       onTimerLockChange(false);
     }
-    
+
     setCountdown(nearestWinsTimer); // Use setting from context
-    
+
     const initialDisplayData = {
       timerValue: nearestWinsTimer,
       targetNumber: targetNumber[0],
@@ -351,19 +410,16 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
       },
       gameMode: 'nearestwins'
     };
-    
+
     console.log('NearestWins: Starting timer and sending initial display update', {
       nearestWinsTimer,
       initialTimerValue: nearestWinsTimer,
       displayData: initialDisplayData,
       externalWindow: !!externalWindow,
-      windowClosed: externalWindow ? externalWindow.closed : 'no window'
+      windowClosed: externalWindow ? externalWindow.closed : 'no window',
+      isSilent
     });
-    
 
-    
-
-    
     // Update external display to show timer immediately with full timer value
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
       console.log('NearestWins: Actually sending INITIAL timer update to external display');
@@ -371,28 +427,33 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
     } else {
       console.log('NearestWins: NOT sending INITIAL timer update - external window not available or closed');
     }
-  };
+  }, [nearestWinsTimer, onTimerLockChange, targetNumber, tolerance, externalWindow, onExternalDisplayUpdate]);
 
 
 
   // Timer countdown effect - smooth animation with 100ms updates
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isTimerRunning && countdown !== null && countdown >= 0) {
+    if (isTimerRunning) {
       interval = setInterval(() => {
         setCountdown(prev => {
           if (prev === null) return 0;
 
           const newValue = prev - 0.1;
-          
+
           // Use text-to-speech for countdown - only at 5-second intervals
           // Check newValue instead of prev to stay in sync after initial announcement
           if (voiceCountdown && newValue > 0 && newValue < nearestWinsTimer) {
 
           }
-          
+
           if (newValue < 0) {
             setIsTimerRunning(false);
+
+            // Notify host remote about time up
+            if (onFlowStateChange) {
+              onFlowStateChange('timeup');
+            }
 
             // Lock the timer to prevent any further submissions
             setTimerLocked(true);
@@ -412,13 +473,13 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
             }
             return 0; // Keep at 0 instead of going negative
           }
-          
+
           return newValue;
         });
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [isTimerRunning, countdown, answerConfirmed, voiceCountdown, nearestWinsTimer]);
+  }, [isTimerRunning, answerConfirmed, voiceCountdown, nearestWinsTimer, onTimerLockChange]);
 
   // Handle display updates separately to avoid circular dependencies
   useEffect(() => {
@@ -454,31 +515,40 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
 
   // Memoize results calculation to prevent infinite loops
   const calculatedResults = useMemo(() => {
-    if (!correctAnswer) {
+    if (correctAnswer === null) {
       return mockResults;
     }
-    
+
     const submittedTeams = submissions.filter(s => s.submitted);
     const resultsWithDifferences = submittedTeams.map(team => ({
       ...team,
       difference: Math.abs(team.guess - correctAnswer),
       rank: 0 // Will be calculated after sorting
     }));
-    
+
     // Sort by difference (closest first)
     resultsWithDifferences.sort((a, b) => a.difference - b.difference);
-    
-    // Assign ranks
+
+    // Assign ranks with ties
+    let currentRank = 1;
     resultsWithDifferences.forEach((team, index) => {
-      team.rank = index + 1;
+      if (index > 0 && team.difference === resultsWithDifferences[index - 1].difference) {
+        team.rank = resultsWithDifferences[index - 1].rank;
+      } else {
+        team.rank = currentRank;
+      }
+      currentRank++;
     });
-    
+
+    const winners = resultsWithDifferences.filter(t => t.rank === 1);
+
     const results = {
       winner: resultsWithDifferences[0] || null,
-      runnerUp: resultsWithDifferences[1] || null,
+      winners: winners,
+      runnerUp: resultsWithDifferences.find(t => t.rank > 1) || null,
       submissions: resultsWithDifferences
     };
-    
+
     return results;
   }, [correctAnswer, submissions]);
 
@@ -542,6 +612,11 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
   const handleRevealResults = useCallback(() => {
     setAnswerRevealed(true);
 
+    // Notify host remote about reveal
+    if (onFlowStateChange) {
+      onFlowStateChange('revealed');
+    }
+
     // Use calculatedResults if available, otherwise fallback to mockResults for demonstration
     const resultsToSend = calculatedResults.winner ? calculatedResults : mockResults;
 
@@ -553,10 +628,19 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
       mockResults
     });
 
-    // Award points to the winner
-    if (onAwardPoints && calculatedResults.winner && calculatedResults.winner.id) {
+    // Award points to the winners
+    if (onAwardPoints && calculatedResults.winners && calculatedResults.winners.length > 0) {
+      const winnerTeamIds = calculatedResults.winners.map(w => w.id).filter(Boolean) as string[];
+      if (winnerTeamIds.length > 0) {
+        console.log('NearestWins: Awarding points to winners', {
+          winnerTeamIds,
+          points: effectiveWinnerPoints
+        });
+        onAwardPoints(winnerTeamIds, 'nearestwins');
+      }
+    } else if (onAwardPoints && calculatedResults.winner && calculatedResults.winner.id) {
       const winnerTeamId = calculatedResults.winner.id;
-      console.log('NearestWins: Awarding points to winner', {
+      console.log('NearestWins: Awarding points to winner (fallback)', {
         winnerTeamId,
         points: effectiveWinnerPoints
       });
@@ -576,7 +660,12 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
   }, [targetNumber, correctAnswer, calculatedResults, onAwardPoints, effectiveWinnerPoints, onExternalDisplayUpdate]);
 
   // Next round - reset for new question
-  const handleNextRound = () => {
+  const handleNextRound = useCallback(() => {
+    // Notify host remote about new question
+    if (onFlowStateChange) {
+      onFlowStateChange('sent-question');
+    }
+
     // Reset all game state for new question
     setAnswerRevealed(false);
     setCountdown(null);
@@ -617,18 +706,34 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
         });
       }
     }, 0);
-  };
+  }, [teams, mockTeams, onTeamAnswerUpdate, onExternalDisplayUpdate, targetNumber, tolerance, questionNumber]);
+
+  // Action handlers refs to avoid infinite re-renders
+  const handlersRef = useRef({
+    reveal: handleRevealResults,
+    nextQuestion: handleNextRound,
+    startTimer: handleStartTimer,
+  });
+
+  useEffect(() => {
+    handlersRef.current = {
+      reveal: handleRevealResults,
+      nextQuestion: handleNextRound,
+      startTimer: handleStartTimer,
+    };
+  }, [handleRevealResults, handleNextRound, handleStartTimer]);
 
   // Expose action handlers to parent for nav bar integration
   useEffect(() => {
     if (onGetActionHandlers) {
       onGetActionHandlers({
-        reveal: handleRevealResults,
-        nextQuestion: handleNextRound,
-        startTimer: handleStartTimer,
+        reveal: () => handlersRef.current.reveal(),
+        nextQuestion: () => handlersRef.current.nextQuestion(),
+        startTimer: (isSilent?: boolean) => handlersRef.current.startTimer(isSilent),
+        silentTimer: () => handlersRef.current.startTimer(true),
       });
     }
-  }, [onGetActionHandlers, handleRevealResults, handleNextRound, handleStartTimer]);
+  }, [onGetActionHandlers]);
 
   // Notify parent of timer state changes for navigation bar
   useEffect(() => {
@@ -818,7 +923,11 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
                       setAnswerConfirmed(true);
                       setCorrectAnswer(parseInt(answer));
                       console.log('Confirmed answer:', answer);
-                      
+
+                      if (onAnswerConfirmed) {
+                        onAnswerConfirmed(answer);
+                      }
+
                       // If timer has finished, move to results immediately
                       if (!isTimerRunning && countdown === 0) {
                         setCurrentScreen('results');
@@ -882,18 +991,18 @@ export function NearestWinsInterface({ onBack, onExternalDisplayUpdate, teams = 
 
           {/* Results display box - shows winner name immediately, transforms when revealed to external display */}
           <div className={`mb-6 p-6 rounded-lg border-2 max-w-7xl mx-auto ${
-            answerRevealed 
-              ? 'bg-[#2c3e50] border-[#27ae60]' 
+            answerRevealed
+              ? 'bg-[#2c3e50] border-[#27ae60]'
               : 'bg-[#34495e] border-[#f39c12]'
           }`}>
             <div className="text-lg text-[#95a5a6] mb-3">
-              {answerRevealed ? 'Winner Revealed on Display:' : 'Winner:'}
+              {answerRevealed ? (calculatedResults.winners?.length > 1 ? 'Winners Revealed on Display:' : 'Winner Revealed on Display:') : (calculatedResults.winners?.length > 1 ? 'Winners:' : 'Winner:')}
             </div>
             <div className={`text-4xl font-bold mt-2 ${
               answerRevealed ? 'text-[#27ae60]' : 'text-[#f39c12]'
             }`}>
-              {calculatedResults.winner
-                ? calculatedResults.winner.name
+              {calculatedResults.winners && calculatedResults.winners.length > 0
+                ? calculatedResults.winners.map(w => w.name).join(', ')
                 : 'No submissions!'
               }
             </div>

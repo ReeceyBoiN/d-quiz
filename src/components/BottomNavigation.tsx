@@ -1102,7 +1102,7 @@ export function StatusBar({
           
           {/* Buzzers */}
           <button
-            className="min-w-0 justify-center px-1.5 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
+            className="min-w-[60px] justify-center px-1.5 flex flex-col items-center justify-center gap-1 h-full hover:bg-accent transition-colors border-r border-border"
             style={{ flex: '10 1 0%' }}
             onClick={() => onOpenBuzzersManagement?.()}
             title="Buzzer Management"
@@ -1113,7 +1113,7 @@ export function StatusBar({
 
           {/* Empty Lobby */}
           <button
-            className="min-w-0 justify-center px-1.5 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
+            className="min-w-[70px] justify-center px-1.5 flex flex-col items-center justify-center gap-1 h-full hover:bg-accent transition-colors border-r border-border"
             style={{ flex: '11 1 0%' }}
             onClick={() => setShowEmptyLobbyDialog(true)}
             title="Empty Lobby"
@@ -1124,7 +1124,7 @@ export function StatusBar({
 
           {/* Team Photos */}
           <button
-            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors border-r border-border ${
+            className={`min-w-[70px] justify-center px-1.5 flex flex-col items-center justify-center gap-1 h-full transition-colors border-r border-border ${
               hasPendingTeamPhotos
                 ? 'bg-[#ea580c] animate-flash-orange text-white shadow-lg'
                 : 'hover:bg-accent'
@@ -1143,7 +1143,7 @@ export function StatusBar({
 
           {/* Pause Scores */}
           <button
-            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors border-r border-border ${
+            className={`min-w-[70px] justify-center px-1.5 flex flex-col items-center justify-center gap-1 h-full transition-colors border-r border-border ${
               scoresPaused
                 ? 'bg-orange-500 text-white hover:bg-orange-600'
                 : 'hover:bg-accent'
@@ -1158,7 +1158,7 @@ export function StatusBar({
 
           {/* Scramble Keypad */}
           <button
-            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors border-r border-border ${(() => {
+            className={`min-w-[70px] justify-center px-1.5 flex flex-col items-center justify-center gap-1 h-full transition-colors border-r border-border ${(() => {
               if (!teams || teams.length === 0) return 'hover:bg-accent';
               const scrambledCount = teams.filter(team => team.scrambled).length;
               return scrambledCount > 0
@@ -1195,7 +1195,7 @@ export function StatusBar({
 
           {/* Clear Scores */}
           <button
-            className="min-w-0 justify-center px-1.5 flex items-center gap-1.5 hover:bg-accent transition-colors border-r border-border"
+            className="min-w-[70px] justify-center px-1.5 flex flex-col items-center justify-center gap-1 h-full hover:bg-accent transition-colors border-r border-border"
             style={{ flex: '11 1 0%' }}
             onClick={() => setShowClearScoresDialog(true)}
             title="Clear Scores"
@@ -1206,7 +1206,7 @@ export function StatusBar({
 
           {/* Hide Scores & Positions */}
           <button
-            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors border-r border-border ${
+            className={`min-w-[80px] justify-center px-1.5 flex flex-col items-center justify-center gap-1 h-full transition-colors border-r border-border ${
               scoresHidden
                 ? 'bg-blue-500 text-white hover:bg-blue-600'
                 : 'hover:bg-accent'
@@ -1221,7 +1221,7 @@ export function StatusBar({
 
           {/* Font Size Down */}
           <button
-            className="min-w-0 px-1.5 flex items-center justify-center hover:bg-accent transition-colors border-r border-border p-[0px]"
+            className="min-w-[30px] px-1.5 flex flex-col items-center justify-center h-full hover:bg-accent transition-colors border-r border-border p-[0px]"
             style={{ flex: '3.5 1 0%' }}
             onClick={() => {/* TODO: Add font size down functionality */}}
             title="Font Size Down"
@@ -1230,13 +1230,13 @@ export function StatusBar({
           </button>
 
           {/* Font Size Label */}
-          <div className="min-w-0 px-1.5 flex items-center justify-center text-[11px] leading-tight break-words whitespace-normal text-muted-foreground border-r border-border text-center" style={{ flex: '7 1 0%' }}>
+          <div className="min-w-[50px] px-1.5 flex flex-col items-center justify-center h-full text-[11px] leading-tight break-words whitespace-normal text-muted-foreground border-r border-border text-center" style={{ flex: '7 1 0%' }}>
             Font Size
           </div>
 
           {/* Font Size Up */}
           <button
-            className="min-w-0 px-1.5 flex items-center justify-center hover:bg-accent transition-colors border-r border-border p-[0px]"
+            className="min-w-[30px] px-1.5 flex flex-col items-center justify-center h-full hover:bg-accent transition-colors border-r border-border p-[0px]"
             style={{ flex: '3.5 1 0%' }}
             onClick={() => {/* TODO: Add font size up functionality */}}
             title="Font Size Up"
@@ -1246,7 +1246,7 @@ export function StatusBar({
 
           {/* Change Teams Layout */}
           <button
-            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors border-r border-border ${
+            className={`min-w-[80px] justify-center px-1.5 flex flex-col items-center justify-center gap-1 h-full transition-colors border-r border-border ${
               teamLayoutMode !== 'default'
                 ? 'bg-blue-500 text-white hover:bg-blue-600'
                 : 'hover:bg-accent'
@@ -1269,7 +1269,7 @@ export function StatusBar({
 
           {/* Host Controller */}
           <button
-            className={`min-w-0 justify-center px-1.5 flex items-center gap-1.5 transition-colors ${
+            className={`min-w-[100px] justify-center px-1.5 flex flex-col items-center justify-center gap-1 h-full transition-colors ${
               hostControllerEnabled && hostControllerAuthenticated
                 ? 'bg-green-500 text-white hover:bg-green-600'
                 : hostControllerEnabled

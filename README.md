@@ -20,7 +20,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   Buzzer needs to play on the fastest team reveal
 
-  nearest wins timer sound doesnt work
+  --nearest wins timer sound doesnt work
 
   Scramble keypad doesnt scramble the keypad for players
 

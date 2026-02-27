@@ -3146,6 +3146,29 @@ export function QuizHost() {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [showFastestTeamDisplay]);
 
+  // Refs for handleNetworkPlayerJoin to avoid re-registration
+  const flowStateRef = useRef(flowState);
+  const currentLoadedQuestionIndexRef = useRef(currentLoadedQuestionIndex);
+  const loadedQuizQuestionsRef = useRef(loadedQuizQuestions);
+  const isQuizPackModeRef = useRef(isQuizPackMode);
+  const hostInfoBaseUrlRef = useRef(hostInfo?.baseUrl);
+
+  useEffect(() => {
+    flowStateRef.current = flowState;
+  }, [flowState]);
+  useEffect(() => {
+    currentLoadedQuestionIndexRef.current = currentLoadedQuestionIndex;
+  }, [currentLoadedQuestionIndex]);
+  useEffect(() => {
+    loadedQuizQuestionsRef.current = loadedQuizQuestions;
+  }, [loadedQuizQuestions]);
+  useEffect(() => {
+    isQuizPackModeRef.current = isQuizPackMode;
+  }, [isQuizPackMode]);
+  useEffect(() => {
+    hostInfoBaseUrlRef.current = hostInfo?.baseUrl;
+  }, [hostInfo?.baseUrl]);
+
   // Wrap PLAYER_JOIN handler in useCallback with minimal deps to prevent re-registration
   // Uses refs to access frequently-changing state without triggering re-registration
   const handleNetworkPlayerJoin = useCallback((data: any) => {
@@ -3198,14 +3221,15 @@ export function QuizHost() {
       setAuthenticatedControllerId(deviceId);
 
       // Send initial flow state to the controller via IPC (read current state directly)
-      console.log('[QuizHost] 📤 Sending initial flow state to controller:', { flow: flowState.flow, isQuestionMode: flowState.isQuestionMode, totalTime: flowState.totalTime, deviceId });
-      sendFlowStateToController(flowState.flow, flowState.isQuestionMode, {
-        totalTime: flowState.totalTime,
-        currentQuestion: flowState.currentQuestion,
-        currentLoadedQuestionIndex,
-        loadedQuizQuestions,
-        isQuizPackMode,
-      }, deviceId, hostInfo?.baseUrl);
+      const currentFlowState = flowStateRef.current;
+      console.log('[QuizHost] 📤 Sending initial flow state to controller:', { flow: currentFlowState.flow, isQuestionMode: currentFlowState.isQuestionMode, totalTime: currentFlowState.totalTime, deviceId });
+      sendFlowStateToController(currentFlowState.flow, currentFlowState.isQuestionMode, {
+        totalTime: currentFlowState.totalTime,
+        currentQuestion: currentFlowState.currentQuestion,
+        currentLoadedQuestionIndex: currentLoadedQuestionIndexRef.current,
+        loadedQuizQuestions: loadedQuizQuestionsRef.current,
+        isQuizPackMode: isQuizPackModeRef.current,
+      }, deviceId, hostInfoBaseUrlRef.current);
 
       // Do not add controller to quizzes list - they are not a regular team
       console.log('[QuizHost] ✨ Controller authenticated, will not add to regular teams list');
@@ -3283,7 +3307,7 @@ export function QuizHost() {
         });
       }
     }
-  }, [flowState, setAuthenticatedControllerId, setQuizzes, setPendingTeams, currentLoadedQuestionIndex, loadedQuizQuestions, isQuizPackMode, hostInfo?.baseUrl]); // Only deps that are truly needed
+  }, []); // Empty deps - callback is stable
 
   // Register PLAYER_JOIN listener with stable handler
   useEffect(() => {
@@ -3656,7 +3680,7 @@ export function QuizHost() {
               if (deps.showKeypadInterface) {
                 timerDuration = deps.gameModeTimers.keypad || timerDuration;
               } else if (deps.showNearestWinsInterface) {
-                timerDuration = deps.gameModeTimers.nearestWins || timerDuration;
+                timerDuration = deps.gameModeTimers.nearestwins || timerDuration;
               } else if (deps.showBuzzInMode) {
                 timerDuration = deps.gameModeTimers.buzzin || timerDuration;
               }
@@ -3672,16 +3696,6 @@ export function QuizHost() {
 
             // Call handler with explicit duration (same as UI would use)
             deps.handleNavBarSilentTimer(timerDuration);
-
-            // Also update main flowState to 'running' so Reveal Answer button appears
-            // This is necessary for keypad mode where handleNavBarSilentTimer doesn't update flowState
-            // In quiz pack mode, handleNavBarSilentTimer already updates flowState via executeStartSilentTimer
-            // but updateting again here ensures keypad mode has the correct state
-            deps.setFlowState(prev => ({
-              ...prev,
-              flow: 'running',
-              timerMode: 'silent'
-            }));
 
             success = true;
             // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
@@ -3709,7 +3723,7 @@ export function QuizHost() {
               if (deps.showKeypadInterface) {
                 timerDuration = deps.gameModeTimers.keypad || timerDuration;
               } else if (deps.showNearestWinsInterface) {
-                timerDuration = deps.gameModeTimers.nearestWins || timerDuration;
+                timerDuration = deps.gameModeTimers.nearestwins || timerDuration;
               } else if (deps.showBuzzInMode) {
                 timerDuration = deps.gameModeTimers.buzzin || timerDuration;
               }
@@ -3729,16 +3743,6 @@ export function QuizHost() {
             // Call handler with explicit duration (same as UI would use)
             console.log('[QuizHost] Calling handleNavBarStartTimer with duration:', timerDuration, 'gameActionHandlers:', gameActionHandlers ? 'exists' : 'NULL', 'gameTimerRunning:', gameTimerRunning, 'gameTimerFinished:', gameTimerFinished);
             deps.handleNavBarStartTimer(timerDuration);
-
-            // Also update main flowState to 'running' so Reveal Answer button appears
-            // This is necessary for keypad mode where handleNavBarStartTimer doesn't update flowState
-            // In quiz pack mode, handleNavBarStartTimer already updates flowState via executeStartNormalTimer
-            // but updating again here ensures keypad mode has the correct state
-            deps.setFlowState(prev => ({
-              ...prev,
-              flow: 'running',
-              timerMode: 'normal'
-            }));
 
             success = true;
             // ✅ Let the useEffect (line ~4153) handle the FLOW_STATE broadcast when flowState changes
@@ -6001,13 +6005,16 @@ export function QuizHost() {
         <div className="flex-1 overflow-hidden">
           <NearestWinsInterface
             teams={quizzes}
-            onClose={handleNearestWinsClick}
+            onBack={handleNearestWinsClick}
             currentRoundWinnerPoints={currentRoundWinnerPoints}
             onWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
             externalWindow={externalWindow}
             onExternalDisplayUpdate={handleExternalDisplayUpdate}
             onAwardPoints={handleNearestWinsAwardPoints}
             onGetActionHandlers={setGameActionHandlers}
+            remoteSubmittedAnswer={flowState.answerSubmitted}
+            onFlowStateChange={(flow) => setFlowState(prev => ({...prev, flow: flow as any}))}
+            onAnswerConfirmed={(ans) => setFlowState(prev => ({ ...prev, answerSubmitted: ans }))}
             onGameTimerStateChange={(isRunning, duration) => {
               setGameTimerRunning(isRunning);
               if (isRunning && !isQuizPackMode) {
