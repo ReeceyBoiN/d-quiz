@@ -13,7 +13,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
     Fixes Needed:
 
-  ?dax - Add the filter for questions so "THE LION KING" answer isnt a "T" as we're ignoring the word "THE" So for questions that may get added in the future, if the answer is "The Cat" then it should be the letter C as the correct answer. - In quiz pack mode, some questions will have the answer pre defined or marked in the question information, so that should also be taken into account, however if it is not already marked, the application should have this understanding built in to fall back on.
 
   ?(Is this still a bug)?change teams layout button on bottom navigation bar changes the size of the navigation bar when toggled. - Visually the boxes and placement and if text changes it shouldnt change location of boxes buttons and interface, unless its font size, that should increase everything all round really.
 
@@ -52,3 +51,37 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
   x enforce demo mode into application to stop hosts from bypassing licence
 
   x activation needs to be assigned to a specific laptop / mac address so users cant log in, activate, then turn off wifi and log into another laptop to download same activation
+
+  -
+  Testing Checklist:
+  -
+  Livescreen / External Display + Modes and Settings = 
+  Phone Player app and modes / display modes = 
+  Host Remote App = 
+  Quizpack mode loading SQ files = 
+  Quizpack mode loading POP files = 
+  Keypad game modes on the spot = 
+  Nearest wins mode in on the spot AND quizpack = 
+  Wheel spinner = 
+  Buzzers tab = 
+  Empty Lobby = 
+  Team Photos = 
+  Pause Scores = 
+  Scramble Keypad = 
+  Clear Scores = 
+  Hide Scores and Points = 
+  Font Size changes for host app = 
+  Font Size changes for Livescreen = 
+  Teams list / Teams scores editible = 
+  Teams info all accurate and buttons work = 
+  Host app crash protection and remember previous session with auto save = 
+  Leaderboard announcement with export PNG = 
+  Network status accurate = 
+  Settings tab and all sub tabs, comands, options = 
+  Log In portal at top right and all functions like activate quiz = 
+
+  Advanced functions testing checklist:
+  Computer authorisation to mac address = 
+  Demo mode is locked down / cant be cracked = 
+  Activation files are saved / backed up safely = 
+  Device time is collected from player devices to check if its the same time as host PC to confirm correct time on host PC as to not bypass activation by changing local pc time to the original booking time
