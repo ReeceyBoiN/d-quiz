@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Slider } from "./ui/slider";
 import { X, MapPin, Volume2, Trash2 } from "lucide-react";
@@ -63,29 +63,39 @@ export function FastestTeamDisplay({
     return teams.find(team => team.location?.x === x && team.location?.y === y);
   };
 
+  // Validate that icon is emoji-like (1-2 chars), not a text string
+  const getValidIcon = (icon?: string) => {
+    if (!icon) return "🎯";
+    // If icon is longer than 2 characters, it's likely a text string (like "infinitys")
+    // Return default emoji instead
+    if (icon.length > 2) return "🎯";
+    return icon;
+  };
+
   const formatResponseTime = (timeMs: number) => {
     return `${(timeMs / 1000).toFixed(2)}s`;
   };
 
-  // Mouse event handlers for drag and drop
-  const handleMouseMove = (e: MouseEvent) => {
+  // Mouse event handlers for drag and drop - memoized to prevent memory leaks
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     setMousePosition({ x: e.clientX, y: e.clientY });
-  };
+  }, []);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsDraggingHost(false);
-  };
+  }, []);
 
   React.useEffect(() => {
     if (isDraggingHost) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
+
       return () => {
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDraggingHost]);
+  }, [isDraggingHost, handleMouseMove, handleMouseUp]);
 
   // Handle fastest team location placement
   const handleFastestTeamPlacement = (x: number, y: number) => {
@@ -173,7 +183,7 @@ export function FastestTeamDisplay({
                     {fastestTeam.team.name}
                   </h2>
                   <div className="text-white drop-shadow-2xl text-5xl mb-8">
-                    {fastestTeam.team.icon || "🎯"}
+                    {getValidIcon(fastestTeam.team.icon)}
                   </div>
                   <div className="inline-block bg-[#2ecc71] text-white px-10 py-6 rounded-full text-4xl font-bold shadow-2xl">
                     ⚡ {formatResponseTime(fastestTeam.responseTime)}
@@ -199,7 +209,7 @@ export function FastestTeamDisplay({
             <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800">
               {fastestTeam ? (
                 <>
-                  <div className="text-8xl mb-8">{fastestTeam.team.icon || "🎯"}</div>
+                  <div className="text-8xl mb-8">{getValidIcon(fastestTeam.team.icon)}</div>
                   <h2 className="text-5xl font-bold text-foreground mb-8 text-center px-4">
                     {fastestTeam.team.name}
                   </h2>
@@ -222,7 +232,145 @@ export function FastestTeamDisplay({
 
         {/* Right Panel - Controls and Grid */}
         <div className="w-96 overflow-y-auto border-l border-border bg-card z-10 flex flex-col" style={{ flexShrink: 0 }}>
-          {/* Team Stats and Controls */}
+          {/* Physical Layout Grid - Moved to top */}
+          <div className="border-b border-border p-6 flex-shrink-0">
+            <div className="bg-card rounded-lg p-6 border border-border">
+              <h3 className="font-semibold text-foreground mb-4 text-center">Physical Layout</h3>
+
+              {/* Grid container */}
+              <div className="relative w-full aspect-square bg-[#f8f9fa] dark:bg-[#2c3e50] rounded-lg border-2 border-border p-2">
+                {/* Grid lines */}
+                <div className="absolute inset-2 grid grid-cols-10 grid-rows-10">
+                  {gridPositions.map((pos, index) => {
+                    const teamAtPos = getTeamAtPosition(pos.x, pos.y);
+                    const isFastestTeam = fastestTeam && teamAtPos?.id === fastestTeam.team.id;
+                    const isHovered = hoveredCell?.x === pos.x && hoveredCell?.y === pos.y;
+                    const isHostAtPos = hostLocation && hostLocation.x === pos.x && hostLocation.y === pos.y;
+
+                    return (
+                      <button
+                        key={index}
+                        className={`border border-[#dee2e6] dark:border-[#4a5568] bg-white dark:bg-[#34495e] flex items-center justify-center relative transition-all duration-200 ${
+                          isDraggingHost && isHovered
+                            ? 'bg-red-200 dark:bg-red-800 scale-110'
+                            : isPlacingFastestTeam && isHovered
+                            ? 'bg-green-200 dark:bg-green-800 scale-110'
+                            : !teamAtPos && fastestTeam && isHovered
+                            ? 'bg-blue-100 dark:bg-blue-900 scale-105'
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        onMouseEnter={() => setHoveredCell({ x: pos.x, y: pos.y })}
+                        onMouseLeave={() => setHoveredCell(null)}
+                        onClick={() => {
+                          if (isDraggingHost) {
+                            handleHostDrop(pos.x, pos.y);
+                          } else if (isPlacingFastestTeam) {
+                            handleFastestTeamPlacement(pos.x, pos.y);
+                            setIsPlacingFastestTeam(false);
+                          } else if (fastestTeam && !teamAtPos) {
+                            handleFastestTeamPlacement(pos.x, pos.y);
+                          }
+                        }}
+                        onMouseUp={() => {
+                          if (isDraggingHost) {
+                            handleHostDrop(pos.x, pos.y);
+                          }
+                        }}
+                        title={`Position (${pos.x + 1}, ${pos.y + 1})${teamAtPos ? ` - ${teamAtPos.name}` : ''}${isHostAtPos ? ' - Host Location' : ''}`}
+                      >
+                        {teamAtPos && (
+                          <div
+                            className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-200 ${
+                              isFastestTeam
+                                ? isPlacingFastestTeam
+                                  ? 'bg-[#2ecc71] border-[#27ae60] text-white shadow-lg animate-bounce cursor-pointer scale-125'
+                                  : 'bg-[#2ecc71] border-[#27ae60] text-white shadow-lg animate-pulse cursor-pointer hover:scale-110'
+                                : 'bg-[#3498db] border-[#2980b9] text-white'
+                            }`}
+                            onClick={(e) => {
+                              if (isFastestTeam) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setIsPlacingFastestTeam(!isPlacingFastestTeam);
+                              }
+                            }}
+                            title={`${teamAtPos.name}${isFastestTeam ? ' (Fastest!)' : ''}`}
+                          >
+                            {teamAtPos.name.charAt(0)}
+                          </div>
+                        )}
+
+                        {isHostAtPos && (
+                          <div
+                            className="w-3 h-3 bg-[#e74c3c] rounded-full border border-white shadow-sm cursor-grab active:cursor-grabbing"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsDraggingHost(true);
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setDragOffset({
+                                x: e.clientX - rect.left - rect.width / 2,
+                                y: e.clientY - rect.top - rect.height / 2
+                              });
+                              setMousePosition({ x: e.clientX, y: e.clientY });
+                              if (onHostLocationChange) {
+                                onHostLocationChange(null);
+                              }
+                            }}
+                            title="Host Location - Drag to move"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {isDraggingHost && (
+                  <div
+                    className="fixed w-3 h-3 bg-[#e74c3c] rounded-full border border-white shadow-lg z-50 pointer-events-none"
+                    style={{
+                      left: mousePosition.x - dragOffset.x,
+                      top: mousePosition.y - dragOffset.y
+                    }}
+                  />
+                )}
+
+                {isPlacingFastestTeam && fastestTeam && (
+                  <div className="absolute top-2 left-2 right-2 bg-green-500 text-white px-3 py-2 rounded-lg text-sm font-medium text-center z-20">
+                    Click on any grid cell to move {fastestTeam.team.name} there
+                  </div>
+                )}
+
+                <div className="absolute -top-6 left-2 right-2 grid grid-cols-10 text-xs text-muted-foreground">
+                  {Array.from({ length: 10 }, (_, i) => (
+                    <div key={i} className="text-center">{i + 1}</div>
+                  ))}
+                </div>
+                <div className="absolute -left-6 top-2 bottom-2 grid grid-rows-10 text-xs text-muted-foreground">
+                  {Array.from({ length: 10 }, (_, i) => (
+                    <div key={i} className="flex items-center justify-center">{i + 1}</div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#2ecc71] border border-[#27ae60]"></div>
+                  <span className="text-muted-foreground">Fastest Team</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#3498db] border border-[#2980b9]"></div>
+                  <span className="text-muted-foreground">Other Teams</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#e74c3c] border border-white"></div>
+                  <span className="text-muted-foreground">Host Location</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Team Stats and Controls - Moved below grid */}
           <div className="p-6 space-y-6 flex-1 overflow-y-auto">
             {fastestTeam ? (
               <>
@@ -330,143 +478,6 @@ export function FastestTeamDisplay({
             ) : null}
           </div>
 
-          {/* Physical Layout Grid */}
-          <div className="border-t border-border p-6">
-            <div className="bg-card rounded-lg p-6 border border-border">
-              <h3 className="font-semibold text-foreground mb-4 text-center">Physical Layout</h3>
-              
-              {/* Grid container */}
-              <div className="relative w-full aspect-square bg-[#f8f9fa] dark:bg-[#2c3e50] rounded-lg border-2 border-border p-2">
-                {/* Grid lines */}
-                <div className="absolute inset-2 grid grid-cols-10 grid-rows-10">
-                  {gridPositions.map((pos, index) => {
-                    const teamAtPos = getTeamAtPosition(pos.x, pos.y);
-                    const isFastestTeam = fastestTeam && teamAtPos?.id === fastestTeam.team.id;
-                    const isHovered = hoveredCell?.x === pos.x && hoveredCell?.y === pos.y;
-                    const isHostAtPos = hostLocation && hostLocation.x === pos.x && hostLocation.y === pos.y;
-                    
-                    return (
-                      <button
-                        key={index}
-                        className={`border border-[#dee2e6] dark:border-[#4a5568] bg-white dark:bg-[#34495e] flex items-center justify-center relative transition-all duration-200 ${
-                          isDraggingHost && isHovered
-                            ? 'bg-red-200 dark:bg-red-800 scale-110'
-                            : isPlacingFastestTeam && isHovered
-                            ? 'bg-green-200 dark:bg-green-800 scale-110'
-                            : !teamAtPos && fastestTeam && isHovered
-                            ? 'bg-blue-100 dark:bg-blue-900 scale-105'
-                            : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
-                        onMouseEnter={() => setHoveredCell({ x: pos.x, y: pos.y })}
-                        onMouseLeave={() => setHoveredCell(null)}
-                        onClick={() => {
-                          if (isDraggingHost) {
-                            handleHostDrop(pos.x, pos.y);
-                          } else if (isPlacingFastestTeam) {
-                            handleFastestTeamPlacement(pos.x, pos.y);
-                            setIsPlacingFastestTeam(false);
-                          } else if (fastestTeam && !teamAtPos) {
-                            handleFastestTeamPlacement(pos.x, pos.y);
-                          }
-                        }}
-                        onMouseUp={() => {
-                          if (isDraggingHost) {
-                            handleHostDrop(pos.x, pos.y);
-                          }
-                        }}
-                        title={`Position (${pos.x + 1}, ${pos.y + 1})${teamAtPos ? ` - ${teamAtPos.name}` : ''}${isHostAtPos ? ' - Host Location' : ''}`}
-                      >
-                        {teamAtPos && (
-                          <div 
-                            className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-200 ${
-                              isFastestTeam 
-                                ? isPlacingFastestTeam
-                                  ? 'bg-[#2ecc71] border-[#27ae60] text-white shadow-lg animate-bounce cursor-pointer scale-125'
-                                  : 'bg-[#2ecc71] border-[#27ae60] text-white shadow-lg animate-pulse cursor-pointer hover:scale-110'
-                                : 'bg-[#3498db] border-[#2980b9] text-white'
-                            }`}
-                            onClick={(e) => {
-                              if (isFastestTeam) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setIsPlacingFastestTeam(!isPlacingFastestTeam);
-                              }
-                            }}
-                            title={`${teamAtPos.name}${isFastestTeam ? ' (Fastest!)' : ''}`}
-                          >
-                            {teamAtPos.name.charAt(0)}
-                          </div>
-                        )}
-
-                        {isHostAtPos && (
-                          <div 
-                            className="w-3 h-3 bg-[#e74c3c] rounded-full border border-white shadow-sm cursor-grab active:cursor-grabbing"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setIsDraggingHost(true);
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setDragOffset({
-                                x: e.clientX - rect.left - rect.width / 2,
-                                y: e.clientY - rect.top - rect.height / 2
-                              });
-                              setMousePosition({ x: e.clientX, y: e.clientY });
-                              if (onHostLocationChange) {
-                                onHostLocationChange(null);
-                              }
-                            }}
-                            title="Host Location - Drag to move"
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {isDraggingHost && (
-                  <div 
-                    className="fixed w-3 h-3 bg-[#e74c3c] rounded-full border border-white shadow-lg z-50 pointer-events-none"
-                    style={{
-                      left: mousePosition.x - dragOffset.x,
-                      top: mousePosition.y - dragOffset.y
-                    }}
-                  />
-                )}
-
-                {isPlacingFastestTeam && fastestTeam && (
-                  <div className="absolute top-2 left-2 right-2 bg-green-500 text-white px-3 py-2 rounded-lg text-sm font-medium text-center z-20">
-                    Click on any grid cell to move {fastestTeam.team.name} there
-                  </div>
-                )}
-
-                <div className="absolute -top-6 left-2 right-2 grid grid-cols-10 text-xs text-muted-foreground">
-                  {Array.from({ length: 10 }, (_, i) => (
-                    <div key={i} className="text-center">{i + 1}</div>
-                  ))}
-                </div>
-                <div className="absolute -left-6 top-2 bottom-2 grid grid-rows-10 text-xs text-muted-foreground">
-                  {Array.from({ length: 10 }, (_, i) => (
-                    <div key={i} className="flex items-center justify-center">{i + 1}</div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-2 text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#2ecc71] border border-[#27ae60]"></div>
-                  <span className="text-muted-foreground">Fastest Team</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#3498db] border border-[#2980b9]"></div>
-                  <span className="text-muted-foreground">Other Teams</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-[#e74c3c] border border-white"></div>
-                  <span className="text-muted-foreground">Host Location</span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
