@@ -16,7 +16,6 @@ interface Team {
   id: string;
   name: string;
   type: "test" | "round";
-  icon?: string;
   score?: number;
   buzzerSound?: string;
   photoUrl?: string;
@@ -49,6 +48,7 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
     if (!filename) return '';
     return filename.replace(/\.mp3$/i, '');
   };
+
 
   // Load default buzzer path on component mount
   useEffect(() => {
@@ -365,20 +365,7 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
                       }}
                     />
                   ) : (
-                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center border-2 border-border">
-                      <span
-                        className="text-xl"
-                        style={{
-                          fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
-                        }}
-                      >
-                        {(() => {
-                          const icon = team.icon || '👤';
-                          const corrections: {[k: string]: string} = {'â­': '⭐', 'ðŸŽª': '🎪', 'ðŸŽ‰': '🎉', 'ðŸ†': '🏆', 'ðŸ\'«': '👫', 'ðŸŽŠ': '🎊', 'ï¿½ï¿½ï¿½ï¿½': '🎸', 'ðŸŽ¯': '🎯', 'âœ¨': '✨'};
-                          return corrections[icon] || icon;
-                        })()}
-                      </span>
-                    </div>
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center border-2 border-border" />
                   )}
                 </div>
                 

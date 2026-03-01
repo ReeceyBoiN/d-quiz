@@ -8,7 +8,6 @@ interface Quiz {
   id: string;
   name: string;
   type: "test" | "round";
-  icon?: string;
   score?: number;
   backgroundColor?: string; // Background color for this team in the list
   disconnected?: boolean; // Whether the team is disconnected from their device

@@ -3,7 +3,6 @@ import React from "react";
 interface FastestTeamOverlaySimplifiedProps {
   teamName?: string;
   teamPhoto?: string;
-  teamIcon?: string;
   textSize?: 'small' | 'medium' | 'large';
 }
 
@@ -15,9 +14,9 @@ interface FastestTeamOverlaySimplifiedProps {
 export function FastestTeamOverlaySimplified({
   teamName = "No Team",
   teamPhoto,
-  teamIcon = "🎯",
   textSize = 'medium'
 }: FastestTeamOverlaySimplifiedProps) {
+
   // Helper function to get text size multiplier
   const getTextSizeMultiplier = (size: 'small' | 'medium' | 'large'): number => {
     switch (size) {
@@ -125,9 +124,7 @@ export function FastestTeamOverlaySimplified({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
-          }}>
-            <div style={{ fontSize: scaleFontSize('80px', textSizeMultiplier) }}>{teamIcon}</div>
-          </div>
+          }} />
         )}
 
         {/* Team Name Section */}

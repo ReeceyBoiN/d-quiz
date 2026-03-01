@@ -234,7 +234,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     window.dispatchEvent(new Event('settingsUpdated'));
   };
 
-  const updateTeamPhotosAutoApprove = (enabled: boolean) => {
+  const updateTeamPhotosAutoApprove = async (enabled: boolean) => {
     setTeamPhotosAutoApprove(enabled);
     // Save to localStorage and trigger event
     const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
@@ -244,62 +244,86 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
     // Sync with backend via IPC (Electron environment only)
     if ((window as any).api?.ipc?.invoke) {
-      (window as any).api.ipc.invoke('network/set-team-photos-auto-approve', { enabled })
-        .then(() => {
-          console.log('[SettingsContext] ✅ Successfully synced auto-approve setting to backend:', enabled);
-        })
-        .catch((err: any) => {
-          console.error('[SettingsContext] ❌ Failed to sync auto-approve setting to backend:', err);
-        });
+      try {
+        // STEP 1: Sync backend setting and WAIT for confirmation
+        console.log('[SettingsContext] 🔄 Syncing auto-approve setting to backend:', enabled);
+        const syncResult = await (window as any).api.ipc.invoke('network/set-team-photos-auto-approve', { enabled });
+        console.log('[SettingsContext] ✅ Successfully synced auto-approve setting to backend:', enabled, syncResult);
 
-      // If enabling auto-approval, immediately approve all pending photos
-      if (enabled === true) {
-        console.log('[SettingsContext] 🔄 Auto-approval enabled - fetching pending photos to approve...');
-        (window as any).api.ipc.invoke('network/all-players')
-          .then((result: any) => {
-            let players = Array.isArray(result) ? result : result?.data || [];
-            // Filter for photos that are pending: either in teamPhotoPending OR in teamPhoto without approval timestamp
-            const pendingPhotos = players.filter((p: any) =>
-              p.teamPhotoPending || (p.teamPhoto && !p.photoApprovedAt)
-            );
+        // STEP 2: If enabling auto-approval, retroactively approve all pending photos
+        if (enabled === true) {
+          console.log('[SettingsContext] 🔄 Auto-approval enabled - fetching pending photos to approve...');
 
-            if (pendingPhotos.length === 0) {
-              console.log('[SettingsContext] ✅ No pending photos to auto-approve');
-              return;
-            }
+          // STEP 2A: Fetch all players to find pending photos
+          const result = await (window as any).api.ipc.invoke('network/all-players');
+          let players = Array.isArray(result) ? result : result?.data || [];
 
-            console.log(`[SettingsContext] 📸 Found ${pendingPhotos.length} pending photos - auto-approving...`);
-            console.log('[SettingsContext] Pending photos breakdown:');
-            console.log('  - In teamPhotoPending:', pendingPhotos.filter((p: any) => p.teamPhotoPending).length);
-            console.log('  - In teamPhoto without approval:', pendingPhotos.filter((p: any) => p.teamPhoto && !p.photoApprovedAt).length);
+          // Filter for photos that are pending: either in teamPhotoPending OR in teamPhoto without approval timestamp
+          const pendingPhotos = players.filter((p: any) =>
+            p.teamPhotoPending || (p.teamPhoto && !p.photoApprovedAt)
+          );
 
-            // Approve each pending photo
-            const approvalPromises = pendingPhotos.map((p: any) =>
-              (window as any).api.network?.approveTeam?.({
+          if (pendingPhotos.length === 0) {
+            console.log('[SettingsContext] ✅ No pending photos to auto-approve');
+            return;
+          }
+
+          console.log(`[SettingsContext] 📸 Found ${pendingPhotos.length} pending photos - auto-approving...`);
+          console.log('[SettingsContext] Pending photos breakdown:');
+          console.log('  - In teamPhotoPending:', pendingPhotos.filter((p: any) => p.teamPhotoPending).length);
+          console.log('  - In teamPhoto without approval:', pendingPhotos.filter((p: any) => p.teamPhoto && !p.photoApprovedAt).length);
+
+          // STEP 2B: Approve each pending photo sequentially
+          for (const p of pendingPhotos) {
+            try {
+              console.log(`[SettingsContext] 📤 Approving photo for team: ${p.teamName} (${p.deviceId})`);
+              const approvalResult = await (window as any).api.network.approveTeam({
                 deviceId: p.deviceId,
                 teamName: p.teamName,
                 isPhotoApproval: true
-              })
-                .then(() => {
-                  console.log(`[SettingsContext] ✅ Auto-approved photo for team: ${p.teamName}`);
-                })
-                .catch((err: any) => {
-                  console.error(`[SettingsContext] ❌ Failed to auto-approve photo for ${p.teamName}:`, err);
-                })
-            );
-
-            // Wait for all approvals to complete
-            Promise.all(approvalPromises)
-              .then(() => {
-                console.log(`[SettingsContext] ✅ All ${pendingPhotos.length} pending photos auto-approved`);
-              })
-              .catch((err: any) => {
-                console.error('[SettingsContext] ❌ Some auto-approvals failed:', err);
               });
-          })
-          .catch((err: any) => {
-            console.error('[SettingsContext] ❌ Failed to fetch pending photos for auto-approval:', err);
-          });
+              console.log(`[SettingsContext] ✅ Auto-approved photo for team: ${p.teamName}`, approvalResult);
+            } catch (err) {
+              console.error(`[SettingsContext] ❌ Failed to auto-approve photo for ${p.teamName}:`, err);
+            }
+          }
+
+          console.log(`[SettingsContext] ✅ All ${pendingPhotos.length} pending photos auto-approval attempts completed`);
+
+          // STEP 2C: Fetch updated player data and broadcast photo updates to QuizHost
+          try {
+            const updatedPlayersResult = await (window as any).api.ipc.invoke('network/all-players');
+            const updatedPlayers = Array.isArray(updatedPlayersResult)
+              ? updatedPlayersResult
+              : updatedPlayersResult?.data || [];
+
+            // Import broadcastMessage to notify QuizHost
+            const { broadcastMessage } = await import('../network/wsHost');
+            const { ensureFileUrl } = await import('./photoUrlConverter');
+
+            // Broadcast PHOTO_APPROVAL_UPDATED for each approved photo
+            pendingPhotos.forEach((originalPlayer: any) => {
+              const updatedPlayer = updatedPlayers.find(p => p.deviceId === originalPlayer.deviceId);
+              if (updatedPlayer?.teamPhoto && updatedPlayer?.photoApprovedAt) {
+                const photoUrl = ensureFileUrl(updatedPlayer.teamPhoto);
+                broadcastMessage({
+                  type: 'PHOTO_APPROVAL_UPDATED',
+                  data: {
+                    deviceId: updatedPlayer.deviceId,
+                    teamName: updatedPlayer.teamName,
+                    photoUrl: photoUrl,
+                    timestamp: Date.now()
+                  }
+                });
+                console.log(`[SettingsContext] 📢 Broadcasted PHOTO_APPROVAL_UPDATED for ${updatedPlayer.teamName}`);
+              }
+            });
+          } catch (err) {
+            console.error('[SettingsContext] ❌ Failed to broadcast photo updates:', err);
+          }
+        }
+      } catch (err) {
+        console.error('[SettingsContext] ❌ Error in auto-approval flow:', err);
       }
     }
   };

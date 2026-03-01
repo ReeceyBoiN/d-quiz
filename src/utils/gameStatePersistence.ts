@@ -76,6 +76,15 @@ export async function loadGameState(): Promise<SavedGameState | null> {
     if ((window as any).api?.persistence?.loadGameState) {
       const state = await (window as any).api.persistence.loadGameState();
       if (state) {
+        // Sanitize old saved data by removing the icon field from teams
+        // This prevents issues with corrupted or invalid values like "infinitys"
+        if (state.teams && Array.isArray(state.teams)) {
+          state.teams = state.teams.map(team => {
+            const sanitized = { ...team };
+            delete (sanitized as any).icon;
+            return sanitized;
+          });
+        }
         console.log('[GameStatePersistence] Game state loaded successfully');
         return state;
       }

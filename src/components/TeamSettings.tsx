@@ -11,7 +11,6 @@ interface Quiz {
   id: string;
   name: string;
   type: "test" | "round";
-  icon?: string;
   score?: number;
   color?: string;
   photo?: string;
@@ -128,6 +127,8 @@ export function TeamSettings({ team, onClose, onTeamUpdate, onKickTeam, onScramb
     // You can implement actual hot swap logic here
   };
 
+
+
   const handleKick = () => {
     if (confirm(`Are you sure you want to kick team "${team.name}"?`)) {
       onKickTeam(team.id);
@@ -144,10 +145,10 @@ export function TeamSettings({ team, onClose, onTeamUpdate, onKickTeam, onScramb
             <h1 className="text-3xl font-bold text-foreground">Team Settings</h1>
             <Badge
               variant="outline"
-              className="text-lg px-3 py-1 emoji emoji-font"
+              className="text-lg px-3 py-1"
               style={{ backgroundColor: selectedColor, color: 'white' }}
             >
-              {team.icon} #{team.id}
+              #{team.id}
             </Badge>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose}>

@@ -1148,7 +1148,8 @@ async function startBackend({ port = 4310 } = {}) {
               // Only update displayed photo if auto-approve setting is enabled
               if (autoApproveTeamPhotos === true) {
                 existingPlayer.teamPhoto = photoPath;
-                console.log('[TEAM_PHOTO_UPDATE] 🟢 Auto-approve ENABLED - updating displayed teamPhoto immediately');
+                existingPlayer.teamPhotoPending = null;
+                console.log('[TEAM_PHOTO_UPDATE] 🟢 Auto-approve ENABLED - updating displayed teamPhoto and clearing pending');
               } else {
                 console.log('[TEAM_PHOTO_UPDATE] 🔴 Auto-approve DISABLED - teamPhoto NOT updated (awaiting manual approval)');
               }
@@ -1222,6 +1223,7 @@ async function startBackend({ port = 4310 } = {}) {
                 deviceId: updateDeviceId,
                 teamName: data.teamName,
                 photoPath: photoPath,
+                photoApprovedAt: existingPlayer?.photoApprovedAt,
                 timestamp: Date.now()
               });
 

@@ -31,6 +31,7 @@ interface KeypadInterfaceProps {
   teamAnswers?: {[teamId: string]: string}; // Team answers from parent (for results display)
   onTeamAnswerUpdate?: (answers: {[teamId: string]: string}) => void; // Team answer update callback
   onTeamResponseTimeUpdate?: (responseTimes: {[teamId: string]: number}) => void; // Team response time update callback
+  teamResponseTimes?: {[teamId: string]: number}; // Team response times from parent (validated times)
   onAwardPoints?: (correctTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner", fastestTeamId?: string) => void; // Award points callback
   onEvilModePenalty?: (wrongTeamIds: string[], noAnswerTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner") => void; // Evil Mode penalty callback
   currentRoundPoints?: number; // Current round points (shared with bottom navigation)
@@ -73,6 +74,7 @@ export function KeypadInterface({
   teamAnswers: parentTeamAnswers = {},
   onTeamAnswerUpdate,
   onTeamResponseTimeUpdate,
+  teamResponseTimes = {},
   onAwardPoints,
   onEvilModePenalty,
   currentRoundPoints,
@@ -207,6 +209,9 @@ export function KeypadInterface({
 
   // Track the last applied answerSubmitted to prevent redundant state updates and echo feedback
   const lastAppliedAnswerRef = useRef<string | undefined>(undefined);
+
+  // Guard against multiple simultaneous timer intervals
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get keypad design from settings context
   const { keypadDesign } = useSettings();
@@ -458,10 +463,10 @@ export function KeypadInterface({
 
     // Find the team with the shortest answer time
     let fastestTeam = correctTeams[0];
-    let fastestTime = teamAnswerTimes[fastestTeam.id] || Infinity;
+    let fastestTime = teamResponseTimes[fastestTeam.id] || Infinity;
 
     correctTeams.forEach(team => {
-      const teamTime = teamAnswerTimes[team.id] || Infinity;
+      const teamTime = teamResponseTimes[team.id] || Infinity;
       if (teamTime < fastestTime) {
         fastestTime = teamTime;
         fastestTeam = team;
@@ -470,9 +475,9 @@ export function KeypadInterface({
 
     return {
       team: fastestTeam,
-      responseTime: fastestTime
+      responseTime: teamResponseTimes[fastestTeam.id] || 0
     };
-  }, [teamAnswers, teamAnswerTimes, teams, questionType, getCorrectAnswer, parentTeamAnswers, isAnswerCorrect]);
+  }, [teamAnswers, teamResponseTimes, teams, questionType, getCorrectAnswer, parentTeamAnswers, isAnswerCorrect]);
 
   // Helper function to get the question type label
   const getQuestionTypeLabel = (type: string | null): string => {
@@ -812,6 +817,13 @@ export function KeypadInterface({
     const timerLength = customDuration ?? gameModeTimers.keypad ?? 30;
     console.log('[KeypadInterface] handleStartTimer called with customDuration:', customDuration, 'gameModeTimers.keypad:', gameModeTimers.keypad, 'finalTimerLength:', timerLength);
 
+    // Clear any existing interval to prevent multiple simultaneous intervals
+    if (timerIntervalRef.current !== null) {
+      console.log('[KeypadInterface] Clearing existing timer interval');
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+
     setTotalTimerLength(timerLength); // Set total timer length for progress bar
     setIsTimerRunning(true);
     setTimerFinished(false);
@@ -864,16 +876,11 @@ export function KeypadInterface({
 
     // Start the countdown with smooth animation (update every 100ms like useTimer hook)
     console.log('[KeypadInterface] Starting countdown timer interval for timerLength:', timerLength);
-    const timer = setInterval(() => {
+    timerIntervalRef.current = setInterval(() => {
       setCountdown(prev => {
         if (prev === null) return null;
 
         const newValue = prev - 0.1;
-
-        // Notify parent about timer state change
-        if (onTimerStateChange) {
-          onTimerStateChange(true, newValue, timerLength);
-        }
 
         // Update external display with new timer value
         if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
@@ -892,7 +899,10 @@ export function KeypadInterface({
         }
 
         if (newValue < 0) {
-          clearInterval(timer);
+          if (timerIntervalRef.current !== null) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+          }
 
           // Delay stopping audio to let the final part of the countdown audio play ("Time's up" message)
           // Audio plays for timerLength + 1 seconds, but countdown finishes at timerLength seconds
@@ -967,6 +977,14 @@ export function KeypadInterface({
     // Can now start timer without requiring an answer first
     // Use provided duration (from admin command/host flowState) or fall back to Settings-based default or 30s
     const timerLength = customDuration ?? gameModeTimers.keypad ?? 30;
+
+    // Clear any existing interval to prevent multiple simultaneous intervals
+    if (timerIntervalRef.current !== null) {
+      console.log('[KeypadInterface] Clearing existing timer interval (silent mode)');
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+
     setTotalTimerLength(timerLength); // Set total timer length for progress bar
     setIsTimerRunning(true);
     setTimerFinished(false);
@@ -1014,16 +1032,11 @@ export function KeypadInterface({
     });
 
     // Start the countdown with smooth animation (update every 100ms like normal timer)
-    const timer = setInterval(() => {
+    timerIntervalRef.current = setInterval(() => {
       setCountdown(prev => {
         if (prev === null) return null;
 
         const newValue = prev - 0.1;
-
-        // Notify parent about timer state change
-        if (onTimerStateChange) {
-          onTimerStateChange(true, newValue, timerLength);
-        }
 
         // Update external display with new timer value
         if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
@@ -1042,7 +1055,10 @@ export function KeypadInterface({
         }
 
         if (newValue < 0) {
-          clearInterval(timer);
+          if (timerIntervalRef.current !== null) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+          }
 
           // Delay stopping audio to let the final part of the countdown audio play
           setTimeout(() => {

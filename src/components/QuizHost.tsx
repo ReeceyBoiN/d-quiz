@@ -83,7 +83,6 @@ interface Quiz {
   id: string;
   name: string;
   type: "test" | "round";
-  icon?: string;
   score?: number;
   location?: { x: number; y: number }; // Physical location on 10x10 grid
   buzzerSound?: string; // Buzzer sound for this team
@@ -1540,7 +1539,6 @@ export function QuizHost() {
         id: deviceId,
         name: teamName,
         type: 'test' as const,
-        icon: '👤',
         score: 0,
         photoUrl: teamPhoto || undefined,
       };
@@ -3336,7 +3334,6 @@ export function QuizHost() {
           name: teamName,
           type: 'test',
           score: 0,
-          icon: '📱',
         };
 
         setQuizzes(prev => {
@@ -4164,7 +4161,7 @@ export function QuizHost() {
   const handleNetworkTeamPhotoUpdated = useCallback((data: any) => {
     try {
       console.log('[QuizHost] 📸 TEAM_PHOTO_UPDATED received:', data);
-      const { deviceId, playerId, teamName, photoPath } = data;
+      const { deviceId, playerId, teamName, photoPath, photoApprovedAt } = data;
 
       if (!photoPath) {
         console.warn('[QuizHost] ⚠️  TEAM_PHOTO_UPDATED: No photoPath in payload');
@@ -4240,12 +4237,13 @@ export function QuizHost() {
       }
 
       console.log('[QuizHost] 📸 Converted photo URL (first 50 chars):', convertedPhotoUrl.substring(0, 50) + '...');
+      console.log('[QuizHost] 📸 Photo approval status from backend - photoApprovedAt:', photoApprovedAt ? new Date(photoApprovedAt).toISOString() : null);
 
-      // AUTO-APPROVAL: If enabled, immediately broadcast PHOTO_APPROVAL_UPDATED so quizzes state gets updated with the photo
-      // This ensures the photo displays in the team info tab right away
-      // Use ref to check auto-approval setting without dependency
-      if (teamPhotosAutoApproveRef.current === true && normalizedDeviceId && teamName && convertedPhotoUrl) {
-        console.log('[QuizHost] 📸 Auto-approval ENABLED - immediately broadcasting PHOTO_APPROVAL_UPDATED for:', teamName);
+      // AUTO-APPROVAL: Check if the backend has already approved this photo (indicated by photoApprovedAt being present)
+      // This signals that auto-approve was enabled when the photo was submitted
+      // If photoApprovedAt exists, broadcast PHOTO_APPROVAL_UPDATED immediately
+      if (photoApprovedAt && normalizedDeviceId && teamName && convertedPhotoUrl) {
+        console.log('[QuizHost] 📸 Backend APPROVED this photo - broadcasting PHOTO_APPROVAL_UPDATED for:', teamName);
 
         // Use async IIFE to broadcast the approval event
         (async () => {
@@ -4260,13 +4258,13 @@ export function QuizHost() {
                 photoUrl: convertedPhotoUrl
               }
             });
-            console.log('[QuizHost] ✅ Auto-approval: broadcasted PHOTO_APPROVAL_UPDATED for team:', teamName);
+            console.log('[QuizHost] ✅ Photo approved by backend: broadcasted PHOTO_APPROVAL_UPDATED for team:', teamName);
           } catch (err) {
-            console.error('[QuizHost] Error broadcasting auto-approved photo:', err);
+            console.error('[QuizHost] Error broadcasting backend-approved photo:', err);
           }
         })();
-      } else if (teamPhotosAutoApproveRef.current !== true) {
-        console.log('[QuizHost] 🔴 Auto-approval DISABLED - not auto-approving');
+      } else if (!photoApprovedAt) {
+        console.log('[QuizHost] 📸 Photo is pending approval (not approved by backend) - not auto-approving');
       }
 
       // NOTE: We intentionally do NOT update photoUrl here from TEAM_PHOTO_UPDATED (unless auto-approved above)
@@ -5931,6 +5929,7 @@ export function QuizHost() {
               teamAnswers={teamAnswers}
               onTeamAnswerUpdate={handleTeamAnswerUpdate}
               onTeamResponseTimeUpdate={handleTeamResponseTimeUpdate}
+              teamResponseTimes={teamResponseTimes}
               onAwardPoints={handleAwardPointsWithScoring}
               onEvilModePenalty={handleApplyEvilModePenalty}
               currentRoundPoints={currentRoundPoints}

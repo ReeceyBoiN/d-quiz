@@ -34,7 +34,8 @@ export type NetworkMessageType =
   | 'CONTROLLER_AUTH_FAILED'   // sent to player when PIN authentication fails
   | 'ADMIN_COMMAND'  // incoming from controller player
   | 'ADMIN_RESPONSE'  // sent to controller confirming command execution
-  | 'FLOW_STATE';  // broadcast to controller with current flow state
+  | 'FLOW_STATE'  // broadcast to controller with current flow state
+  | 'PHOTO_APPROVAL_UPDATED';  // broadcast when a team photo is approved/updated
 
 export interface NetworkPayload {
   type: NetworkMessageType;

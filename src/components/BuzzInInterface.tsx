@@ -12,7 +12,6 @@ interface Quiz {
   id: string;
   name: string;
   type: "test" | "round";
-  icon?: string;
   score?: number;
   scrambled?: boolean;
 }

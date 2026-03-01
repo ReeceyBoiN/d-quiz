@@ -30,7 +30,6 @@ interface TeamWindowProps {
     id: string;
     name: string;
     score?: number;
-    icon?: string;
     location?: { x: number; y: number }; // Grid coordinates (0-9)
     buzzerSound?: string;
     backgroundColor?: string;
@@ -136,6 +135,7 @@ export function TeamWindow({
     if (!filename) return '';
     return filename.replace(/\.mp3$/i, '');
   };
+
 
   const handleCellClick = (x: number, y: number) => {
     if (onLocationChange) {
@@ -272,13 +272,6 @@ export function TeamWindow({
       {/* Header with Team Name in Center */}
       <div className="bg-sidebar-accent border-b border-sidebar-border px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
-          {/* Left side - Team Icon */}
-          <div className="flex items-center gap-3 flex-1">
-            {team.icon && (
-              <span className="text-3xl emoji emoji-font">{team.icon}</span>
-            )}
-          </div>
-          
           {/* Center - Team Name (editable) */}
           <div className="flex items-center gap-2 justify-center flex-1">
             {isEditingName ? (
