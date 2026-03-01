@@ -29,8 +29,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   Music round?
 
-  Team photos show on player devices
-
   x Scaling visually needs adding as its currently too cramped on the screen slightly whole software wide. 
  
   x Needs all visual elements reducing by 10% or so.
