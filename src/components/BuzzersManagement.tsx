@@ -411,9 +411,9 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
                             fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
                           }}
                         >
-                          <SelectValue
-                            placeholder={loadingBuzzers ? "Loading..." : "Select buzzer sound"}
-                          />
+                          <SelectValue placeholder={loadingBuzzers ? "Loading..." : "Select buzzer sound"}>
+                            {team.buzzerSound ? getNormalizedBuzzerName(team.buzzerSound) : undefined}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent
                           style={{

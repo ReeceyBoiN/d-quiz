@@ -58,6 +58,13 @@ export function FastestTeamDisplay({
     }
   }, [fastestTeam?.team.buzzerSound, buzzerVolumes]);
 
+  // Debug logging for incoming fastestTeam prop
+  React.useEffect(() => {
+    if (fastestTeam?.responseTime !== undefined) {
+      console.log('[FastestTeamDisplay] Received fastestTeam with responseTime:', fastestTeam.responseTime, 'team:', fastestTeam.team.name);
+    }
+  }, [fastestTeam?.responseTime, fastestTeam?.team.name]);
+
   // Interaction state
   const [isDraggingHost, setIsDraggingHost] = useState(false);
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
@@ -78,7 +85,9 @@ export function FastestTeamDisplay({
   };
 
   const formatResponseTime = (timeMs: number) => {
-    return `${(timeMs / 1000).toFixed(2)}s`;
+    const result = `${(timeMs / 1000).toFixed(2)}s`;
+    console.log('[FastestTeamDisplay] formatResponseTime called with:', timeMs, '| output:', result);
+    return result;
   };
 
   // Mouse event handlers for drag and drop - memoized to prevent memory leaks

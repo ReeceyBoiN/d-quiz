@@ -3088,6 +3088,7 @@ export function QuizHost() {
     // Ensure team data is synced with the latest info from quizzes array (includes photoUrl, name, etc.)
     const currentTeam = quizzes.find(q => q.id === fastestTeam.team.id);
     const teamToUse = currentTeam || fastestTeam.team;
+    console.log('[QuizHost] Setting fastestTeamData - responseTime value:', fastestTeam.responseTime, 'typeof:', typeof fastestTeam.responseTime, 'expected ~671 for 0.67s display');
     setFastestTeamData({ team: teamToUse, responseTime: fastestTeam.responseTime });
 
     // Play the team's buzzer sound
