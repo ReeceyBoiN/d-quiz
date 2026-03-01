@@ -324,6 +324,23 @@ export function QuizHost() {
   const lastExternalDisplayMessageRef = useRef<any>(null);
   const fastestTeamTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Buzzer volume state - persisted per buzzer file
+  const [buzzerVolumes, setBuzzerVolumes] = useState<{[buzzerName: string]: number}>({});
+
+  // Load buzzer volumes from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('quiz-buzzer-volumes');
+    if (saved) {
+      try {
+        const volumes = JSON.parse(saved);
+        setBuzzerVolumes(volumes);
+        console.log('[QuizHost] Loaded buzzer volumes from localStorage:', volumes);
+      } catch (e) {
+        console.error('[QuizHost] Failed to load buzzer volumes:', e);
+      }
+    }
+  }, []);
+
   // Buzzer audio ref and playback helper
   const buzzerAudioRef = useRef<HTMLAudioElement>(null);
   const playFastestTeamBuzzer = useCallback(async (buzzerSound?: string) => {
@@ -338,13 +355,32 @@ export function QuizHost() {
       if (!audioUrl) return;
 
       if (buzzerAudioRef.current) {
+        // Reset audio element before playing to ensure clean state
+        buzzerAudioRef.current.pause();
+        buzzerAudioRef.current.currentTime = 0;
+
+        // Set the audio source
         buzzerAudioRef.current.src = audioUrl;
-        await buzzerAudioRef.current.play().catch(err => console.error('[QuizHost] Error playing buzzer:', err));
+
+        // Set volume based on saved buzzer volumes, default to 75%
+        const savedVolume = buzzerVolumes[buzzerSound];
+        const volume = typeof savedVolume === 'number' && savedVolume >= 0 && savedVolume <= 100
+          ? savedVolume
+          : 75;
+        buzzerAudioRef.current.volume = volume / 100;
+
+        console.log('[QuizHost] Playing buzzer:', buzzerSound, 'Volume:', volume, '%');
+
+        try {
+          await buzzerAudioRef.current.play();
+        } catch (playErr) {
+          console.error('[QuizHost] Error playing buzzer audio:', playErr);
+        }
       }
     } catch (err) {
       console.error('[QuizHost] Error playing fastest team buzzer:', err);
     }
-  }, [hostInfo]);
+  }, [hostInfo, buzzerVolumes]);
 
   // Listen for external display window being closed via Ctrl+V
   useEffect(() => {
@@ -3068,6 +3104,14 @@ export function QuizHost() {
     setShowFastestTeamDisplay(false);
     setActiveTab("home"); // Return to home when closed
   }, []);
+
+  // Handle buzzer volume changes - updates state and persists to localStorage
+  const handleBuzzerVolumeChange = useCallback((buzzerSound: string, volume: number) => {
+    const updatedVolumes = { ...buzzerVolumes, [buzzerSound]: volume };
+    setBuzzerVolumes(updatedVolumes);
+    localStorage.setItem('quiz-buzzer-volumes', JSON.stringify(updatedVolumes));
+    console.log('[QuizHost] Buzzer volume changed for:', buzzerSound, 'to:', volume, '%');
+  }, [buzzerVolumes]);
 
   // Handle game timer start - capture the start time and question context for accurate response time calculation
   const handleGameTimerStart = useCallback((startTime: number) => {
@@ -5905,6 +5949,8 @@ export function QuizHost() {
                 onHostLocationChange={handleHostLocationChange}
                 onScrambleKeypad={handleScrambleKeypad}
                 onBlockTeam={handleBlockTeam}
+                buzzerVolumes={buzzerVolumes}
+                onBuzzerVolumeChange={handleBuzzerVolumeChange}
               />
             </div>
           )}
@@ -5992,6 +6038,8 @@ export function QuizHost() {
                 onHostLocationChange={handleHostLocationChange}
                 onScrambleKeypad={handleScrambleKeypad}
                 onBlockTeam={handleBlockTeam}
+                buzzerVolumes={buzzerVolumes}
+                onBuzzerVolumeChange={handleBuzzerVolumeChange}
               />
             </div>
           )}
@@ -6012,6 +6060,8 @@ export function QuizHost() {
             onHostLocationChange={handleHostLocationChange}
             onScrambleKeypad={handleScrambleKeypad}
             onBlockTeam={handleBlockTeam}
+            buzzerVolumes={buzzerVolumes}
+            onBuzzerVolumeChange={handleBuzzerVolumeChange}
           />
         </div>
       );
@@ -6121,11 +6171,13 @@ export function QuizHost() {
     if (showBuzzersManagement) {
       return (
         <div className="flex-1 overflow-hidden">
-          <BuzzersManagement 
+          <BuzzersManagement
             teams={quizzes}
             onBuzzerChange={handleBuzzerChange}
             onClose={handleCloseBuzzersManagement}
             onShowTeamOnDisplay={handleShowTeamOnDisplay}
+            buzzerVolumes={buzzerVolumes}
+            onBuzzerVolumeChange={handleBuzzerVolumeChange}
           />
         </div>
       );

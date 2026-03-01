@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "./ui/button";
+import { Slider } from "./ui/slider";
 import { Play, Volume2, Users, Folder, AlertCircle } from "lucide-react";
 import { useSettings } from "../utils/SettingsContext";
 import {
@@ -27,9 +28,11 @@ interface BuzzersManagementProps {
   onBuzzerChange: (teamId: string, buzzerSound: string) => void;
   onClose: () => void;
   onShowTeamOnDisplay?: (teamName: string) => void;
+  buzzerVolumes?: {[buzzerName: string]: number};
+  onBuzzerVolumeChange?: (buzzerSound: string, volume: number) => void;
 }
 
-export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOnDisplay }: BuzzersManagementProps) {
+export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOnDisplay, buzzerVolumes = {}, onBuzzerVolumeChange }: BuzzersManagementProps) {
   const [playingBuzzer, setPlayingBuzzer] = useState<string | null>(null);
   const [welcomeMode, setWelcomeMode] = useState(false);
   const [currentTeamIndex, setCurrentTeamIndex] = useState(0);
@@ -37,6 +40,7 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
   const [isSelectingBuzzerFolder, setIsSelectingBuzzerFolder] = useState(false);
   const [buzzerFolderError, setBuzzerFolderError] = useState<string | null>(null);
   const [defaultBuzzerPath, setDefaultBuzzerPath] = useState<string | null>(null);
+  const [teamBuzzerVolumes, setTeamBuzzerVolumes] = useState<{[teamId: string]: number}>({});
   const audioRef = React.useRef<HTMLAudioElement>(null);
   const { hostInfo, isLoading: loadingHostInfo } = useHostInfo();
   const { buzzerFolderPath, updateBuzzerFolderPath } = useSettings();
@@ -146,10 +150,27 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
       }
 
       if (audioRef.current) {
+        // Reset audio element before playing to ensure clean state
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+
+        // Set the audio source
         audioRef.current.src = audioUrl;
-        await audioRef.current.play().catch((error) => {
-          console.error('[BuzzersManagement] Error playing buzzer:', error);
-        });
+
+        // Set volume based on saved buzzer volumes, default to 75%
+        const savedVolume = buzzerVolumes[buzzerSound];
+        const volume = typeof savedVolume === 'number' && savedVolume >= 0 && savedVolume <= 100
+          ? savedVolume
+          : 75;
+        audioRef.current.volume = volume / 100;
+
+        console.log('[BuzzersManagement] Playing buzzer:', buzzerSound, 'Volume:', volume, '%');
+
+        try {
+          await audioRef.current.play();
+        } catch (playErr) {
+          console.error('[BuzzersManagement] Error playing buzzer audio:', playErr);
+        }
       }
     } catch (error) {
       console.error('[BuzzersManagement] Error in playBuzzerSound:', error);
@@ -344,96 +365,122 @@ export function BuzzersManagement({ teams, onBuzzerChange, onClose, onShowTeamOn
           </div>
         ) : (
           <div className="divide-y divide-border pb-8">
-            {teams.map((team, index) => (
-              <div
-                key={team.id}
-                className="px-6 py-3 hover:bg-accent/50 transition-colors flex items-center gap-4"
-              >
-                {/* Team Photo */}
-                <div className="flex-shrink-0">
-                  {team.photoUrl ? (
-                    <img
-                      src={team.photoUrl}
-                      alt={team.name}
-                      className="w-12 h-12 rounded-full object-cover border-2 border-border"
-                      onLoad={() => {
-                        console.log('[BuzzersManagement] ✅ Successfully loaded team photo:', team.photoUrl);
-                      }}
-                      onError={(e) => {
-                        console.error('[BuzzersManagement] ❌ Failed to load team photo:', team.photoUrl);
-                        e.currentTarget.style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center border-2 border-border" />
+            {teams.map((team, index) => {
+              const teamBuzzerVolume = team.buzzerSound ? (buzzerVolumes[team.buzzerSound] ?? 75) : 75;
+              return (
+                <div key={team.id} className="px-6 py-4 hover:bg-accent/50 transition-colors">
+                  {/* Team header row */}
+                  <div className="flex items-center gap-4 mb-3">
+                    {/* Team Photo */}
+                    <div className="flex-shrink-0">
+                      {team.photoUrl ? (
+                        <img
+                          src={team.photoUrl}
+                          alt={team.name}
+                          className="w-12 h-12 rounded-full object-cover border-2 border-border"
+                          onLoad={() => {
+                            console.log('[BuzzersManagement] ✅ Successfully loaded team photo:', team.photoUrl);
+                          }}
+                          onError={(e) => {
+                            console.error('[BuzzersManagement] ❌ Failed to load team photo:', team.photoUrl);
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center border-2 border-border" />
+                      )}
+                    </div>
+
+                    {/* Team Name */}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-foreground truncate">
+                        {team.name}
+                      </h3>
+                    </div>
+
+                    {/* Buzzer Sound Selector */}
+                    <div className="w-56">
+                      <Select
+                        value={team.buzzerSound || ""}
+                        onValueChange={(value) => onBuzzerChange(team.id, value)}
+                        disabled={loadingBuzzers}
+                      >
+                        <SelectTrigger
+                          className="w-full h-9"
+                          style={{
+                            fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
+                          }}
+                        >
+                          <SelectValue
+                            placeholder={loadingBuzzers ? "Loading..." : "Select buzzer sound"}
+                          />
+                        </SelectTrigger>
+                        <SelectContent
+                          style={{
+                            fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
+                          }}
+                        >
+                          {buzzerSounds.map((sound) => {
+                            const isSelected = team.buzzerSound === sound;
+                            const normalizedName = getNormalizedBuzzerName(sound);
+
+                            return (
+                              <SelectItem
+                                key={sound}
+                                value={sound}
+                                style={{
+                                  fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
+                                }}
+                              >
+                                <span>
+                                  {isSelected && <span className="text-green-500">✓ </span>}
+                                  {normalizedName}
+                                </span>
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Play Button */}
+                    <Button
+                      onClick={() => playBuzzerSound(team.id, team.buzzerSound)}
+                      disabled={playingBuzzer === team.id || !team.buzzerSound || loadingBuzzers}
+                      variant="default"
+                      size="sm"
+                      className="w-32"
+                    >
+                      <Play className="h-3.5 w-3.5 mr-1.5" />
+                      {playingBuzzer === team.id ? "Playing..." : "Play Buzzer"}
+                    </Button>
+                  </div>
+
+                  {/* Volume Control Row - shown when team has a buzzer selected */}
+                  {team.buzzerSound && (
+                    <div className="flex items-center gap-4 ml-16 pt-2 border-t border-border/50">
+                      <div className="flex items-center gap-2 flex-1">
+                        <Volume2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">Volume:</span>
+                        <Slider
+                          value={[teamBuzzerVolume]}
+                          onValueChange={(newValue) => {
+                            if (team.buzzerSound && onBuzzerVolumeChange) {
+                              onBuzzerVolumeChange(team.buzzerSound, newValue[0]);
+                            }
+                          }}
+                          max={100}
+                          min={0}
+                          step={5}
+                          className="flex-1"
+                        />
+                        <span className="text-xs font-medium whitespace-nowrap w-8 text-right">{teamBuzzerVolume}%</span>
+                      </div>
+                    </div>
                   )}
                 </div>
-                
-                {/* Team Name */}
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-foreground truncate">
-                    {team.name}
-                  </h3>
-                </div>
-
-                {/* Buzzer Sound Selector */}
-                <div className="w-56">
-                  <Select
-                    value={team.buzzerSound || ""}
-                    onValueChange={(value) => onBuzzerChange(team.id, value)}
-                    disabled={loadingBuzzers}
-                  >
-                    <SelectTrigger
-                      className="w-full h-9"
-                      style={{
-                        fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
-                      }}
-                    >
-                      <SelectValue
-                        placeholder={loadingBuzzers ? "Loading..." : "Select buzzer sound"}
-                      />
-                    </SelectTrigger>
-                    <SelectContent
-                      style={{
-                        fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
-                      }}
-                    >
-                      {buzzerSounds.map((sound) => {
-                        const isSelected = team.buzzerSound === sound;
-                        const normalizedName = getNormalizedBuzzerName(sound);
-
-                        return (
-                          <SelectItem
-                            key={sound}
-                            value={sound}
-                            style={{
-                              fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Android Emoji", sans-serif'
-                            }}
-                          >
-                            <span>
-                              {isSelected && <span className="text-green-500">✓ </span>}
-                              {normalizedName}
-                            </span>
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Play Button */}
-                <Button
-                  onClick={() => playBuzzerSound(team.id, team.buzzerSound)}
-                  disabled={playingBuzzer === team.id || !team.buzzerSound || loadingBuzzers}
-                  variant="default"
-                  size="sm"
-                  className="w-32"
-                >
-                  <Play className="h-3.5 w-3.5 mr-1.5" />
-                  {playingBuzzer === team.id ? "Playing..." : "Play Buzzer"}
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

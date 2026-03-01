@@ -28,21 +28,36 @@ interface FastestTeamDisplayProps {
   onHostLocationChange?: (location: { x: number; y: number } | null) => void;
   onScrambleKeypad?: (teamId: string) => void;
   onBlockTeam?: (teamId: string, blocked: boolean) => void;
+  buzzerVolumes?: {[buzzerName: string]: number};
+  onBuzzerVolumeChange?: (buzzerSound: string, volume: number) => void;
 }
 
-export function FastestTeamDisplay({ 
-  fastestTeam, 
-  teams, 
-  hostLocation, 
+export function FastestTeamDisplay({
+  fastestTeam,
+  teams,
+  hostLocation,
   onClose,
   onFastestTeamLocationChange,
   onHostLocationChange,
   onScrambleKeypad,
-  onBlockTeam
+  onBlockTeam,
+  buzzerVolumes = {},
+  onBuzzerVolumeChange
 }: FastestTeamDisplayProps) {
-  // Buzzer volume state (0-100)
-  const [buzzerVolume, setBuzzerVolume] = useState([75]);
-  
+  // Derive buzzer volume from parent prop, or default to 75
+  const currentBuzzerVolume = fastestTeam?.team.buzzerSound
+    ? buzzerVolumes[fastestTeam.team.buzzerSound] ?? 75
+    : 75;
+  const [buzzerVolume, setBuzzerVolume] = useState([currentBuzzerVolume]);
+
+  // Sync buzzer volume when fastestTeam changes
+  React.useEffect(() => {
+    if (fastestTeam?.team.buzzerSound) {
+      const volume = buzzerVolumes[fastestTeam.team.buzzerSound] ?? 75;
+      setBuzzerVolume([volume]);
+    }
+  }, [fastestTeam?.team.buzzerSound, buzzerVolumes]);
+
   // Interaction state
   const [isDraggingHost, setIsDraggingHost] = useState(false);
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
@@ -398,7 +413,7 @@ export function FastestTeamDisplay({
               </div>
 
               {/* Performance Stats */}
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-slate-700 dark:to-slate-800 rounded-lg p-3 border border-border">
+              <div className="bg-card rounded-lg p-3 border border-border">
                 <h3 className="font-semibold text-foreground mb-2 text-xs">Performance</h3>
                 {(() => {
                   const stats = getTeamStats(fastestTeam.team.id);
@@ -424,7 +439,7 @@ export function FastestTeamDisplay({
               </div>
 
               {/* Buzzer Settings */}
-              <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-slate-700 dark:to-slate-800 rounded-lg p-3 border border-border">
+              <div className="bg-card rounded-lg p-3 border border-border">
                 <h3 className="font-semibold text-foreground mb-2 text-xs flex items-center gap-2">
                   <Volume2 className="h-3 w-3" />
                   Buzzer
@@ -436,7 +451,12 @@ export function FastestTeamDisplay({
                   </div>
                   <Slider
                     value={buzzerVolume}
-                    onValueChange={setBuzzerVolume}
+                    onValueChange={(newValue) => {
+                      setBuzzerVolume(newValue);
+                      if (fastestTeam?.team.buzzerSound && onBuzzerVolumeChange) {
+                        onBuzzerVolumeChange(fastestTeam.team.buzzerSound, newValue[0]);
+                      }
+                    }}
                     max={100}
                     min={0}
                     step={5}
