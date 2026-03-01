@@ -258,9 +258,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         (window as any).api.ipc.invoke('network/all-players')
           .then((result: any) => {
             let players = Array.isArray(result) ? result : result?.data || [];
-            // Filter for photos that are pending: either marked with teamPhotoPending=true OR have no approval timestamp
+            // Filter for photos that are pending: either in teamPhotoPending OR in teamPhoto without approval timestamp
             const pendingPhotos = players.filter((p: any) =>
-              p.teamPhoto && (p.teamPhotoPending === true || !p.photoApprovedAt)
+              p.teamPhotoPending || (p.teamPhoto && !p.photoApprovedAt)
             );
 
             if (pendingPhotos.length === 0) {
@@ -269,9 +269,12 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
             }
 
             console.log(`[SettingsContext] 📸 Found ${pendingPhotos.length} pending photos - auto-approving...`);
+            console.log('[SettingsContext] Pending photos breakdown:');
+            console.log('  - In teamPhotoPending:', pendingPhotos.filter((p: any) => p.teamPhotoPending).length);
+            console.log('  - In teamPhoto without approval:', pendingPhotos.filter((p: any) => p.teamPhoto && !p.photoApprovedAt).length);
 
             // Approve each pending photo
-            pendingPhotos.forEach((p: any) => {
+            const approvalPromises = pendingPhotos.map((p: any) =>
               (window as any).api.network?.approveTeam?.({
                 deviceId: p.deviceId,
                 teamName: p.teamName,
@@ -282,8 +285,17 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
                 })
                 .catch((err: any) => {
                   console.error(`[SettingsContext] ❌ Failed to auto-approve photo for ${p.teamName}:`, err);
-                });
-            });
+                })
+            );
+
+            // Wait for all approvals to complete
+            Promise.all(approvalPromises)
+              .then(() => {
+                console.log(`[SettingsContext] ✅ All ${pendingPhotos.length} pending photos auto-approved`);
+              })
+              .catch((err: any) => {
+                console.error('[SettingsContext] ❌ Some auto-approvals failed:', err);
+              });
           })
           .catch((err: any) => {
             console.error('[SettingsContext] ❌ Failed to fetch pending photos for auto-approval:', err);

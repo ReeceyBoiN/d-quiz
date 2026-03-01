@@ -13,30 +13,23 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
     Bugs & Features Needed:
 
-
-  ?(Is this still a bug)?change teams layout button on bottom navigation bar changes the size of the navigation bar when toggled. - Visually the boxes and placement and if text changes it shouldnt change location of boxes buttons and interface, unless its font size, that should increase everything all round really.
-
   Instructions graphics need making, how to play, how to connect, how to answer, how to edit team name, add a team pic, letters questions etc etc
-
-  Buzzer needs to play on the fastest team reveal
 
   Scramble keypad doesnt scramble the keypad for players
 
   sequence question is only allowing 1 answer to be selected on on the spot mode
 
-  Need to make sure the nearest wins modes calculates which team is closest, if multiple teams get the closest answer or equidistant those teams should get the bonus points
+  *Needs public test - Need to make sure the nearest wins modes calculates which team is closest, if multiple teams get the closest answer or equidistant those teams should get the bonus points
 
   Buzz in mode needs just making in general hahaha
 
-  team grid needs to be smaller when viewing the teams info when clicking on a team from the teams list
-
-  in setting, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
+  in settings, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
 
   in settings, waiting room should have the ability to display waiting room images.
 
-  nearest wins quiz pack mode needs making and to calculate the closest team's guess + on the spot mode isnt calculating the nearest team
-
   Music round?
+
+  Team photos show on player devices
 
   x Scaling visually needs adding as its currently too cramped on the screen slightly whole software wide. 
  

@@ -1412,6 +1412,11 @@ export function StatusBar({
                       <p className="text-sm text-muted-foreground mt-1">
                         Automatically approve team photos when they are uploaded
                       </p>
+                      {teamPhotosAutoApprove && (
+                        <p className="text-xs text-green-600 dark:text-green-400 mt-2 font-semibold flex items-center gap-1">
+                          ✓ Auto-approval enabled - photos will be automatically approved and won't appear in this tab
+                        </p>
+                      )}
                     </div>
                     <Switch
                       checked={teamPhotosAutoApprove}
@@ -1434,7 +1439,11 @@ export function StatusBar({
                       <div className="text-center text-muted-foreground">
                         <Camera className="h-16 w-16 mx-auto mb-4 opacity-50" />
                         <p className="text-lg mb-2">No pending photos</p>
-                        <p className="text-sm">Team photos will appear here when teams upload them.</p>
+                        <p className="text-sm">
+                          {teamPhotosAutoApprove
+                            ? 'Team photos are being automatically approved. Approved photos appear on player devices.'
+                            : 'Team photos will appear here when teams upload them.'}
+                        </p>
                       </div>
                     </div>
                   ) : (

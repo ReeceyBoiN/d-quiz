@@ -477,7 +477,7 @@ async function boot() {
       }
       const { deviceId, teamName } = payload;
       log.info('[IPC] Calling backend.declineTeam...');
-      const declineSuccess = backend.declineTeam(deviceId, teamName);
+      const declineSuccess = await backend.declineTeam(deviceId, teamName);
       log.info('[IPC] backend.declineTeam returned:', declineSuccess);
       if (!declineSuccess) {
         log.error('[IPC] ❌ backend.declineTeam returned false - message may not have been sent');

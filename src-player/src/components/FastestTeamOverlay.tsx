@@ -7,9 +7,15 @@ interface FastestTeamOverlayProps {
 
 export function FastestTeamOverlay({ teamName, teamPhoto }: FastestTeamOverlayProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const [photoLoaded, setPhotoLoaded] = useState(false);
+  const [photoError, setPhotoError] = useState(false);
 
   useEffect(() => {
-    // Trigger animation on mount
+    // Reset photo loading state when overlay mounts
+    setPhotoLoaded(false);
+    setPhotoError(false);
+
+    // Trigger animation on mount with slight delay
     const animationTimer = setTimeout(() => {
       setIsVisible(true);
     }, 50);
@@ -17,41 +23,73 @@ export function FastestTeamOverlay({ teamName, teamPhoto }: FastestTeamOverlayPr
     return () => clearTimeout(animationTimer);
   }, []);
 
+  const handlePhotoLoad = () => {
+    console.log('[Player] FastestTeamOverlay: Photo loaded successfully');
+    setPhotoLoaded(true);
+  };
+
+  const handlePhotoError = () => {
+    console.error('[Player] FastestTeamOverlay: Failed to load photo from', teamPhoto);
+    setPhotoError(true);
+  };
+
   return (
     <div
-      className={`fixed inset-0 flex items-center justify-center z-50 bg-black/40 transition-opacity duration-300 ${
+      className={`fixed inset-0 z-50 bg-black/50 transition-opacity duration-300 ease-out ${
         isVisible ? 'opacity-100' : 'opacity-0'
       }`}
     >
-      <div
-        className={`flex flex-col items-center gap-6 transform transition-all duration-300 ${
-          isVisible
-            ? 'scale-100 opacity-100'
-            : 'scale-95 opacity-0'
-        }`}
-      >
-        {/* Team Photo Section */}
-        {teamPhoto ? (
-          <div className="relative w-48 h-48 rounded-full overflow-hidden border-4 border-yellow-400 shadow-2xl shadow-yellow-500/50">
-            <img
-              src={teamPhoto}
-              alt={teamName}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 ring-2 ring-inset ring-yellow-400 rounded-full"></div>
-          </div>
-        ) : (
-          <div className="w-48 h-48 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center border-4 border-yellow-400 shadow-2xl shadow-yellow-500/50">
-            <span className="text-6xl">🏆</span>
-          </div>
-        )}
+      {/* Team Photo Section - Full Screen */}
+      {teamPhoto && !photoError ? (
+        <div className="relative w-screen h-screen flex items-center justify-center">
+          {!photoLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-700 z-10">
+              <div className="animate-spin h-12 w-12 border-4 border-yellow-400 border-t-transparent rounded-full"></div>
+            </div>
+          )}
+          <img
+            src={teamPhoto}
+            alt={teamName}
+            className={`w-full h-full object-contain transition-opacity duration-300 ${
+              photoLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
+            onLoad={handlePhotoLoad}
+            onError={handlePhotoError}
+          />
 
-        {/* Team Name Section */}
-        <div className="text-center">
-          <div className="text-yellow-400 text-2xl font-bold mb-2">⚡ FASTEST TEAM ⚡</div>
-          <div className="text-white text-4xl font-bold drop-shadow-lg">{teamName}</div>
+          {/* Team Name Overlay */}
+          <div
+            className={`absolute inset-0 flex items-center justify-center z-20 transition-all duration-300 ease-out ${
+              isVisible
+                ? 'scale-100 opacity-100'
+                : 'scale-75 opacity-0'
+            }`}
+          >
+            <div className="text-center max-w-2xl px-4">
+              <div className="text-white text-4xl sm:text-5xl md:text-6xl font-bold drop-shadow-2xl break-words">
+                {teamName}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="w-screen h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+          <div
+            className={`transform transition-all duration-300 ease-out ${
+              isVisible
+                ? 'scale-100 opacity-100'
+                : 'scale-75 opacity-0'
+            }`}
+          >
+            <div className="flex flex-col items-center gap-6">
+              <span className="text-9xl">🏆</span>
+              <div className="text-white text-4xl sm:text-5xl md:text-6xl font-bold drop-shadow-lg text-center break-words max-w-2xl px-4">
+                {teamName}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

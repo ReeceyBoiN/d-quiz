@@ -122,7 +122,7 @@ export function FastestTeamDisplay({
   return (
     <div className="flex-1 flex flex-col bg-background relative">
       {/* Header */}
-      <div className="border-b border-border p-6 bg-card" style={{ flexShrink: 0 }}>
+      <div className="border-b border-border p-6 bg-card z-20" style={{ flexShrink: 0 }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="text-4xl">🏃</div>
@@ -144,85 +144,93 @@ export function FastestTeamDisplay({
         </div>
       </div>
 
-      {/* Content - Three Column Layout */}
-      <div className="flex gap-6" style={{ flex: 1, minHeight: 0 }}>
-        {/* Left side - Team Photo Area */}
-        <div className="w-80 overflow-y-auto" style={{ flexShrink: 0 }}>
-          <div className="p-6" style={{ minHeight: '100%' }}>
-            <div className="bg-card rounded-lg p-6 border border-border">
-              <h3 className="font-semibold text-foreground mb-4 text-center">Team Photo</h3>
+      {/* Content Area with Full-Screen Photo */}
+      <div className="flex gap-0 flex-1 overflow-hidden relative">
+        {/* Main Photo Area - Takes up flex space */}
+        <div className="flex-1 relative overflow-hidden group">
+          {fastestTeam?.team.photoUrl ? (
+            <>
+              {/* Photo Background */}
+              <img
+                src={fastestTeam.team.photoUrl}
+                alt={`${fastestTeam.team.name} photo`}
+                className="w-full h-full object-cover"
+                onLoad={() => {
+                  console.log('[FastestTeamDisplay] Successfully loaded team photo:', fastestTeam.team.photoUrl);
+                }}
+                onError={(e) => {
+                  console.error('[FastestTeamDisplay] Failed to load team photo:', fastestTeam.team.photoUrl);
+                }}
+              />
               
-              {/* Photo container - always visible */}
-              <div className="w-full aspect-square bg-[#f8f9fa] dark:bg-[#2c3e50] rounded-lg border-2 border-border p-4 flex items-center justify-center relative group">
-                {fastestTeam?.team.photoUrl ? (
-                  <>
-                    <img
-                      src={fastestTeam.team.photoUrl}
-                      alt={`${fastestTeam.team.name} photo`}
-                      className="w-full h-full object-cover rounded-lg"
-                      onLoad={() => {
-                        console.log('[FastestTeamDisplay] ✅ Successfully loaded team photo:', fastestTeam.team.photoUrl);
-                      }}
-                      onError={(e) => {
-                        console.error('[FastestTeamDisplay] ❌ Failed to load team photo:', fastestTeam.team.photoUrl);
-                        e.currentTarget.parentElement!.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-muted text-muted-foreground">Unable to load image</div>';
-                      }}
-                    />
-                    {/* Delete Photo Button - appears on hover */}
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 h-8 w-8 p-0"
-                      onClick={() => {
-                        // TODO: Implement delete photo functionality
-                        console.log('Delete photo for team:', fastestTeam.team.id);
-                      }}
-                      title="Delete team photo"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                    {/* Empty state - just blank */}
+              {/* Dark overlay for better text readability */}
+              <div className="absolute inset-0 bg-black/30"></div>
+
+              {/* Team Name Overlay - Centered and Large */}
+              {fastestTeam && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <h2 className="text-8xl font-bold text-white drop-shadow-2xl mb-8 text-center px-4">
+                    {fastestTeam.team.name}
+                  </h2>
+                  <div className="text-white drop-shadow-2xl text-5xl mb-8">
+                    {fastestTeam.team.icon || "🎯"}
                   </div>
-                )}
-              </div>
+                  <div className="inline-block bg-[#2ecc71] text-white px-10 py-6 rounded-full text-4xl font-bold shadow-2xl">
+                    ⚡ {formatResponseTime(fastestTeam.responseTime)}
+                  </div>
+                </div>
+              )}
+
+              {/* Delete Photo Button - appears on hover */}
+              <Button
+                variant="destructive"
+                size="sm"
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 h-8 w-8 p-0 z-10"
+                onClick={() => {
+                  // TODO: Implement delete photo functionality
+                  console.log('Delete photo for team:', fastestTeam?.team.id);
+                }}
+                title="Delete team photo"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800">
+              {fastestTeam ? (
+                <>
+                  <div className="text-8xl mb-8">{fastestTeam.team.icon || "🎯"}</div>
+                  <h2 className="text-5xl font-bold text-foreground mb-8 text-center px-4">
+                    {fastestTeam.team.name}
+                  </h2>
+                  <div className="bg-[#2ecc71] text-white px-10 py-6 rounded-full text-3xl font-bold">
+                    ⚡ {formatResponseTime(fastestTeam.responseTime)}
+                  </div>
+                </>
+              ) : (
+                <div className="text-center">
+                  <div className="text-6xl mb-4">🤔</div>
+                  <h2 className="text-2xl font-bold text-foreground mb-2">No Fastest Team Data</h2>
+                  <p className="text-muted-foreground">
+                    Start a keypad round and have teams answer to see the fastest team information here.
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Center - Team Name and Info */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-6 space-y-6" style={{ minHeight: '100%' }}>
+        {/* Right Panel - Controls and Grid */}
+        <div className="w-96 overflow-y-auto border-l border-border bg-card z-10 flex flex-col" style={{ flexShrink: 0 }}>
+          {/* Team Stats and Controls */}
+          <div className="p-6 space-y-6 flex-1 overflow-y-auto">
             {fastestTeam ? (
               <>
-                {/* Main Team Display - Large Central Highlight */}
-                <div className="bg-gradient-to-br from-[#2ecc71]/10 to-[#27ae60]/5 border-2 border-[#2ecc71] rounded-xl p-8 text-center relative overflow-hidden">
-                  {/* Background pattern */}
-                  <div className="absolute inset-0 opacity-5">
-                    <div className="absolute top-0 left-0 w-32 h-32 bg-[#2ecc71] rounded-full -translate-x-16 -translate-y-16"></div>
-                    <div className="absolute bottom-0 right-0 w-40 h-40 bg-[#27ae60] rounded-full translate-x-20 translate-y-20"></div>
-                  </div>
-                  
-                  <div className="relative z-10">
-                    {/* Team Icon */}
-                    <div className="text-6xl drop-shadow-lg mb-6">{fastestTeam.team.icon || "🎯"}</div>
-
-                    {/* Large Team Name */}
-                    <h2 className="text-5xl font-bold text-[#2ecc71] mb-4 drop-shadow-sm">
-                      {fastestTeam.team.name}
-                    </h2>
-                    
-                    {/* Response Time Badge */}
-                    <div className="inline-block bg-[#2ecc71] text-white px-6 py-3 rounded-full text-2xl font-bold shadow-lg mb-6">
-                      ⚡ {formatResponseTime(fastestTeam.responseTime)}
-                    </div>
-                    
-                    {/* Score Display */}
-                    <div className="text-lg text-muted-foreground">
-                      Current Score: <span className="font-bold text-foreground">{fastestTeam.team.score || 0}</span>
-                    </div>
+                {/* Score Display */}
+                <div className="bg-gradient-to-br from-[#2ecc71]/10 to-[#27ae60]/5 border-2 border-[#2ecc71] rounded-xl p-6 text-center">
+                  <div className="text-sm text-muted-foreground mb-2">Current Score</div>
+                  <div className="text-4xl font-bold text-[#2ecc71]">
+                    {fastestTeam.team.score || 0}
                   </div>
                 </div>
 
@@ -275,8 +283,6 @@ export function FastestTeamDisplay({
                       />
                     </div>
                   </div>
-
-
                 </div>
 
                 {/* Team Control Actions */}
@@ -321,169 +327,145 @@ export function FastestTeamDisplay({
                   </div>
                 </div>
               </>
-            ) : (
-              <div className="bg-card rounded-lg p-8 border border-border text-center">
-                <div className="text-6xl mb-4">🤔</div>
-                <h2 className="text-xl font-bold text-foreground mb-2">No Fastest Team Data</h2>
-                <p className="text-muted-foreground">
-                  Start a keypad round and have teams answer to see the fastest team information here.
-                </p>
-              </div>
-            )}
+            ) : null}
           </div>
-        </div>
 
-        {/* Right side - 10x10 Grid */}
-        <div className="w-80 overflow-y-auto" style={{ flexShrink: 0 }}>
-          <div className="p-6" style={{ minHeight: '100%' }}>
+          {/* Physical Layout Grid */}
+          <div className="border-t border-border p-6">
             <div className="bg-card rounded-lg p-6 border border-border">
-            <h3 className="font-semibold text-foreground mb-4 text-center">Physical Layout</h3>
-            
-            {/* Grid container */}
-            <div className="relative w-full aspect-square bg-[#f8f9fa] dark:bg-[#2c3e50] rounded-lg border-2 border-border p-2">
-              {/* Grid lines */}
-              <div className="absolute inset-2 grid grid-cols-10 grid-rows-10">
-                {gridPositions.map((pos, index) => {
-                  const teamAtPos = getTeamAtPosition(pos.x, pos.y);
-                  const isFastestTeam = fastestTeam && teamAtPos?.id === fastestTeam.team.id;
-                  const isHovered = hoveredCell?.x === pos.x && hoveredCell?.y === pos.y;
-                  const isHostAtPos = hostLocation && hostLocation.x === pos.x && hostLocation.y === pos.y;
-                  
-                  return (
-                    <button
-                      key={index}
-                      className={`border border-[#dee2e6] dark:border-[#4a5568] bg-white dark:bg-[#34495e] flex items-center justify-center relative transition-all duration-200 ${
-                        isDraggingHost && isHovered
-                          ? 'bg-red-200 dark:bg-red-800 scale-110'
-                          : isPlacingFastestTeam && isHovered
-                          ? 'bg-green-200 dark:bg-green-800 scale-110'
-                          : !teamAtPos && fastestTeam && isHovered
-                          ? 'bg-blue-100 dark:bg-blue-900 scale-105'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                      }`}
-                      onMouseEnter={() => setHoveredCell({ x: pos.x, y: pos.y })}
-                      onMouseLeave={() => setHoveredCell(null)}
-                      onClick={() => {
-                        if (isDraggingHost) {
-                          handleHostDrop(pos.x, pos.y);
-                        } else if (isPlacingFastestTeam) {
-                          handleFastestTeamPlacement(pos.x, pos.y);
-                          setIsPlacingFastestTeam(false);
-                        } else if (fastestTeam && !teamAtPos) {
-                          // Direct placement: click empty cell to place fastest team
-                          handleFastestTeamPlacement(pos.x, pos.y);
-                        }
-                      }}
-                      onMouseUp={() => {
-                        if (isDraggingHost) {
-                          handleHostDrop(pos.x, pos.y);
-                        }
-                      }}
-                      title={`Position (${pos.x + 1}, ${pos.y + 1})${teamAtPos ? ` - ${teamAtPos.name}` : ''}${isHostAtPos ? ' - Host Location' : ''}${isPlacingFastestTeam && fastestTeam ? ` - Click to place ${fastestTeam.team.name} here` : !teamAtPos && fastestTeam ? ` - Click to place ${fastestTeam.team.name} here` : ''}`}
-                    >
-                      {/* Team at this position */}
-                      {teamAtPos && (
-                        <div 
-                          className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-200 ${
-                            isFastestTeam 
-                              ? isPlacingFastestTeam
-                                ? 'bg-[#2ecc71] border-[#27ae60] text-white shadow-lg animate-bounce cursor-pointer scale-125'
-                                : 'bg-[#2ecc71] border-[#27ae60] text-white shadow-lg animate-pulse cursor-pointer hover:scale-110'
-                              : 'bg-[#3498db] border-[#2980b9] text-white'
-                          }`}
-                          onClick={(e) => {
-                            if (isFastestTeam) {
+              <h3 className="font-semibold text-foreground mb-4 text-center">Physical Layout</h3>
+              
+              {/* Grid container */}
+              <div className="relative w-full aspect-square bg-[#f8f9fa] dark:bg-[#2c3e50] rounded-lg border-2 border-border p-2">
+                {/* Grid lines */}
+                <div className="absolute inset-2 grid grid-cols-10 grid-rows-10">
+                  {gridPositions.map((pos, index) => {
+                    const teamAtPos = getTeamAtPosition(pos.x, pos.y);
+                    const isFastestTeam = fastestTeam && teamAtPos?.id === fastestTeam.team.id;
+                    const isHovered = hoveredCell?.x === pos.x && hoveredCell?.y === pos.y;
+                    const isHostAtPos = hostLocation && hostLocation.x === pos.x && hostLocation.y === pos.y;
+                    
+                    return (
+                      <button
+                        key={index}
+                        className={`border border-[#dee2e6] dark:border-[#4a5568] bg-white dark:bg-[#34495e] flex items-center justify-center relative transition-all duration-200 ${
+                          isDraggingHost && isHovered
+                            ? 'bg-red-200 dark:bg-red-800 scale-110'
+                            : isPlacingFastestTeam && isHovered
+                            ? 'bg-green-200 dark:bg-green-800 scale-110'
+                            : !teamAtPos && fastestTeam && isHovered
+                            ? 'bg-blue-100 dark:bg-blue-900 scale-105'
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        onMouseEnter={() => setHoveredCell({ x: pos.x, y: pos.y })}
+                        onMouseLeave={() => setHoveredCell(null)}
+                        onClick={() => {
+                          if (isDraggingHost) {
+                            handleHostDrop(pos.x, pos.y);
+                          } else if (isPlacingFastestTeam) {
+                            handleFastestTeamPlacement(pos.x, pos.y);
+                            setIsPlacingFastestTeam(false);
+                          } else if (fastestTeam && !teamAtPos) {
+                            handleFastestTeamPlacement(pos.x, pos.y);
+                          }
+                        }}
+                        onMouseUp={() => {
+                          if (isDraggingHost) {
+                            handleHostDrop(pos.x, pos.y);
+                          }
+                        }}
+                        title={`Position (${pos.x + 1}, ${pos.y + 1})${teamAtPos ? ` - ${teamAtPos.name}` : ''}${isHostAtPos ? ' - Host Location' : ''}`}
+                      >
+                        {teamAtPos && (
+                          <div 
+                            className={`w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-200 ${
+                              isFastestTeam 
+                                ? isPlacingFastestTeam
+                                  ? 'bg-[#2ecc71] border-[#27ae60] text-white shadow-lg animate-bounce cursor-pointer scale-125'
+                                  : 'bg-[#2ecc71] border-[#27ae60] text-white shadow-lg animate-pulse cursor-pointer hover:scale-110'
+                                : 'bg-[#3498db] border-[#2980b9] text-white'
+                            }`}
+                            onClick={(e) => {
+                              if (isFastestTeam) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setIsPlacingFastestTeam(!isPlacingFastestTeam);
+                              }
+                            }}
+                            title={`${teamAtPos.name}${isFastestTeam ? ' (Fastest!)' : ''}`}
+                          >
+                            {teamAtPos.name.charAt(0)}
+                          </div>
+                        )}
+
+                        {isHostAtPos && (
+                          <div 
+                            className="w-3 h-3 bg-[#e74c3c] rounded-full border border-white shadow-sm cursor-grab active:cursor-grabbing"
+                            onMouseDown={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              setIsPlacingFastestTeam(!isPlacingFastestTeam);
-                            }
-                          }}
-                          title={`${teamAtPos.name}${isFastestTeam ? isPlacingFastestTeam ? ' (Fastest!) - Placement mode active - Click a grid cell' : ' (Fastest!) - Click to activate placement mode' : ''}`}
-                        >
-                          {teamAtPos.name.charAt(0)}
-                        </div>
-                      )}
-
-                      {/* Host location */}
-                      {isHostAtPos && (
-                        <div 
-                          className="w-3 h-3 bg-[#e74c3c] rounded-full border border-white shadow-sm cursor-grab active:cursor-grabbing"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setIsDraggingHost(true);
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setDragOffset({
-                              x: e.clientX - rect.left - rect.width / 2,
-                              y: e.clientY - rect.top - rect.height / 2
-                            });
-                            setMousePosition({ x: e.clientX, y: e.clientY });
-                            // Clear the current host location so it can be moved
-                            if (onHostLocationChange) {
-                              onHostLocationChange(null);
-                            }
-                          }}
-                          title="Host Location - Drag to move"
-                        />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Floating dragged host */}
-              {isDraggingHost && (
-                <div 
-                  className="fixed w-3 h-3 bg-[#e74c3c] rounded-full border border-white shadow-lg z-50 pointer-events-none"
-                  style={{
-                    left: mousePosition.x - dragOffset.x,
-                    top: mousePosition.y - dragOffset.y
-                  }}
-                />
-              )}
-
-              {/* Placement mode indicator */}
-              {isPlacingFastestTeam && fastestTeam && (
-                <div className="absolute top-2 left-2 right-2 bg-green-500 text-white px-3 py-2 rounded-lg text-sm font-medium text-center z-20">
-                  Click on any grid cell to move {fastestTeam.team.name} there
+                              setIsDraggingHost(true);
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setDragOffset({
+                                x: e.clientX - rect.left - rect.width / 2,
+                                y: e.clientY - rect.top - rect.height / 2
+                              });
+                              setMousePosition({ x: e.clientX, y: e.clientY });
+                              if (onHostLocationChange) {
+                                onHostLocationChange(null);
+                              }
+                            }}
+                            title="Host Location - Drag to move"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
 
-              {/* Grid labels */}
-              <div className="absolute -top-6 left-2 right-2 grid grid-cols-10 text-xs text-muted-foreground">
-                {Array.from({ length: 10 }, (_, i) => (
-                  <div key={i} className="text-center">{i + 1}</div>
-                ))}
+                {isDraggingHost && (
+                  <div 
+                    className="fixed w-3 h-3 bg-[#e74c3c] rounded-full border border-white shadow-lg z-50 pointer-events-none"
+                    style={{
+                      left: mousePosition.x - dragOffset.x,
+                      top: mousePosition.y - dragOffset.y
+                    }}
+                  />
+                )}
+
+                {isPlacingFastestTeam && fastestTeam && (
+                  <div className="absolute top-2 left-2 right-2 bg-green-500 text-white px-3 py-2 rounded-lg text-sm font-medium text-center z-20">
+                    Click on any grid cell to move {fastestTeam.team.name} there
+                  </div>
+                )}
+
+                <div className="absolute -top-6 left-2 right-2 grid grid-cols-10 text-xs text-muted-foreground">
+                  {Array.from({ length: 10 }, (_, i) => (
+                    <div key={i} className="text-center">{i + 1}</div>
+                  ))}
+                </div>
+                <div className="absolute -left-6 top-2 bottom-2 grid grid-rows-10 text-xs text-muted-foreground">
+                  {Array.from({ length: 10 }, (_, i) => (
+                    <div key={i} className="flex items-center justify-center">{i + 1}</div>
+                  ))}
+                </div>
               </div>
-              <div className="absolute -left-6 top-2 bottom-2 grid grid-rows-10 text-xs text-muted-foreground">
-                {Array.from({ length: 10 }, (_, i) => (
-                  <div key={i} className="flex items-center justify-center">{i + 1}</div>
-                ))}
+
+              <div className="mt-4 space-y-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#2ecc71] border border-[#27ae60]"></div>
+                  <span className="text-muted-foreground">Fastest Team</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#3498db] border border-[#2980b9]"></div>
+                  <span className="text-muted-foreground">Other Teams</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#e74c3c] border border-white"></div>
+                  <span className="text-muted-foreground">Host Location</span>
+                </div>
               </div>
             </div>
-
-            {/* Legend */}
-            <div className="mt-4 space-y-2 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-[#2ecc71] border border-[#27ae60]"></div>
-                <span className="text-muted-foreground">Fastest Team (Click to move)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-[#3498db] border border-[#2980b9]"></div>
-                <span className="text-muted-foreground">Other Teams</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-[#e74c3c] border border-white"></div>
-                <span className="text-muted-foreground">Host Location (Draggable)</span>
-              </div>
-              
-              {/* Instructions */}
-              <div className="mt-3 space-y-2">
-
-
-              </div>
-            </div>
-          </div>
           </div>
         </div>
       </div>

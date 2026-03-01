@@ -321,6 +321,10 @@ export function QuizHost() {
   const [externalWindow, setExternalWindow] = useState<Window | null>(null);
   const [isExternalDisplayOpen, setIsExternalDisplayOpen] = useState(false);
 
+  // New refs for fastest team auto-hide
+  const lastExternalDisplayMessageRef = useRef<any>(null);
+  const fastestTeamTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Buzzer audio ref and playback helper
   const buzzerAudioRef = useRef<HTMLAudioElement>(null);
   const playFastestTeamBuzzer = useCallback(async (buzzerSound?: string) => {
@@ -362,6 +366,14 @@ export function QuizHost() {
   // Helper function to send messages to external display (handles both Electron and browser)
   const sendToExternalDisplay = (messageData: any) => {
     if (!externalWindow) return;
+
+    if (messageData.mode !== 'fastestTeam') {
+      lastExternalDisplayMessageRef.current = messageData;
+      if (fastestTeamTimeoutRef.current) {
+        clearTimeout(fastestTeamTimeoutRef.current);
+        fastestTeamTimeoutRef.current = null;
+      }
+    }
 
     const isElectronWindow = (externalWindow as any)._isElectronWindow;
 
@@ -1488,13 +1500,19 @@ export function QuizHost() {
             });
           }
 
-          if (finalPlayer?.teamPhoto) {
+          // CRITICAL FIX: Only use photo if it's explicitly approved (photoApprovedAt is set)
+          // This prevents unapproved or auto-approved-but-now-disabled photos from being displayed
+          if (finalPlayer?.teamPhoto && finalPlayer?.photoApprovedAt) {
             teamPhoto = ensureFileUrl(finalPlayer.teamPhoto);
-            console.log('✅ Retrieved team photo for:', teamName);
+            console.log('✅ Retrieved APPROVED team photo for:', teamName);
             console.log('[QuizHost] Original photo path:', finalPlayer.teamPhoto);
+            console.log('[QuizHost] Photo approval timestamp:', new Date(finalPlayer.photoApprovedAt).toISOString());
             console.log('[QuizHost] Converted photo URL:', teamPhoto?.substring(0, 50) + '...');
+          } else if (finalPlayer?.teamPhoto) {
+            console.log('[QuizHost] ⚠️ Player has teamPhoto but NO photoApprovedAt - photo NOT APPROVED, skipping');
+            console.log('[QuizHost] photoApprovedAt value:', finalPlayer.photoApprovedAt || 'null/undefined');
           } else {
-            console.log('[QuizHost] ⚠️ Player found but has no teamPhoto');
+            console.log('[QuizHost] ℹ️ Player found but has no teamPhoto');
           }
 
           if (finalPlayer?.buzzerSound) {
@@ -2463,6 +2481,12 @@ export function QuizHost() {
               sendToExternalDisplay(
                 { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name, teamPhoto: fastestTeam.photoUrl } }
               );
+
+              fastestTeamTimeoutRef.current = setTimeout(() => {
+                if (lastExternalDisplayMessageRef.current) {
+                  sendToExternalDisplay(lastExternalDisplayMessageRef.current);
+                }
+              }, 5000);
             }
           }
 
@@ -2533,6 +2557,12 @@ export function QuizHost() {
               sendToExternalDisplay(
                 { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name, teamPhoto: fastestTeam.photoUrl } }
               );
+
+              fastestTeamTimeoutRef.current = setTimeout(() => {
+                if (lastExternalDisplayMessageRef.current) {
+                  sendToExternalDisplay(lastExternalDisplayMessageRef.current);
+                }
+              }, 5000);
             }
           }
         }

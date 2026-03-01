@@ -81,6 +81,39 @@ async function startBackend({ port = 4310 } = {}) {
 
   const localIP = getLocalIPAddress();
 
+  // Helper function to convert file:// URLs to HTTP URLs for network accessibility
+  // This allows player devices on different machines to access team photos
+  // Example: file:///C:/Users/host/AppData/Local/PopQuiz/photos/team_abc_123.png
+  //       -> http://192.168.1.100:4310/photos/team_abc_123.png
+  function convertPhotoUrlToHttp(photoUrl) {
+    if (!photoUrl) return null;
+
+    // If it's already an HTTP(S) URL, return as-is
+    if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+      return photoUrl;
+    }
+
+    // If it's a file:// URL, extract filename and convert to HTTP
+    if (photoUrl.startsWith('file://')) {
+      try {
+        // Extract the filename from the file path
+        const filePath = fileURLToPath(photoUrl);
+        const filename = path.basename(filePath);
+
+        // Construct HTTP URL: http://host-ip:port/photos/filename
+        const httpUrl = `http://${localIP}:${port}/photos/${filename}`;
+        log.debug(`[convertPhotoUrlToHttp] Converted: file:// -> ${httpUrl}`);
+        return httpUrl;
+      } catch (err) {
+        log.warn(`[convertPhotoUrlToHttp] Failed to convert URL ${photoUrl}:`, err.message);
+        return null;
+      }
+    }
+
+    // For any other format, return as-is (it might already be accessible)
+    return photoUrl;
+  }
+
   // Endpoint to provide host info to player devices
   app.get('/api/host-info', (req, res) => {
     const protocol = req.protocol === 'https' ? 'wss' : 'ws';
@@ -145,6 +178,67 @@ async function startBackend({ port = 4310 } = {}) {
     } catch (err) {
       log.error('[send-to-player] Error:', err.message);
       res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // Endpoint to serve team photos to player devices over HTTP
+  // Converts file:// URLs to http:// URLs accessible on local network
+  app.get('/photos/:filename', (req, res) => {
+    try {
+      const { filename } = req.params;
+
+      // Validate filename to prevent directory traversal attacks
+      if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        log.warn(`[/photos] Invalid filename requested: ${filename}`);
+        return res.status(400).json({ ok: false, error: 'Invalid filename' });
+      }
+
+      const photosDir = getTeamPicturesPath();
+      const filePath = path.join(photosDir, filename);
+
+      // Verify the file exists and is within the photos directory
+      if (!fs.existsSync(filePath)) {
+        log.warn(`[/photos] File not found: ${filePath}`);
+        return res.status(404).json({ ok: false, error: 'Photo not found' });
+      }
+
+      // Ensure the resolved path is within the photos directory (security check)
+      const resolvedPath = path.resolve(filePath);
+      const resolvedPhotosDir = path.resolve(photosDir);
+      if (!resolvedPath.startsWith(resolvedPhotosDir)) {
+        log.warn(`[/photos] Attempted directory traversal: ${resolvedPath}`);
+        return res.status(403).json({ ok: false, error: 'Forbidden' });
+      }
+
+      // Determine MIME type based on file extension
+      const ext = path.extname(filename).toLowerCase();
+      const mimeType = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp'
+      }[ext] || 'application/octet-stream';
+
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+
+      fileStream.on('error', (err) => {
+        log.error(`[/photos] Stream error for ${filename}:`, err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ ok: false, error: 'Error reading file' });
+        }
+      });
+
+      log.debug(`[/photos] Served photo: ${filename}`);
+    } catch (err) {
+      log.error(`[/photos] Error:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ ok: false, error: err.message });
+      }
     }
   });
 
@@ -1907,7 +2001,7 @@ async function startBackend({ port = 4310 } = {}) {
     }
   }
 
-  function declineTeam(deviceId, teamName) {
+  async function declineTeam(deviceId, teamName) {
     try {
       log.info(`🚫 declineTeam called: ${teamName} (${deviceId})`);
       const player = networkPlayers.get(deviceId);
@@ -1928,7 +2022,33 @@ async function startBackend({ port = 4310 } = {}) {
         return false;
       }
 
+      // CRITICAL FIX: Delete photo files before clearing state
+      // This ensures declined photos are completely removed from disk
+      console.log('[declineTeam] 🗑️  Deleting photo files for declined photo');
+
+      // Delete pending photo if it exists
+      if (player.teamPhotoPending) {
+        console.log('[declineTeam] Deleting pending photo:', player.teamPhotoPending.substring(0, 50) + '...');
+        await deletePhotoFile(player.teamPhotoPending);
+      }
+
+      // Delete approved photo if it exists (and is different from pending)
+      if (player.teamPhoto && player.teamPhoto !== player.teamPhotoPending) {
+        console.log('[declineTeam] Deleting approved photo:', player.teamPhoto.substring(0, 50) + '...');
+        await deletePhotoFile(player.teamPhoto);
+      }
+
+      // CRITICAL FIX: Clear all photo-related state
+      // Set to null (not undefined) so backend always reports clear state
+      console.log('[declineTeam] 📝 Clearing photo state for player');
+      player.teamPhotoPending = null;
+      player.teamPhoto = null;
+      player.photoApprovedAt = null;
+      player.photoApprovedHash = null;
+      player.teamPhotoHash = null;
       player.status = 'declined';
+
+      log.info(`[declineTeam] ✅ Cleared photo state: teamPhotoPending=null, teamPhoto=null, photoApprovedAt=null`);
 
       const message = JSON.stringify({
         type: 'TEAM_DECLINED',
@@ -2236,9 +2356,15 @@ async function startBackend({ port = 4310 } = {}) {
     try {
       log.info(`[broadcastFastest] Broadcasting fastest team:`, fastestData.teamName);
 
+      // Convert team photo URL from file:// to HTTP for remote device access
+      const convertedData = {
+        ...fastestData,
+        teamPhoto: fastestData.teamPhoto ? convertPhotoUrlToHttp(fastestData.teamPhoto) : null
+      };
+
       const message = JSON.stringify({
         type: 'FASTEST',
-        data: fastestData,
+        data: convertedData,
         timestamp: Date.now()
       });
 
