@@ -70,6 +70,7 @@ export default function App() {
   const [submittedAnswer, setSubmittedAnswer] = useState<any>(null);
   const [timerEnded, setTimerEnded] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
+  const [isKeypadScrambled, setIsKeypadScrambled] = useState(false);
   const [isHostController, setIsHostController] = useState(false); // Track if player is authenticated as host controller
   const [controllerAuthError, setControllerAuthError] = useState<string | null>(null); // Track controller auth failures
   const [flowState, setFlowState] = useState<{
@@ -465,6 +466,11 @@ export default function App() {
         setGoWideEnabled(goWideFlag);
         console.log('[Player] Question received, go wide enabled:', goWideFlag);
 
+        // Extract scrambled flag from question
+        const scrambledFlag = message.data?.scrambled ?? false;
+        setIsKeypadScrambled(scrambledFlag);
+        console.log('[Player] Question received, keypad scrambled:', scrambledFlag);
+
         // Reset reveal state
         setAnswerRevealed(false);
         setCorrectAnswer(undefined);
@@ -815,6 +821,16 @@ export default function App() {
           console.log('[Player] ✅ BUZZERS_FOLDER_CHANGED handled - player must re-select buzzer');
         } catch (folderChangeErr) {
           console.error('❌ [Player] Error in BUZZERS_FOLDER_CHANGED handler:', folderChangeErr);
+        }
+        break;
+      case 'SCRAMBLE_UPDATE':
+        try {
+          const scrambledState = message.data?.scrambled ?? false;
+          console.log('[Player] SCRAMBLE_UPDATE message received - keypad scrambled:', scrambledState);
+          setIsKeypadScrambled(scrambledState);
+          console.log('[Player] ✅ Keypad scramble state updated instantly');
+        } catch (scrambleErr) {
+          console.error('❌ [Player] Error in SCRAMBLE_UPDATE handler:', scrambleErr);
         }
         break;
       case 'SCORE_UPDATE':
@@ -1424,6 +1440,7 @@ export default function App() {
               totalTimerLength={totalTimerLength}
               timerEnded={timerEnded}
               onAnswerSubmit={handleAnswerSubmit}
+              scrambled={isKeypadScrambled}
             />
           )}
 
@@ -1436,6 +1453,7 @@ export default function App() {
                 totalTimerLength={totalTimerLength}
                 timerEnded={timerEnded}
                 onAnswerSubmit={handleAnswerSubmit}
+                scrambled={isKeypadScrambled}
               />
               {showFastestTeam && (
                 <FastestTeamOverlay

@@ -35,7 +35,8 @@ export type NetworkMessageType =
   | 'ADMIN_COMMAND'  // incoming from controller player
   | 'ADMIN_RESPONSE'  // sent to controller confirming command execution
   | 'FLOW_STATE'  // broadcast to controller with current flow state
-  | 'PHOTO_APPROVAL_UPDATED';  // broadcast when a team photo is approved/updated
+  | 'PHOTO_APPROVAL_UPDATED'  // broadcast when a team photo is approved/updated
+  | 'SCRAMBLE_UPDATE';  // broadcast to players when keypad scramble state changes
 
 export interface NetworkPayload {
   type: NetworkMessageType;
@@ -157,10 +158,10 @@ class HostNetwork {
   /**
    * Helper to send question to players and external display.
    */
-  public sendQuestion(text: string, options?: string[], type?: string) {
+  public sendQuestion(text: string, options?: string[], type?: string, scrambled?: boolean) {
     this.broadcast({
       type: 'QUESTION',
-      data: { text, options, type },
+      data: { text, options, type, scrambled },
     });
   }
 
@@ -226,6 +227,16 @@ class HostNetwork {
     this.broadcast({
       type: 'SCORES',
       data: { scores },
+    });
+  }
+
+  /**
+   * Helper to broadcast keypad scramble state change to players.
+   */
+  public sendScrambleUpdate(scrambled: boolean) {
+    this.broadcast({
+      type: 'SCRAMBLE_UPDATE',
+      data: { scrambled },
     });
   }
 
@@ -354,8 +365,8 @@ export function sendPictureToPlayers(imageDataUrl: string) {
   hostNetwork.sendPicture(imageDataUrl);
 }
 
-export function sendQuestionToPlayers(text: string, options?: string[], type?: string) {
-  hostNetwork.sendQuestion(text, options, type);
+export function sendQuestionToPlayers(text: string, options?: string[], type?: string, scrambled?: boolean) {
+  hostNetwork.sendQuestion(text, options, type, scrambled);
 }
 
 export function sendTimerToPlayers(seconds: number, silent: boolean = false, timerStartTime?: number) {
@@ -380,6 +391,10 @@ export function sendEndRound() {
 
 export function sendScoresToDisplay(scores: { teamId: string; teamName: string; score: number }[]) {
   hostNetwork.sendScores(scores);
+}
+
+export function sendScrambleUpdateToPlayers(scrambled: boolean) {
+  hostNetwork.sendScrambleUpdate(scrambled);
 }
 
 export function registerNetworkPlayer(playerId: string, teamName: string, deviceId?: string) {

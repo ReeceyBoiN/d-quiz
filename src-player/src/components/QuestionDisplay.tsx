@@ -12,6 +12,7 @@ interface QuestionDisplayProps {
   totalTimerLength?: number;
   timerEnded?: boolean;
   onAnswerSubmit: (answer: any) => void;
+  scrambled?: boolean;
 }
 
 type QuestionType = 'letters' | 'numbers' | 'multiple-choice' | string;
@@ -50,6 +51,7 @@ export function QuestionDisplay({
   totalTimerLength = 30,
   timerEnded: timerEndedProp,
   onAnswerSubmit,
+  scrambled = false,
 }: QuestionDisplayProps) {
   const { settings } = usePlayerSettings();
   const networkContext = useContext(NetworkContext);
@@ -58,6 +60,27 @@ export function QuestionDisplay({
   const correctAnswer = networkContext?.correctAnswer;
   const networkSelectedAnswers = networkContext?.selectedAnswers ?? [];
 
+  // Fisher-Yates shuffle algorithm - defined inside component to avoid initialization issues
+  const shuffleArray = <T,>(array: T[]): T[] => {
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  };
+
+  // Shuffle a grid while maintaining grid structure
+  const shuffleGrid = (grid: string[][]): string[][] => {
+    const flat = grid.flat();
+    const shuffled = shuffleArray(flat);
+    const result = [];
+    for (let i = 0; i < grid.length; i++) {
+      result.push(shuffled.slice(i * grid[0].length, (i + 1) * grid[0].length));
+    }
+    return result;
+  };
+
   const [selectedAnswers, setSelectedAnswers] = useState<(string | number)[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [timerEnded, setTimerEnded] = useState(false);
@@ -65,6 +88,38 @@ export function QuestionDisplay({
   const [numberInput, setNumberInput] = useState<string>('0');
   const [numberSubmitted, setNumberSubmitted] = useState(false);
   const [showImageOverlay, setShowImageOverlay] = useState(true);
+  const [shuffledLetterGrid, setShuffledLetterGrid] = useState<string[][]>(LETTERS_GRID);
+  const [shuffledNumbers, setShuffledNumbers] = useState<string[]>(['1', '2', '3', '4', '5', '6', '7', '8', '9']);
+  const [shuffledOptions, setShuffledOptions] = useState<{originalIndex: number, option: string}[]>([]);
+
+  // VARIABLE DEFINITIONS - MUST BE BEFORE useEffect HOOKS
+  // Display question text - handle both q and text properties
+  const questionText = question?.q || question?.text || '';
+  const options = question?.options || [];
+
+  // Normalize and cache the question type
+  const rawType = question?.type;
+  const questionType: QuestionType = rawType?.toLowerCase().trim() || 'buzzin';
+
+  // Debug logging for question type
+  if (rawType && rawType !== questionType) {
+    console.log('[QuestionDisplay] Question type received:', rawType, '-> normalized:', questionType);
+  }
+
+  // Determine if we're showing a placeholder (waiting for real question)
+  const isShowingPlaceholder = isPlaceholderQuestion(questionText) || question?.isPlaceholder;
+
+  // Determine which input interface to show based on question type
+  // Note: No longer requiring options.length > 0 because host now provides placeholder options for all types
+  // Perform case-insensitive type checking for defensive programming
+  const isMultipleChoice = questionType === 'multiple-choice';
+  const isLetters = questionType === 'letters';
+  const isNumbers = questionType === 'numbers';
+  const isSequence = questionType === 'sequence';
+  const isBuzzIn = questionType === 'buzzin' || (!isMultipleChoice && !isLetters && !isNumbers && !isSequence);
+
+  // Hide answer options when image overlay is visible
+  const hideAnswers = showImageOverlay && question?.imageUrl;
 
   // Reset state when question changes
   useEffect(() => {
@@ -76,6 +131,48 @@ export function QuestionDisplay({
     setNumberSubmitted(false);
     setShowImageOverlay(true);
   }, [question]);
+
+  // Handle keypad shuffling when scrambled state changes or question changes
+  // NOTE: Unscrambling resets the visual layout but PRESERVES user's selected answer
+  // because selectedAnswers state and answer submission use actual values, not display positions
+  useEffect(() => {
+    if (scrambled) {
+      // Generate shuffled layouts for all types
+      const newShuffledLetterGrid = shuffleGrid(LETTERS_GRID);
+      setShuffledLetterGrid(newShuffledLetterGrid);
+
+      const newShuffledNumbers = shuffleArray(['1', '2', '3', '4', '5', '6', '7', '8', '9']);
+      setShuffledNumbers(newShuffledNumbers);
+
+      // For multiple choice/sequence options, create mapping with original indices
+      if (options.length > 0) {
+        const optionsWithIndices = options.map((option, index) => ({
+          originalIndex: index,
+          option
+        }));
+        const shuffledOpts = shuffleArray(optionsWithIndices);
+        setShuffledOptions(shuffledOpts);
+      }
+
+      console.log('[QuestionDisplay] 🔀 Keypad shuffled');
+    } else {
+      // Reset to unscrambled layouts
+      // User's selected answer is PRESERVED - only the visual layout resets
+      setShuffledLetterGrid(LETTERS_GRID);
+      setShuffledNumbers(['1', '2', '3', '4', '5', '6', '7', '8', '9']);
+
+      // Reset multiple choice to original order
+      if (options.length > 0) {
+        const optionsWithIndices = options.map((option, index) => ({
+          originalIndex: index,
+          option
+        }));
+        setShuffledOptions(optionsWithIndices);
+      }
+
+      console.log('[QuestionDisplay] 🔓 Keypad unscrambled (answer preserved)');
+    }
+  }, [scrambled, question, options.length])
 
   // Track when timer ends (from both prop and local timer)
   useEffect(() => {
@@ -205,34 +302,6 @@ export function QuestionDisplay({
     setNumberSubmitted(true);
   };
 
-  // Display question text - handle both q and text properties
-  const questionText = question?.q || question?.text || '';
-  const options = question?.options || [];
-
-  // Normalize and cache the question type
-  const rawType = question?.type;
-  const questionType: QuestionType = rawType?.toLowerCase().trim() || 'buzzin';
-
-  // Debug logging for question type
-  if (rawType && rawType !== questionType) {
-    console.log('[QuestionDisplay] Question type received:', rawType, '-> normalized:', questionType);
-  }
-
-  // Determine if we're showing a placeholder (waiting for real question)
-  const isShowingPlaceholder = isPlaceholderQuestion(questionText) || question?.isPlaceholder;
-
-  // Determine which input interface to show based on question type
-  // Note: No longer requiring options.length > 0 because host now provides placeholder options for all types
-  // Perform case-insensitive type checking for defensive programming
-  const isMultipleChoice = questionType === 'multiple-choice';
-  const isLetters = questionType === 'letters';
-  const isNumbers = questionType === 'numbers';
-  const isSequence = questionType === 'sequence';
-  const isBuzzIn = questionType === 'buzzin' || (!isMultipleChoice && !isLetters && !isNumbers && !isSequence);
-
-  // Hide answer options when image overlay is visible
-  const hideAnswers = showImageOverlay && question?.imageUrl;
-
   // Log which interface will be rendered
   useEffect(() => {
     if (question) {
@@ -248,16 +317,7 @@ export function QuestionDisplay({
     }
   }, [questionType, question, options.length, isShowingPlaceholder, isLetters, isMultipleChoice, isNumbers, isSequence, isBuzzIn]);
 
-  // Get letter grid structure (6 rows with combined buttons for less common letters)
-  const getLetterGrid = () => {
-    console.log('[QuestionDisplay] Using letter grid with combined QV and XZ buttons');
-    return LETTERS_GRID;
-  };
 
-  // Generate number options (1, 2, 3, ... 9)
-  const generateNumberOptions = () => {
-    return ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
-  };
 
   // Helper function to check if a button (including multi-letter buttons) contains the correct answer
   const isButtonCorrect = (buttonLabel: string | number, correctAns: string | number | undefined): boolean => {
@@ -455,24 +515,26 @@ export function QuestionDisplay({
         {/* Multiple Choice Options */}
         {isMultipleChoice && (
           <div className={`flex flex-col gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-2xl ${hideAnswers ? 'opacity-0 pointer-events-none' : ''}`}>
-            {options.map((option, index) => {
+            {shuffledOptions.map((optionData, displayIndex) => {
+              const originalIndex = optionData.originalIndex;
+              const optionText = optionData.option;
               // Show letter placeholder (A, B, C, D) if waiting for real question
-              const displayText = isShowingPlaceholder ? String.fromCharCode(65 + index) : option;
+              const displayText = isShowingPlaceholder ? String.fromCharCode(65 + originalIndex) : optionText;
               return (
                 <button
-                  key={index}
-                  onClick={() => handleAnswerSelect(index)}
+                  key={displayIndex}
+                  onClick={() => handleAnswerSelect(originalIndex)}
                   disabled={
                     timerEnded ||
-                    (!goWideEnabled && submitted && !selectedAnswers.includes(index))
+                    (!goWideEnabled && submitted && !selectedAnswers.includes(originalIndex))
                   }
                   className={`w-full p-3 sm:p-4 md:p-5 lg:p-6 rounded-lg sm:rounded-xl md:rounded-xl lg:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-2xl transition-all transform active:scale-95 ${getButtonStateClasses(
-                    index,
-                    index
-                  )} ${getAnimationClass(index, index)}`}
+                    originalIndex,
+                    originalIndex
+                  )} ${getAnimationClass(originalIndex, originalIndex)}`}
                 >
                   {displayText}
-                  {getRevealIcon(index, index)}
+                  {getRevealIcon(originalIndex, originalIndex)}
                 </button>
               );
             })}
@@ -495,7 +557,7 @@ export function QuestionDisplay({
             )}
 
             {/* Letter Grid - Rows */}
-            {getLetterGrid().map((row, rowIndex) => (
+            {shuffledLetterGrid.map((row, rowIndex) => (
               <div key={rowIndex} className="grid grid-cols-4 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
                 {row.map((letter, colIndex) => (
                   <button
@@ -539,7 +601,7 @@ export function QuestionDisplay({
             </div>
             {/* Number grid - 3 columns */}
             <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 mb-2 sm:mb-3 md:mb-4 lg:mb-5">
-              {generateNumberOptions().map((number, index) => (
+              {shuffledNumbers.map((number, index) => (
                 <button
                   key={index}
                   onClick={() => handleNumberDigit(number)}
@@ -604,24 +666,26 @@ export function QuestionDisplay({
         {/* Sequence Options - Ordered selection */}
         {isSequence && (
           <div className={`grid grid-cols-2 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg ${hideAnswers ? 'opacity-0 pointer-events-none' : ''}`}>
-            {options.map((option, index) => {
+            {shuffledOptions.map((optionData, displayIndex) => {
+              const originalIndex = optionData.originalIndex;
+              const optionText = optionData.option;
               // Show letter placeholder (A, B, C, D) if waiting for real question
-              const displayText = isShowingPlaceholder ? String.fromCharCode(65 + index) : option;
+              const displayText = isShowingPlaceholder ? String.fromCharCode(65 + originalIndex) : optionText;
               return (
                 <button
-                  key={index}
-                  onClick={() => handleAnswerSelect(index)}
+                  key={displayIndex}
+                  onClick={() => handleAnswerSelect(originalIndex)}
                   disabled={
                     timerEnded ||
-                    (!goWideEnabled && submitted && !selectedAnswers.includes(index))
+                    (!goWideEnabled && submitted && !selectedAnswers.includes(originalIndex))
                   }
                   className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform active:scale-95 ${getButtonStateClasses(
-                    index,
-                    index
-                  )} ${getAnimationClass(index, index)}`}
+                    originalIndex,
+                    originalIndex
+                  )} ${getAnimationClass(originalIndex, originalIndex)}`}
                 >
                   {displayText}
-                  {getRevealIcon(index, index)}
+                  {getRevealIcon(originalIndex, originalIndex)}
                 </button>
               );
             })}

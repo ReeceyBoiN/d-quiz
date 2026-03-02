@@ -38,7 +38,7 @@ import { useTimer } from "../hooks/useTimer";
 import { useHostInfo } from "../hooks/useHostInfo";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage, initialFlow } from "../state/flowState";
-import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController } from "../network/wsHost";
+import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController, sendScrambleUpdateToPlayers } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { playApplauseSound, playFailSound } from "../utils/audioUtils";
 import { executeStartNormalTimer, executeStartSilentTimer, validateTimerDuration } from "../utils/unifiedTimerHandlers";
@@ -2260,7 +2260,8 @@ export function QuizHost() {
         } else {
           // No picture, send question directly
           const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
-          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType);
+          const scrambledState = selectedQuiz?.scrambled ?? false;
+          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType, scrambledState);
 
           // Broadcast question to player devices via backend
           broadcastQuestionToPlayers({
@@ -2269,6 +2270,7 @@ export function QuizHost() {
             options: currentQuestion.options || [],
             type: normalizedType,
             goWideEnabled: goWideEnabled,
+            scrambled: scrambledState,
           });
 
           if (externalWindow) {
@@ -2307,7 +2309,8 @@ export function QuizHost() {
         // Send question after picture (unless hideQuestionMode is true)
         if (!hideQuestionMode) {
           const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
-          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType);
+          const scrambledState = selectedQuiz?.scrambled ?? false;
+          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType, scrambledState);
 
           // Broadcast question to player devices via backend
           broadcastQuestionToPlayers({
@@ -2316,6 +2319,7 @@ export function QuizHost() {
             options: currentQuestion.options || [],
             type: normalizedType,
             goWideEnabled: goWideEnabled,
+            scrambled: scrambledState,
           });
 
           if (externalWindow) {
@@ -5812,7 +5816,16 @@ export function QuizHost() {
           : quiz
       )
     );
-    console.log(`Team ${teamId}'s keypad has been ${quizzes.find(q => q.id === teamId)?.scrambled ? 'unscrambled' : 'scrambled'}`);
+
+    // Get the new scrambled state for logging and broadcasting
+    const newScrambledState = quizzes.find(q => q.id === teamId)?.scrambled;
+    const actualNewState = !newScrambledState; // Inverse because state hasn't updated yet
+    console.log(`Team ${teamId}'s keypad has been ${actualNewState ? 'scrambled' : 'unscrambled'}`);
+
+    // Broadcast scramble state change to players
+    sendScrambleUpdateToPlayers(actualNewState);
+    console.log(`[QuizHost] Broadcasted SCRAMBLE_UPDATE with state: ${actualNewState}`);
+
     // Trigger debounced auto-save for crash recovery
     debouncedSaveGameState();
   };
@@ -5831,6 +5844,11 @@ export function QuizHost() {
     );
 
     console.log(`${shouldScrambleAll ? 'Scrambled' : 'Unscrambled'} all team keypads`);
+
+    // Broadcast scramble state change to all players
+    sendScrambleUpdateToPlayers(shouldScrambleAll);
+    console.log(`[QuizHost] Broadcasted global SCRAMBLE_UPDATE with state: ${shouldScrambleAll}`);
+
     // Trigger debounced auto-save for crash recovery
     debouncedSaveGameState();
   };
