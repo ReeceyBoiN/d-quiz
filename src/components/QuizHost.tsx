@@ -6016,7 +6016,7 @@ export function QuizHost() {
             <div className="text-lg text-[#95a5a6] text-center">
               Correct Answer:
             </div>
-            <div className={`text-2xl font-bold mt-2 ${
+            <div className={`text-2xl font-bold mt-2 text-center ${
               flowState.flow === 'revealed' || flowState.flow === 'fastest' ? 'text-[#f39c12]' : 'text-[#3498db]'
             }`}>
               {fullAnswerDisplay || 'Unknown'}
