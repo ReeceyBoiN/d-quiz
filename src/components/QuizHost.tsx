@@ -4689,9 +4689,12 @@ export function QuizHost() {
     // Show team answers and response times in sidebar
     setShowTeamAnswers(true);
 
-    // Declare fastest team variables at function scope so they can be used in multiple blocks
+    // Declare all team data variables at function scope so they can be used in multiple blocks
     let fastestTeamId: string | undefined;
     let fastestTeamResponseTime = 0;
+    let correctTeamIds: string[] = [];
+    let wrongTeamIds: string[] = [];
+    let noAnswerTeamIds: string[] = [];
 
     // For quiz pack mode, calculate and award points when answer is revealed
     if (isQuizPackMode && loadedQuizQuestions.length > 0) {
@@ -4714,7 +4717,7 @@ export function QuizHost() {
           return String(teamAns).trim().toLowerCase() === String(correctAns).toLowerCase().trim();
         };
 
-        const correctTeamIds = quizzes
+        correctTeamIds = quizzes
           .filter(team => {
             const teamAnswer = teamAnswers[team.id];
             if (!teamAnswer || String(teamAnswer).trim() === '') return false;
@@ -4740,7 +4743,7 @@ export function QuizHost() {
         setFastestTeamIdForDisplay(fastestTeamId || null);
 
         // Always calculate team answer stats for display
-        const wrongTeamIds = quizzes
+        wrongTeamIds = quizzes
           .filter(team => {
             const teamAnswer = teamAnswers[team.id];
             // Team answered but it was wrong (not in correct team list)
@@ -4748,7 +4751,7 @@ export function QuizHost() {
           })
           .map(team => team.id);
 
-        const noAnswerTeamIds = quizzes
+        noAnswerTeamIds = quizzes
           .filter(team => {
             const teamAnswer = teamAnswers[team.id];
             // Team didn't answer or submitted empty answer
