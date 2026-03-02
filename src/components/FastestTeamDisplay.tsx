@@ -86,7 +86,6 @@ export function FastestTeamDisplay({
 
   const formatResponseTime = (timeMs: number) => {
     const result = `${(timeMs / 1000).toFixed(2)}s`;
-    console.log('[FastestTeamDisplay] formatResponseTime called with:', timeMs, '| output:', result);
     return result;
   };
 

@@ -46,6 +46,7 @@ import { calculateTeamPoints, rankCorrectTeams, shouldAutoDisableGoWide, type Sc
 import { getAnswerText, createHandleComputeAndAwardScores, createHandleApplyEvilModePenalty } from "../utils/quizHostHelpers";
 import { saveGameState, loadGameState, clearGameState, createGameStateSnapshot, type RoundSettings } from "../utils/gameStatePersistence";
 import { getBuzzerFilePath, getBuzzerUrl } from "../utils/api";
+import { calculateAnswerStats, getFastestCorrectTeam, type Team as AnswerStatsTeam } from "../utils/answerStats";
 import { Resizable } from "re-resizable";
 import { Button } from "./ui/button";
 import { ChevronRight } from "lucide-react";
@@ -225,7 +226,8 @@ export function QuizHost() {
     gameModeTimers,
     nearestWinsTimer,
     voiceCountdown,
-    teamPhotosAutoApprove
+    teamPhotosAutoApprove,
+    hideQuizPackAnswers
   } = useSettings();
 
   // Get external display text size from localStorage
@@ -640,6 +642,9 @@ export function QuizHost() {
     team: Quiz;
     responseTime: number;
   } | null>(null);
+
+  // Results summary display state for quiz pack mode (shown when timer ends)
+  const [showResultsSummary, setShowResultsSummary] = useState(false);
 
   // Pause scores state
   const [scoresPaused, setScoresPaused] = useState(false);
@@ -1189,12 +1194,20 @@ export function QuizHost() {
     }
   }, [flowState.flow, flowState.totalTime, timer, voiceCountdown, isQuizPackMode]);
 
-  // Auto-show answer in app when timer ends (flow transitions to 'timeup')
+  // Auto-show answer and results summary in app when timer ends (flow transitions to 'timeup')
   useEffect(() => {
     if (flowState.flow === 'timeup' && isQuizPackMode) {
       setShowAnswer(true);
+      setShowResultsSummary(true);
     }
   }, [flowState.flow, isQuizPackMode]);
+
+  // Reset results summary when flow changes to ensure clean state transitions
+  useEffect(() => {
+    if (flowState.flow !== 'timeup' && flowState.flow !== 'running' && flowState.flow !== 'revealed' && flowState.flow !== 'fastest') {
+      setShowResultsSummary(false);
+    }
+  }, [flowState.flow]);
 
   // Update external display with timer countdown - keep question visible
   useEffect(() => {
@@ -2561,6 +2574,7 @@ export function QuizHost() {
 
           if (fastestTeam) {
             const fastestTeamResponseTime = teamResponseTimes[fastestTeam.id] || 0;
+            console.log('[QuizHost] QUIZ_PACK: Fastest team found -', fastestTeam.name, 'with responseTime from teamResponseTimes:', fastestTeamResponseTime, 'ms, will display as:', (fastestTeamResponseTime / 1000).toFixed(2), 's');
 
             // Show FastestTeamDisplay on host screen (same as keypad mode)
             handleFastestTeamReveal({
@@ -4431,9 +4445,12 @@ export function QuizHost() {
       if (gameTimerStartTimeRef.current !== null && gameTimerStartTimeRef.current !== undefined && timestamp) {
         // Correct calculation: answer submission time - timer start time
         responseTime = timestamp - gameTimerStartTimeRef.current;
+        console.log('[QuizHost] CALCULATION: timestamp=', timestamp, 'gameTimerStartTime=', gameTimerStartTimeRef.current, 'responseTime=', responseTime, 'ms');
       } else if (gameTimerStartTimeRef.current !== null && gameTimerStartTimeRef.current !== undefined) {
         // Fallback: current time - timer start time (if timestamp is missing)
-        responseTime = Date.now() - gameTimerStartTimeRef.current;
+        const now = Date.now();
+        responseTime = now - gameTimerStartTimeRef.current;
+        console.log('[QuizHost] CALCULATION (FALLBACK): now=', now, 'gameTimerStartTime=', gameTimerStartTimeRef.current, 'responseTime=', responseTime, 'ms');
       } else {
         // No timer started yet - don't calculate response time
         console.log('[QuizHost] PLAYER_ANSWER: No timer started for team', teamId, '- gameTimerStartTime is null');
@@ -4448,6 +4465,7 @@ export function QuizHost() {
           setTeamResponseTimes(prev => {
             const updated = { ...prev, [teamId]: validatedResponseTime };
             console.log('[QuizHost] PLAYER_ANSWER: Team', teamId, 'response time validated:', validatedResponseTime, 'ms (', (validatedResponseTime / 1000).toFixed(2), 's) - calculation: timestamp(' + timestamp + ') - gameTimerStartTime(' + gameTimerStartTime + ')');
+            console.log('[QuizHost] PLAYER_ANSWER: Updated teamResponseTimes:', JSON.stringify(updated));
             return updated;
           });
         } else {
@@ -4706,34 +4724,37 @@ export function QuizHost() {
 
         // Determine fastest correct team
         let fastestTeamId: string | undefined;
+        let fastestTeamResponseTime = 0;
         if (correctTeamIds.length > 0) {
           const correctTeamsWithTimes = correctTeamIds
             .map(teamId => ({ teamId, time: teamResponseTimes[teamId] || Infinity }))
             .sort((a, b) => a.time - b.time);
           fastestTeamId = correctTeamsWithTimes[0]?.teamId;
+          fastestTeamResponseTime = correctTeamsWithTimes[0]?.time || 0;
         }
+
+        // Always calculate team answer stats for display
+        const wrongTeamIds = quizzes
+          .filter(team => {
+            const teamAnswer = teamAnswers[team.id];
+            // Team answered but it was wrong (not in correct team list)
+            return teamAnswer && String(teamAnswer).trim() !== '' && !correctTeamIds.includes(team.id);
+          })
+          .map(team => team.id);
+
+        const noAnswerTeamIds = quizzes
+          .filter(team => {
+            const teamAnswer = teamAnswers[team.id];
+            // Team didn't answer or submitted empty answer
+            return !teamAnswer || String(teamAnswer).trim() === '';
+          })
+          .map(team => team.id);
 
         // Award points using unified scoring function
         handleComputeAndAwardScores(correctTeamIds, 'keypad', fastestTeamId, teamResponseTimes);
 
         // Apply evil mode penalties if enabled (evilModeEnabled and punishmentEnabled are from component-level useSettings)
         if (evilModeEnabled || punishmentEnabled) {
-          const wrongTeamIds = quizzes
-            .filter(team => {
-              const teamAnswer = teamAnswers[team.id];
-              // Team answered but it was wrong (not in correct team list)
-              return teamAnswer && String(teamAnswer).trim() !== '' && !correctTeamIds.includes(team.id);
-            })
-            .map(team => team.id);
-
-          const noAnswerTeamIds = quizzes
-            .filter(team => {
-              const teamAnswer = teamAnswers[team.id];
-              // Team didn't answer or submitted empty answer
-              return !teamAnswer || String(teamAnswer).trim() === '';
-            })
-            .map(team => team.id);
-
           handleApplyEvilModePenalty(wrongTeamIds, noAnswerTeamIds, 'keypad');
         }
 
@@ -4757,6 +4778,18 @@ export function QuizHost() {
         answerText = currentQuestion.answerText || '';
       }
 
+      // Build fastest team data if available
+      let fastestTeamData: { teamName: string; responseTime: number } | undefined;
+      if (fastestTeamId) {
+        const fastestTeam = quizzes.find(q => q.id === fastestTeamId);
+        if (fastestTeam) {
+          fastestTeamData = {
+            teamName: fastestTeam.name,
+            responseTime: fastestTeamResponseTime
+          };
+        }
+      }
+
       sendToExternalDisplay({
         type: 'DISPLAY_UPDATE',
         mode: 'resultsSummary',
@@ -4769,7 +4802,11 @@ export function QuizHost() {
           type: currentQuestion.type,
           options,
           questionNumber: currentLoadedQuestionIndex + 1,
-          totalQuestions: loadedQuizQuestions.length
+          totalQuestions: loadedQuizQuestions.length,
+          correctCount: correctTeamIds.length,
+          incorrectCount: wrongTeamIds.length,
+          noAnswerCount: noAnswerTeamIds.length,
+          fastestTeam: fastestTeamData
         }
       });
       }
@@ -5871,6 +5908,116 @@ export function QuizHost() {
 
   const primaryButtonLabel = getPrimaryButtonLabel();
 
+  // Helper function to get correct answer from loaded question
+  const getCorrectAnswer = (): string | null => {
+    if (!isQuizPackMode || loadedQuizQuestions.length === 0) return null;
+    const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+    if (!currentQuestion) return null;
+
+    // For multiple-choice and letters: convert correctIndex to letter (A, B, C, etc.)
+    if ((currentQuestion.type?.toLowerCase() === 'multi' ||
+         currentQuestion.type?.toLowerCase() === 'letters') &&
+        currentQuestion.correctIndex !== undefined) {
+      return String.fromCharCode(65 + currentQuestion.correctIndex);
+    }
+    // For sequence: return the sequence item at correctIndex
+    if (currentQuestion.type?.toLowerCase() === 'sequence' &&
+        currentQuestion.options &&
+        currentQuestion.correctIndex !== undefined) {
+      return currentQuestion.options[currentQuestion.correctIndex] || null;
+    }
+    // For other types: use answerText if available
+    return currentQuestion.answerText || null;
+  };
+
+  // Helper function to get full answer display with letter and option text
+  const getFullAnswerDisplay = (): string | null => {
+    if (!isQuizPackMode || loadedQuizQuestions.length === 0) return null;
+    const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+    if (!currentQuestion) return null;
+
+    const correctAnswer = getCorrectAnswer();
+    if (!correctAnswer) return null;
+
+    // For multi-choice: combine letter with option text
+    if (currentQuestion.type?.toLowerCase() === 'multi' &&
+        currentQuestion.correctIndex !== undefined &&
+        currentQuestion.options) {
+      const answerLetter = String.fromCharCode(65 + currentQuestion.correctIndex);
+      const answerOption = currentQuestion.options[currentQuestion.correctIndex];
+      return answerOption ? `${answerLetter} - ${answerOption}` : correctAnswer;
+    }
+
+    // For letters and other types: combine letter with answerText
+    if ((currentQuestion.type?.toLowerCase() === 'letters') &&
+        currentQuestion.correctIndex !== undefined) {
+      const answerLetter = String.fromCharCode(65 + currentQuestion.correctIndex);
+      const answerText = currentQuestion.answerText;
+      return answerText ? `${answerLetter} - ${answerText}` : answerLetter;
+    }
+
+    // For other types: return the answer as-is
+    return correctAnswer;
+  };
+
+  // Render results summary overlay for quiz pack mode
+  const renderQuizPackResultsSummary = () => {
+    if (!showResultsSummary || !isQuizPackMode || loadedQuizQuestions.length === 0) return null;
+
+    const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+    if (!currentQuestion) return null;
+
+    const correctAnswer = getCorrectAnswer();
+    const fullAnswerDisplay = getFullAnswerDisplay();
+    const stats = calculateAnswerStats(teamAnswers, quizzes, correctAnswer, currentQuestion.type || null);
+
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-40 flex-col">
+        <div className="bg-[#2c3e50] rounded-lg p-8 max-w-2xl w-full mx-4 flex flex-col gap-6">
+          {/* Header */}
+          <div className="text-center">
+            <h2 className="text-3xl font-semibold text-white">Question {currentLoadedQuestionIndex + 1} Results</h2>
+          </div>
+
+          {/* Results Summary Stats */}
+          <div className="text-center">
+            <h3 className="text-xl text-[#95a5a6] mb-4">Results Summary</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-[#27ae60] p-4 rounded-lg">
+                <div className="text-2xl font-bold text-white">{stats.correct}</div>
+                <div className="text-sm text-white opacity-80">Correct</div>
+              </div>
+              <div className="bg-[#e74c3c] p-4 rounded-lg">
+                <div className="text-2xl font-bold text-white">{stats.wrong}</div>
+                <div className="text-sm text-white opacity-80">Wrong</div>
+              </div>
+              <div className="bg-[#95a5a6] p-4 rounded-lg">
+                <div className="text-2xl font-bold text-white">{stats.noAnswer}</div>
+                <div className="text-sm text-white opacity-80">No Answer</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Answer Display */}
+          <div className={`p-4 rounded-lg ${
+            flowState.flow === 'revealed' || flowState.flow === 'fastest'
+              ? 'bg-[#2c3e50] border-2 border-[#f39c12]'
+              : 'bg-[#34495e]'
+          }`}>
+            <div className="text-lg text-[#95a5a6] text-center">
+              Correct Answer:
+            </div>
+            <div className={`text-2xl font-bold mt-2 ${
+              flowState.flow === 'revealed' || flowState.flow === 'fastest' ? 'text-[#f39c12]' : 'text-[#3498db]'
+            }`}>
+              {fullAnswerDisplay || 'Unknown'}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderTabContent = () => {
     // Show team window when a team is double-clicked
     if (selectedTeamForWindow) {
@@ -5921,23 +6068,27 @@ export function QuizHost() {
       );
     }
 
-    // Show quiz pack display in center when active
+    // Show quiz pack display in center when in question mode
     if (showQuizPackDisplay && flowState.isQuestionMode) {
       const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
 
       return (
         <div className="flex-1 relative min-h-0">
-          {/* Main question display */}
-          <div className="flex-1 overflow-hidden flex flex-col">
-            <QuestionPanel
-              question={currentQuestion}
-              questionNumber={currentLoadedQuestionIndex + 1}
-              totalQuestions={loadedQuizQuestions.length}
-              showAnswer={flowState.flow === 'timeup' || flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
-              answerText={currentQuestion?.answerText}
-              correctIndex={currentQuestion?.correctIndex}
-            />
-          </div>
+          {/* Main question display - hidden when results summary is shown */}
+          {!showResultsSummary && (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <QuestionPanel
+                question={currentQuestion}
+                questionNumber={currentLoadedQuestionIndex + 1}
+                totalQuestions={loadedQuizQuestions.length}
+                showAnswer={flowState.flow === 'timeup' || flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
+                answerText={currentQuestion?.answerText}
+                correctIndex={currentQuestion?.correctIndex}
+              />
+            </div>
+          )}
+          {/* Show results summary overlay when timer ends */}
+          {renderQuizPackResultsSummary()}
           {/* Show fastest team display as an overlay in quiz pack mode */}
           {showFastestTeamDisplay && (
             <div className="absolute inset-0 overflow-hidden z-50">

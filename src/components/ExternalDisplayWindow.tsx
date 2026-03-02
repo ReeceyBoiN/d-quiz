@@ -825,6 +825,7 @@ export function ExternalDisplayWindow() {
 
             {/* Results Summary Grid - only show if team answer counts exist */}
             {displayData.data?.correctCount !== undefined && (
+            <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', width: '100%', maxWidth: '800px' }}>
               {/* Correct */}
               <div style={{
@@ -865,6 +866,30 @@ export function ExternalDisplayWindow() {
                 <div style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{displayData.data?.noAnswerCount || 0}</div>
               </div>
             </div>
+
+            {/* Fastest Team - only show if available */}
+            {displayData.data?.fastestTeam && (
+              <div style={{
+                marginTop: '20px',
+                borderRadius: '24px',
+                border: `4px solid #f39c12`,
+                padding: '25px',
+                textAlign: 'center',
+                backgroundColor: 'rgba(31, 41, 55, 0.95)',
+                width: '100%',
+                maxWidth: '800px',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+              }}>
+                <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: '#f39c12', marginBottom: '15px' }}>Fastest Team:</div>
+                <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: '#f39c12', marginBottom: '10px' }}>
+                  {displayData.data.fastestTeam.teamName}
+                </div>
+                <div style={{ fontSize: scaleFontSize('28px', textSizeMultiplier), fontWeight: '600', color: '#ecf0f1' }}>
+                  {(displayData.data.fastestTeam.responseTime / 1000).toFixed(2)}s
+                </div>
+              </div>
+            )}
+            </>
             )}
           </div>
         );

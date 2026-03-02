@@ -213,6 +213,9 @@ export function KeypadInterface({
   // Guard against multiple simultaneous timer intervals
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Store timer start time in ref to avoid stale closure issues in setInterval
+  const timerStartTimeRef = useRef<number | null>(null);
+
   // Get keypad design from settings context
   const { keypadDesign } = useSettings();
   
@@ -473,9 +476,11 @@ export function KeypadInterface({
       }
     });
 
+    const fastestTeamResponseTime = teamResponseTimes[fastestTeam.id] || 0;
+    console.log('[KeypadInterface] getFastestCorrectTeam -', fastestTeam.name, 'with responseTime from teamResponseTimes:', fastestTeamResponseTime, 'ms, will display as:', (fastestTeamResponseTime / 1000).toFixed(2), 's');
     return {
       team: fastestTeam,
-      responseTime: teamResponseTimes[fastestTeam.id] || 0
+      responseTime: fastestTeamResponseTime
     };
   }, [teamAnswers, teamResponseTimes, teams, questionType, getCorrectAnswer, parentTeamAnswers, isAnswerCorrect]);
 
@@ -829,6 +834,7 @@ export function KeypadInterface({
     setTimerFinished(false);
     const now = Date.now();
     setTimerStartTime(now); // Capture timer start time for accurate response time calculation
+    timerStartTimeRef.current = now; // CRITICAL FIX: Store in ref to avoid stale closure in setInterval
 
     // Notify parent about timer start time for response time calculation
     if (onTimerStart) {
@@ -990,6 +996,7 @@ export function KeypadInterface({
     setTimerFinished(false);
     const now = Date.now();
     setTimerStartTime(now); // Capture timer start time for accurate response time calculation
+    timerStartTimeRef.current = now; // CRITICAL FIX: Store in ref to avoid stale closure in setInterval
 
     // Notify parent about timer start time for response time calculation
     if (onTimerStart) {
@@ -1096,14 +1103,15 @@ export function KeypadInterface({
 
             // Capture answer time
             // Calculate response time from timer start
-            // If timerStartTime is null, this means the answer was submitted before timer started (pre-timer)
+            // Use timerStartTimeRef to get the actual timer start value (stored at timer start)
+            // If timerStartTimeRef.current is null, this means the answer was submitted before timer started (pre-timer)
             // In that case, responseTime = Date.now() - Date.now() = 0, which is correct
-            const responseTime = Date.now() - (timerStartTime || Date.now());
+            const responseTime = Date.now() - (timerStartTimeRef.current || Date.now());
             setTeamAnswerTimes(prev => ({
               ...prev,
               'host': responseTime
             }));
-            console.log('[KeypadInterface] Host answer time calculated: timerStartTime =', timerStartTime, ', responseTime =', responseTime, 'ms (', (responseTime / 1000).toFixed(2), 's)');
+            console.log('[KeypadInterface] Host answer time calculated: timerStartTime =', timerStartTimeRef.current, ', responseTime =', responseTime, 'ms (', (responseTime / 1000).toFixed(2), 's)');
           }
 
           setTimerFinished(true);
@@ -1136,8 +1144,6 @@ export function KeypadInterface({
         return newValue;
       });
     }, 100);
-
-    return () => clearInterval(timer);
   }, [gameModeTimers, onTimerStart, onTimerLockChange, onTimerStateChange, externalWindow, onExternalDisplayUpdate, currentQuestion, questionType, currentScreen, selectedLetter, selectedAnswers, numbersAnswer, timerStartTime, onGameTimerFinished, calculateAnswerStats]);
 
   // Add function to handle revealing the correct answer
@@ -1358,6 +1364,7 @@ export function KeypadInterface({
     setTimerLocked(false); // Reset timer lock for next question
     setRemoteSubmittedAnswer(undefined);
     setTimerStartTime(null); // Reset timer start time for next question
+    timerStartTimeRef.current = null; // Reset ref as well
 
     // Reset broadcast guard to allow broadcasting the next question type
     broadcastedQuestionTypeRef.current = null;
@@ -1415,6 +1422,7 @@ export function KeypadInterface({
     setTimerLocked(false); // Reset timer lock for previous question
     setRemoteSubmittedAnswer(undefined);
     setTimerStartTime(null); // Reset timer start time for previous question
+    timerStartTimeRef.current = null; // Reset ref as well
 
     // Reset broadcast guard to allow broadcasting the previous question type
     broadcastedQuestionTypeRef.current = null;
@@ -1665,13 +1673,6 @@ export function KeypadInterface({
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [currentScreen, isTimerRunning, timerFinished, answerRevealed, fastestTeamRevealed, selectedLetter, selectedAnswers, numbersAnswerConfirmed, sequenceCompleted, handleRevealAnswer, handleRevealFastestTeam, handleNextQuestion, handleStartTimer, getFastestCorrectTeam]);
-
-  // Update parent component when response times change
-  useEffect(() => {
-    if (onTeamResponseTimeUpdate && Object.keys(teamAnswerTimes).length > 0) {
-      onTeamResponseTimeUpdate(teamAnswerTimes);
-    }
-  }, [teamAnswerTimes, onTeamResponseTimeUpdate]);
 
   // Auto-show results when timer finishes in quiz pack question mode
   useEffect(() => {
@@ -2086,8 +2087,9 @@ export function KeypadInterface({
               </div>
             </div>
 
-            {/* Number Keypad */}
-            <div className="flex justify-center">
+            {/* Number Keypad and Confirm Button Container */}
+            <div className="flex items-center justify-center gap-8 mt-6 mb-4">
+              {/* Number Keypad */}
               <div className={`${currentDesign.containerClass} max-w-xs`}>
                 <div className={`${currentDesign.gridClass.replace('grid-cols-4', 'grid-cols-3')} gap-2`}>
                   {/* Numbers 1-9 */}
@@ -2097,40 +2099,40 @@ export function KeypadInterface({
                       onClick={() => handleKeypadInput(num.toString())}
                       disabled={numbersAnswerConfirmed}
                       className={`${currentDesign.buttonSize} ${currentDesign.buttonText} font-bold transition-all duration-200 hover:scale-105 ${
-                        numbersAnswerConfirmed 
-                          ? 'bg-gray-500 text-gray-300 cursor-not-allowed border border-gray-400 opacity-50' 
+                        numbersAnswerConfirmed
+                          ? 'bg-gray-500 text-gray-300 cursor-not-allowed border border-gray-400 opacity-50'
                           : currentDesign.unselectedStyle
                       }`}
                     >
                       {num}
                     </Button>
                   ))}
-                  
+
                   {/* Bottom Row: Clear, 0, Backspace */}
                   <Button
                     onClick={() => setNumbersAnswer('')}
                     disabled={numbersAnswerConfirmed}
                     className={`${currentDesign.buttonSize} text-sm font-bold transition-all duration-200 hover:scale-105 ${
-                      numbersAnswerConfirmed 
-                        ? 'bg-gray-500 text-gray-300 cursor-not-allowed border border-gray-400 opacity-50' 
+                      numbersAnswerConfirmed
+                        ? 'bg-gray-500 text-gray-300 cursor-not-allowed border border-gray-400 opacity-50'
                         : 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white border-2 border-red-400 shadow-lg shadow-red-500/30'
                     }`}
                   >
                     CLR
                   </Button>
-                  
+
                   <Button
                     onClick={() => handleKeypadInput('0')}
                     disabled={numbersAnswerConfirmed}
                     className={`${currentDesign.buttonSize} ${currentDesign.buttonText} font-bold transition-all duration-200 hover:scale-105 ${
-                      numbersAnswerConfirmed 
-                        ? 'bg-gray-500 text-gray-300 cursor-not-allowed border border-gray-400 opacity-50' 
+                      numbersAnswerConfirmed
+                        ? 'bg-gray-500 text-gray-300 cursor-not-allowed border border-gray-400 opacity-50'
                         : currentDesign.unselectedStyle
                     }`}
                   >
                     0
                   </Button>
-                  
+
                   <Button
                     onClick={() => setNumbersAnswer(prev => prev.slice(0, -1))}
                     disabled={numbersAnswerConfirmed}
@@ -2144,10 +2146,8 @@ export function KeypadInterface({
                   </Button>
                 </div>
               </div>
-            </div>
 
-            {/* Confirm Answer Button */}
-            <div className="flex justify-center mb-4 mt-6">
+              {/* Confirm Answer Button */}
               <Button
                 onClick={() => {
                   if (numbersAnswer && !numbersAnswerConfirmed) {

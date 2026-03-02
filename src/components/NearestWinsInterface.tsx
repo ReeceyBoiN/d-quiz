@@ -902,50 +902,51 @@ export function NearestWinsInterface({
                 </div>
               </div>
 
-              {/* Number Keypad */}
-              <div className={`max-w-sm mx-auto mb-6 ${currentDesign.containerClass}`}>
-                <div className={currentDesign.gridClass}>
-                  {/* Numbers 1-9 */}
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+              {/* Number Keypad and Confirm Button Container */}
+              <div className="flex items-center justify-center gap-8 mt-6">
+                {/* Number Keypad */}
+                <div className={`max-w-sm ${currentDesign.containerClass}`}>
+                  <div className={currentDesign.gridClass}>
+                    {/* Numbers 1-9 */}
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                      <Button
+                        key={num}
+                        onClick={() => handleKeypadInput(num.toString())}
+                        disabled={answerConfirmed}
+                        className={`${currentDesign.buttonSize} ${currentDesign.buttonText} font-bold rounded-lg transition-all ${answerConfirmed ? 'bg-[#7f8c8d] text-[#95a5a6] cursor-not-allowed border border-[#95a5a6] opacity-50' : currentDesign.numberStyle}`}
+                      >
+                        {num}
+                      </Button>
+                    ))}
+
+                    {/* Bottom Row: Clear, 0, Backspace */}
                     <Button
-                      key={num}
-                      onClick={() => handleKeypadInput(num.toString())}
+                      onClick={() => setAnswer('')}
+                      disabled={answerConfirmed}
+                      className={`${currentDesign.buttonSize} ${currentDesign.buttonText} font-bold rounded-lg transition-all ${answerConfirmed ? 'bg-[#7f8c8d] text-[#95a5a6] cursor-not-allowed border border-[#95a5a6] opacity-50' : currentDesign.clearStyle}`}
+                    >
+                      Clear
+                    </Button>
+
+                    <Button
+                      onClick={() => handleKeypadInput('0')}
                       disabled={answerConfirmed}
                       className={`${currentDesign.buttonSize} ${currentDesign.buttonText} font-bold rounded-lg transition-all ${answerConfirmed ? 'bg-[#7f8c8d] text-[#95a5a6] cursor-not-allowed border border-[#95a5a6] opacity-50' : currentDesign.numberStyle}`}
                     >
-                      {num}
+                      0
                     </Button>
-                  ))}
-                  
-                  {/* Bottom Row: Clear, 0, Backspace */}
-                  <Button
-                    onClick={() => setAnswer('')}
-                    disabled={answerConfirmed}
-                    className={`${currentDesign.buttonSize} ${currentDesign.buttonText} font-bold rounded-lg transition-all ${answerConfirmed ? 'bg-[#7f8c8d] text-[#95a5a6] cursor-not-allowed border border-[#95a5a6] opacity-50' : currentDesign.clearStyle}`}
-                  >
-                    Clear
-                  </Button>
-                  
-                  <Button
-                    onClick={() => handleKeypadInput('0')}
-                    disabled={answerConfirmed}
-                    className={`${currentDesign.buttonSize} ${currentDesign.buttonText} font-bold rounded-lg transition-all ${answerConfirmed ? 'bg-[#7f8c8d] text-[#95a5a6] cursor-not-allowed border border-[#95a5a6] opacity-50' : currentDesign.numberStyle}`}
-                  >
-                    0
-                  </Button>
-                  
-                  <Button
-                    onClick={() => setAnswer(prev => prev.slice(0, -1))}
-                    disabled={answerConfirmed}
-                    className={`${currentDesign.buttonSize} ${currentDesign.buttonText} font-bold rounded-lg transition-all ${answerConfirmed ? 'bg-[#7f8c8d] text-[#95a5a6] cursor-not-allowed border border-[#95a5a6] opacity-50' : currentDesign.backspaceStyle}`}
-                  >
-                    ⌫
-                  </Button>
-                </div>
-              </div>
 
-              {/* Confirm Answer Button */}
-              <div className="flex justify-center mt-6">
+                    <Button
+                      onClick={() => setAnswer(prev => prev.slice(0, -1))}
+                      disabled={answerConfirmed}
+                      className={`${currentDesign.buttonSize} ${currentDesign.buttonText} font-bold rounded-lg transition-all ${answerConfirmed ? 'bg-[#7f8c8d] text-[#95a5a6] cursor-not-allowed border border-[#95a5a6] opacity-50' : currentDesign.backspaceStyle}`}
+                    >
+                      ⌫
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Confirm Answer Button */}
                 <Button
                   onClick={() => {
                     if (answer && !answerConfirmed) {
