@@ -646,6 +646,9 @@ export function QuizHost() {
   // Results summary display state for quiz pack mode (shown when timer ends)
   const [showResultsSummary, setShowResultsSummary] = useState(false);
 
+  // Store fastest team ID for display in quiz pack mode
+  const [fastestTeamIdForDisplay, setFastestTeamIdForDisplay] = useState<string | null>(null);
+
   // Pause scores state
   const [scoresPaused, setScoresPaused] = useState(false);
   
@@ -1202,10 +1205,11 @@ export function QuizHost() {
     }
   }, [flowState.flow, isQuizPackMode]);
 
-  // Reset results summary when flow changes to ensure clean state transitions
+  // Reset results summary and fastest team ID when flow changes to ensure clean state transitions
   useEffect(() => {
     if (flowState.flow !== 'timeup' && flowState.flow !== 'running' && flowState.flow !== 'revealed' && flowState.flow !== 'fastest') {
       setShowResultsSummary(false);
+      setFastestTeamIdForDisplay(null); // Clear fastest team ID when leaving question mode
     }
   }, [flowState.flow]);
 
@@ -2012,6 +2016,7 @@ export function QuizHost() {
     setTeamAnswerStatuses({});
     setTeamCorrectRankings({});
     setShowAnswer(false);
+    setFastestTeamIdForDisplay(null); // Clear stored fastest team ID
 
     // Navigate back to home screen
     setActiveTab("home");
@@ -2562,55 +2567,50 @@ export function QuizHost() {
         const isOnTheSpotMode = showKeypadInterface && !isQuizPackMode;
 
         if (!isOnTheSpotMode && isQuizPackMode) {
-          // For quiz pack: Show fastest team on external display, player portals, AND host screen
-          const correctTeams = quizzes.filter(team => teamAnswerStatuses[team.id] === 'correct');
-          const fastestTeam = correctTeams.length > 0
-            ? correctTeams.reduce((fastest, current) => {
-                const currentTime = teamResponseTimes[current.id] || Infinity;
-                const fastestTime = teamResponseTimes[fastest.id] || Infinity;
-                return currentTime < fastestTime ? current : fastest;
-              })
-            : null;
+          // For quiz pack: Use the stored fastest team ID that was calculated in handleRevealAnswer
+          if (fastestTeamIdForDisplay) {
+            const fastestTeam = quizzes.find(team => team.id === fastestTeamIdForDisplay);
 
-          if (fastestTeam) {
-            const fastestTeamResponseTime = teamResponseTimes[fastestTeam.id] || 0;
-            console.log('[QuizHost] QUIZ_PACK: Fastest team found -', fastestTeam.name, 'with responseTime from teamResponseTimes:', fastestTeamResponseTime, 'ms, will display as:', (fastestTeamResponseTime / 1000).toFixed(2), 's');
+            if (fastestTeam) {
+              const fastestTeamResponseTime = teamResponseTimes[fastestTeam.id] || 0;
+              console.log('[QuizHost] QUIZ_PACK: Using stored fastest team -', fastestTeam.name, 'with responseTime from teamResponseTimes:', fastestTeamResponseTime, 'ms, will display as:', (fastestTeamResponseTime / 1000).toFixed(2), 's');
 
-            // Show FastestTeamDisplay on host screen (same as keypad mode)
-            handleFastestTeamReveal({
-              team: fastestTeam,
-              responseTime: fastestTeamResponseTime
-            });
+              // Show FastestTeamDisplay on host screen (same as keypad mode)
+              handleFastestTeamReveal({
+                team: fastestTeam,
+                responseTime: fastestTeamResponseTime
+              });
 
-            // Send to player portals
-            sendFastestToDisplay(fastestTeam.name, currentLoadedQuestionIndex + 1, fastestTeam.photoUrl);
+              // Send to player portals
+              sendFastestToDisplay(fastestTeam.name, currentLoadedQuestionIndex + 1, fastestTeam.photoUrl);
 
-            // Broadcast fastest team to player devices
-            if ((window as any).api?.network?.broadcastFastest) {
-              try {
-                const fastestData = {
-                  teamName: fastestTeam.name,
-                  questionNumber: currentLoadedQuestionIndex + 1,
-                  teamPhoto: fastestTeam.photoUrl || null
-                };
-                console.log('[QuizHost] Broadcasting fastest team to players:', fastestData);
-                (window as any).api.network.broadcastFastest(fastestData);
-              } catch (err) {
-                console.error('[QuizHost] Error broadcasting fastest team:', err);
-              }
-            }
-
-            // Send to external display
-            if (externalWindow) {
-              sendToExternalDisplay(
-                { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name, teamPhoto: fastestTeam.photoUrl } }
-              );
-
-              fastestTeamTimeoutRef.current = setTimeout(() => {
-                if (lastExternalDisplayMessageRef.current) {
-                  sendToExternalDisplay(lastExternalDisplayMessageRef.current);
+              // Broadcast fastest team to player devices
+              if ((window as any).api?.network?.broadcastFastest) {
+                try {
+                  const fastestData = {
+                    teamName: fastestTeam.name,
+                    questionNumber: currentLoadedQuestionIndex + 1,
+                    teamPhoto: fastestTeam.photoUrl || null
+                  };
+                  console.log('[QuizHost] Broadcasting fastest team to players:', fastestData);
+                  (window as any).api.network.broadcastFastest(fastestData);
+                } catch (err) {
+                  console.error('[QuizHost] Error broadcasting fastest team:', err);
                 }
-              }, 5000);
+              }
+
+              // Send to external display
+              if (externalWindow) {
+                sendToExternalDisplay(
+                  { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name, teamPhoto: fastestTeam.photoUrl } }
+                );
+
+                fastestTeamTimeoutRef.current = setTimeout(() => {
+                  if (lastExternalDisplayMessageRef.current) {
+                    sendToExternalDisplay(lastExternalDisplayMessageRef.current);
+                  }
+                }, 5000);
+              }
             }
           }
         }
@@ -2652,6 +2652,7 @@ export function QuizHost() {
             setTeamAnswerCounts({});
             setTeamAnswerStatuses({});
             setTeamCorrectRankings({});
+            setFastestTeamIdForDisplay(null); // Reset stored fastest team ID
             console.log('[QuizHost] ADVANCING QUESTION: Resetting gameTimerStartTime from', gameTimerStartTime, 'to null for next question');
             setGameTimerStartTime(null); // Reset timer start time for new question
 
@@ -4732,6 +4733,9 @@ export function QuizHost() {
           fastestTeamId = correctTeamsWithTimes[0]?.teamId;
           fastestTeamResponseTime = correctTeamsWithTimes[0]?.time || 0;
         }
+
+        // Store fastest team ID for use in flow progression
+        setFastestTeamIdForDisplay(fastestTeamId || null);
 
         // Always calculate team answer stats for display
         const wrongTeamIds = quizzes
