@@ -3,6 +3,7 @@ import { TeamNameEntry } from './components/TeamNameEntry';
 import { BuzzerSelectionModal } from './components/BuzzerSelectionModal';
 import { QuestionDisplay } from './components/QuestionDisplay';
 import { WaitingScreen } from './components/WaitingScreen';
+import { PinEntryScreen } from './components/PinEntryScreen';
 import { PlayerDisplayManager } from './components/PlayerDisplayManager';
 import { SettingsBar } from './components/SettingsBar';
 import { FastestTeamOverlay } from './components/FastestTeamOverlay';
@@ -42,7 +43,10 @@ interface PendingMessage {
 }
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'buzzer-selection' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display' | 'host-terminal'>('team-entry');
+  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'buzzer-selection' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display' | 'host-terminal' | 'pin-entry'>('team-entry');
+  const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [pinAccepted, setPinAccepted] = useState(false);
   const [selectedBuzzers, setSelectedBuzzers] = useState<Record<string, string>>({}); // deviceId -> buzzerSound mapping (other players)
   const [confirmedBuzzer, setConfirmedBuzzer] = useState<string | null>(null); // Current player's confirmed buzzer
   const [teamName, setTeamName] = useState('');
@@ -110,11 +114,11 @@ export default function App() {
 
   const { settings, isLoaded: playerSettingsLoaded, updateBuzzerSound } = usePlayerSettings();
 
-  // Helper function to determine if we should ignore screen transitions during buzzer selection
+  // Helper function to determine if we should ignore screen transitions during buzzer selection or pin entry
   const shouldIgnoreScreenTransition = useCallback((messageType: string, currentScreenState: string): boolean => {
-    const shouldIgnore = currentScreenState === 'buzzer-selection';
+    const shouldIgnore = currentScreenState === 'buzzer-selection' || currentScreenState === 'pin-entry';
     if (shouldIgnore) {
-      console.log(`[Player] ⏸️  Deferring ${messageType} during buzzer selection`);
+      console.log(`[Player] ⏸️  Deferring ${messageType} during ${currentScreenState}`);
     }
     return shouldIgnore;
   }, []);
@@ -172,6 +176,14 @@ export default function App() {
       }
     };
   }, []);
+
+  // Clear stale PIN state when leaving pin-entry screen
+  useEffect(() => {
+    if (currentScreen !== 'pin-entry') {
+      setPinError('');
+      setPinAccepted(false);
+    }
+  }, [currentScreen]);
 
   // Helper function to determine if player's answer is correct
   const determineAnswerCorrectness = (submittedAnswerObj: any, correctAnswer: any, questionType?: string): boolean => {
@@ -520,6 +532,33 @@ export default function App() {
         }
         break;
 
+      case 'PIN_REQUIRED':
+        try {
+          setWelcomeMessage(message.data?.message || '');
+          setPinError('');
+          setCurrentScreen('pin-entry');
+        } catch (err) {
+          console.error('[Player] Error in PIN_REQUIRED handler:', err);
+        }
+        break;
+
+      case 'PIN_RESULT':
+        try {
+          if (message.data?.success) {
+            // PIN accepted - stay on pin-entry screen with accepted state
+            // TEAM_APPROVED will arrive shortly (auto-approve ~150ms, or when host manually approves)
+            // Step 2 in TEAM_APPROVED handler will route from pin-entry → buzzer-selection
+            setPinError('');
+            setPinAccepted(true);
+            console.log('[Player] PIN accepted, waiting for TEAM_APPROVED on pin-entry screen');
+          } else {
+            setPinError(message.data?.message || 'Incorrect PIN');
+          }
+        } catch (err) {
+          console.error('[Player] Error in PIN_RESULT handler:', err);
+        }
+        break;
+
       case 'CONTROLLER_AUTH_FAILED':
         try {
           const errorMsg = message.data?.message || 'Host controller PIN authentication failed';
@@ -544,12 +583,18 @@ export default function App() {
             localStorage.setItem('popquiz_last_team_name', teamName);
           }
 
-          // Check if there's a current game state (late joiner sync)
+          // Extract welcome message from approval data
           const displayData = message.data?.displayData;
+          if (displayData?.welcomeMessage) {
+            setWelcomeMessage(displayData.welcomeMessage);
+          }
+
+          // Check if there's a current game state (late joiner sync)
           const currentGameState = displayData?.currentGameState;
 
-          // Check if we're currently in buzzer selection screen
+          // Check if we're currently in buzzer selection or pin-entry screen
           const isInBuzzerSelection = currentScreen === 'buzzer-selection';
+          const isInPinEntry = currentScreen === 'pin-entry';
 
           if (currentGameState?.currentQuestion) {
             // Late joiner - show current question immediately
@@ -573,8 +618,13 @@ export default function App() {
               setTimeRemaining(currentGameState.timerState.timeRemaining);
               setShowTimer(true);
             }
-          } else if (isInBuzzerSelection) {
-            // Buzzer selection in progress - save approval data without changing screen
+          } else if (isInPinEntry || isInBuzzerSelection) {
+            // PIN entry or buzzer selection in progress - save approval data without changing screen
+            // If on pin-entry, transition to buzzer-selection so the player can pick their buzzer
+            if (isInPinEntry) {
+              console.log('[Player] TEAM_APPROVED received during pin-entry, transitioning to buzzer-selection');
+              setCurrentScreen('buzzer-selection');
+            }
 
             // Extract and save display mode data
             if (displayData) {
@@ -1009,17 +1059,18 @@ export default function App() {
 
   // Auto-rejoin when WS reconnects if team is still approved and has a name
   // Only triggers during true reconnection, NOT during initial team entry
+  // Also handles reconnect during pin-entry (not yet approved) so host re-sends PIN_REQUIRED
   useEffect(() => {
-    if (
-      isConnected &&
-      isApproved &&
+    const canRejoin = isConnected &&
       teamName &&
       wsRef.current &&
       wsRef.current.readyState === WebSocket.OPEN &&
       currentScreen !== 'team-entry' &&
-      currentScreen !== 'declined'
-    ) {
-      // App still has team info in memory - auto-rejoin without re-entering name
+      currentScreen !== 'declined';
+
+    // Either approved player reconnecting, or unapproved player on pin-entry reconnecting
+    if (canRejoin && (isApproved || currentScreen === 'pin-entry')) {
+      console.log(`[Player] Auto-rejoin triggered (approved=${isApproved}, screen=${currentScreen})`);
       const rejoinPayload: any = {
         type: 'PLAYER_JOIN',
         playerId,
@@ -1497,9 +1548,31 @@ export default function App() {
             <TeamNameEntry onSubmit={handleTeamNameSubmit} />
           )}
 
+          {isConnected && currentScreen === 'pin-entry' && (
+            <PinEntryScreen
+              teamName={teamName}
+              welcomeMessage={welcomeMessage}
+              accepted={pinAccepted}
+              onSubmit={(pin) => {
+                setPinError('');
+                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({
+                    type: 'PIN_SUBMIT',
+                    playerId,
+                    deviceId,
+                    teamName,
+                    pin,
+                    timestamp: Date.now(),
+                  }));
+                }
+              }}
+              error={pinError}
+            />
+          )}
+
           {isConnected && currentScreen === 'buzzer-selection' && (
             <>
-              <WaitingScreen teamName={teamName} />
+              <WaitingScreen teamName={teamName} welcomeMessage={welcomeMessage} />
               <BuzzerSelectionModal
                 isOpen={currentScreen === 'buzzer-selection'}
                 selectedBuzzers={selectedBuzzers}
@@ -1510,7 +1583,7 @@ export default function App() {
           )}
 
           {isConnected && currentScreen === 'approval' && (
-            <WaitingScreen teamName={teamName} />
+            <WaitingScreen teamName={teamName} welcomeMessage={welcomeMessage} />
           )}
 
           {isConnected && currentScreen === 'declined' && (

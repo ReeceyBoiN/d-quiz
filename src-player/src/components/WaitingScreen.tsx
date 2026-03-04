@@ -1,8 +1,9 @@
 interface WaitingScreenProps {
   teamName: string;
+  welcomeMessage?: string;
 }
 
-export function WaitingScreen({ teamName }: WaitingScreenProps) {
+export function WaitingScreen({ teamName, welcomeMessage }: WaitingScreenProps) {
   return (
     <div className="flex items-center justify-center h-full">
       <div className="text-center">
@@ -10,6 +11,11 @@ export function WaitingScreen({ teamName }: WaitingScreenProps) {
           Waiting Room
         </h2>
         <p className="text-xl text-slate-300 mb-8">{teamName}</p>
+        {welcomeMessage && (
+          <div className="bg-slate-700/50 rounded-lg p-4 mb-6 max-w-md mx-auto">
+            <p className="text-slate-200 text-sm whitespace-pre-wrap">{welcomeMessage}</p>
+          </div>
+        )}
         <div className="space-y-4">
           <p className="text-slate-400 text-lg">
             Waiting for Quiz Host

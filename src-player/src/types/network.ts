@@ -22,6 +22,8 @@ export type HostMessageType =
   | 'GO_WIDE'
   | 'CONTROLLER_AUTH_SUCCESS'
   | 'CONTROLLER_AUTH_FAILED'
+  | 'PIN_REQUIRED'
+  | 'PIN_RESULT'
   | 'ADMIN_RESPONSE';
 
 export interface HostMessage {
@@ -242,4 +244,13 @@ export interface AdminResponseMessage {
   timestamp?: number;
 }
 
-export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage | PlayerAwayMessage | PlayerActiveMessage | PlayerBuzzerSelectMessage | AdminCommandMessage;
+export interface PinSubmitMessage {
+  type: 'PIN_SUBMIT';
+  playerId: string;
+  deviceId: string;
+  teamName: string;
+  pin: string;
+  timestamp: number;
+}
+
+export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage | PlayerAwayMessage | PlayerActiveMessage | PlayerBuzzerSelectMessage | AdminCommandMessage | PinSubmitMessage;

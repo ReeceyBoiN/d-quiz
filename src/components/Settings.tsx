@@ -276,6 +276,8 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     maxParticipants: 50,
     waitingRoomMessage: "Welcome to the quiz! Please wait for the host to start.",
     showParticipantCount: true,
+    waitingRoomPinEnabled: false,
+    waitingRoomPin: "0000",
     
     // External screen settings
     displayResolution: "1920x1080",
@@ -1186,6 +1188,42 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
               className="bg-[#2c3e50] border-[#4a5568] text-[#ecf0f1] mt-2"
               rows={3}
             />
+            <p className="text-xs text-slate-400 mt-1">This message is shown to players on their device while waiting.</p>
+          </div>
+
+          <Separator className="bg-[#4a5568]" />
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-[#ecf0f1]">Require PIN to Join</Label>
+                <p className="text-xs text-slate-400 mt-1">Players must enter a 4-digit PIN before joining the quiz.</p>
+              </div>
+              <Switch
+                checked={settings.waitingRoomPinEnabled}
+                onCheckedChange={(checked) => updateSetting("waitingRoomPinEnabled", checked)}
+              />
+            </div>
+
+            {settings.waitingRoomPinEnabled && (
+              <div>
+                <Label htmlFor="waiting-room-pin" className="text-[#ecf0f1]">Join PIN Code</Label>
+                <Input
+                  id="waiting-room-pin"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={settings.waitingRoomPin}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 4);
+                    updateSetting("waitingRoomPin", val);
+                  }}
+                  className="bg-[#2c3e50] border-[#4a5568] text-[#ecf0f1] mt-2 text-2xl tracking-[0.5em] text-center font-mono w-40"
+                  placeholder="0000"
+                />
+                <p className="text-xs text-slate-400 mt-1">Share this PIN with players so they can join.</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -582,7 +582,9 @@ export function TeamWindow({
                     disabled={loadingBuzzers}
                   >
                     <SelectTrigger id="buzzer-sound">
-                      <SelectValue placeholder={loadingBuzzers ? "Loading buzzers..." : "Select buzzer sound"} />
+                      <SelectValue placeholder={loadingBuzzers ? "Loading buzzers..." : "Select buzzer sound"}>
+                        {team.buzzerSound ? getNormalizedBuzzerName(team.buzzerSound) : undefined}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {buzzerSounds.map((sound) => {

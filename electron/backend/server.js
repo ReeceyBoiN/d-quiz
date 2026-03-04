@@ -1410,6 +1410,33 @@ async function startBackend({ port = 4310 } = {}) {
               log.error(`[WS-${connectionId}] ADMIN_COMMAND error stack:`, adminCommandErr.stack);
             }
           }
+        } else if (data.type === 'PIN_SUBMIT') {
+          // Forward PIN_SUBMIT to host (other clients) for validation
+          try {
+            const pinDeviceId = (data.deviceId || deviceId || '').trim();
+            const pinTeamName = data.teamName || '';
+            log.info(`[WS-${connectionId}] 🔐 PIN_SUBMIT received from ${pinTeamName} (${pinDeviceId})`);
+
+            const pinMessage = JSON.stringify({
+              type: 'PIN_SUBMIT',
+              playerId: data.playerId,
+              deviceId: pinDeviceId,
+              teamName: pinTeamName,
+              pin: data.pin,
+              timestamp: data.timestamp || Date.now()
+            });
+
+            const otherClients = Array.from(wss.clients).filter(c => c.readyState === 1 && c !== ws);
+            otherClients.forEach((client) => {
+              try {
+                client.send(pinMessage);
+              } catch (sendErr) {
+                log.error(`[WS-${connectionId}] Error forwarding PIN_SUBMIT:`, sendErr.message);
+              }
+            });
+          } catch (pinErr) {
+            log.error(`[WS-${connectionId}] Error handling PIN_SUBMIT:`, pinErr.message);
+          }
         } else {
           log.warn(`[WS-${connectionId}] ⚠️  Unknown message type: ${data.type}`);
         }

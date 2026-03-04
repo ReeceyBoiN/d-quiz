@@ -8,6 +8,7 @@ export type PlayerMessageType =
   | 'PLAYER_BUZZ'      // Player buzzes in
   | 'PLAYER_BUZZER_SELECT'  // Player selects a buzzer audio file
   | 'PLAYER_DISCONNECT'
+  | 'PIN_SUBMIT'       // Player submits waiting room PIN
   | 'ADMIN_COMMAND';   // Controller sends admin command to host
 
 export type HostMessageType =
@@ -26,6 +27,8 @@ export type HostMessageType =
   | 'PLAYER_LIST'        // Send list of current players
   | 'CONTROLLER_AUTH_SUCCESS'  // Host confirms PIN authentication
   | 'CONTROLLER_AUTH_FAILED'   // Host denies PIN authentication
+  | 'PIN_REQUIRED'             // Host requires waiting room PIN
+  | 'PIN_RESULT'               // Host responds to PIN submission
   | 'ADMIN_RESPONSE';          // Host responds to admin command
 
 export interface PlayerMessage {

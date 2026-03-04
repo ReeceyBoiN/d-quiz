@@ -32,6 +32,9 @@ export type NetworkMessageType =
   | 'BUZZERS_FOLDER_CHANGED'  // broadcast to players when buzzer folder changes
   | 'CONTROLLER_AUTH_SUCCESS'  // sent to player when PIN is authenticated
   | 'CONTROLLER_AUTH_FAILED'   // sent to player when PIN authentication fails
+  | 'PIN_SUBMIT'  // incoming from player submitting waiting room PIN
+  | 'PIN_REQUIRED'  // sent to player when PIN is needed
+  | 'PIN_RESULT'  // sent to player with PIN validation result
   | 'ADMIN_COMMAND'  // incoming from controller player
   | 'ADMIN_RESPONSE'  // sent to controller confirming command execution
   | 'FLOW_STATE'  // broadcast to controller with current flow state

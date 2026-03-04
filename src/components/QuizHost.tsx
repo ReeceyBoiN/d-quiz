@@ -532,6 +532,53 @@ export function QuizHost() {
     }
   };
 
+  // Authorized device IDs for waiting room PIN (devices that have entered PIN correctly)
+  const [authorizedDeviceIds, setAuthorizedDeviceIds] = useState<Set<string>>(new Set());
+  const authorizedDeviceIdsRef = useRef<Set<string>>(new Set());
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    authorizedDeviceIdsRef.current = authorizedDeviceIds;
+  }, [authorizedDeviceIds]);
+
+  // Helper function to send a message to a specific player device
+  // Uses hostInfoBaseUrlRef to avoid stale closure issues when called from stable handlers
+  const sendMessageToPlayer = useCallback(async (targetDeviceId: string, messageType: string, data: any) => {
+    try {
+      if ((window as any).api?.network?.sendToPlayer) {
+        try {
+          const result = await (window as any).api.network.sendToPlayer({
+            deviceId: targetDeviceId,
+            messageType,
+            data
+          });
+          console.log(`[QuizHost] ✅ Sent ${messageType} to ${targetDeviceId} via IPC`);
+          return;
+        } catch (ipcErr) {
+          console.error(`[QuizHost] ❌ IPC send ${messageType} failed:`, ipcErr);
+        }
+      }
+
+      // HTTP API fallback - use ref to get latest baseUrl
+      const backendUrl = hostInfoBaseUrlRef.current || `${window.location.protocol}//${window.location.hostname}:4310`;
+      const response = await fetch(`${backendUrl}/api/send-to-player`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: targetDeviceId, messageType, data })
+      });
+
+      if (response.ok) {
+        console.log(`[QuizHost] ✅ Sent ${messageType} to ${targetDeviceId} via HTTP`);
+        return;
+      }
+    } catch (err) {
+      console.error(`[QuizHost] ❌ Error sending ${messageType}:`, err);
+    }
+
+    // Broadcast fallback
+    broadcastMessage({ type: messageType as any, data: { ...data, deviceId: targetDeviceId } });
+  }, []);
+
   // Sidebar width state for status bar positioning
   const [sidebarWidth, setSidebarWidth] = useState(345); // Match the defaultSize width
   
@@ -1630,8 +1677,10 @@ export function QuizHost() {
         console.log('[QuizHost] 📤 Calling approveTeam IPC...');
 
         // Prepare display mode data to send to the newly approved player
+        const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
         const displayData: any = {
-          mode: playerDevicesDisplayMode
+          mode: playerDevicesDisplayMode,
+          welcomeMessage: currentSettings.waitingRoomMessage || '',
         };
 
         if (playerDevicesDisplayMode === 'slideshow') {
@@ -3364,11 +3413,19 @@ export function QuizHost() {
       if (teamName !== currentHostControllerCode) console.log('[QuizHost]   - teamName does not match hostControllerCode');
     }
 
+    // Check if waiting room PIN is required
+    // Read settings directly from localStorage for latest values (refs pattern)
+    const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
+    const pinEnabled = currentSettings.waitingRoomPinEnabled === true;
+    const pinCode = currentSettings.waitingRoomPin || '';
+    const welcomeMsg = currentSettings.waitingRoomMessage || '';
+
     // Check if team with this deviceId already exists (reconnection case)
     const existingTeam = quizzesRef.current.find(q => q.id === deviceId);
 
     if (existingTeam) {
       // Reconnection - update existing team, keep score, mark as connected
+      // PIN is bypassed for reconnecting players (they already joined this session)
       setQuizzes(prev => prev.map(q =>
         q.id === deviceId
           ? { ...q, name: teamName, disconnected: false }
@@ -3378,6 +3435,17 @@ export function QuizHost() {
       // Trigger debounced auto-save for crash recovery
       debouncedSaveGameStateRef.current?.();
     } else {
+      // New team - check if PIN is required before allowing join
+      if (pinEnabled && pinCode) {
+        if (!authorizedDeviceIdsRef.current.has(deviceId)) {
+          console.log(`[QuizHost] 🔐 PIN required for new team: ${teamName} (${deviceId})`);
+          sendMessageToPlayer(deviceId, 'PIN_REQUIRED', {
+            message: welcomeMsg,
+          });
+          return;
+        }
+        console.log(`[QuizHost] 🔐 Device already authorized (PIN bypass): ${deviceId}`);
+      }
       // New team - check if quiz is in progress (any team has points)
       const hasStartedQuiz = quizzesRef.current.some(q => (q.score || 0) > 0);
 
@@ -3436,6 +3504,45 @@ export function QuizHost() {
     const unsubscribe = onNetworkMessage('PLAYER_JOIN', handleNetworkPlayerJoin);
     return unsubscribe;
   }, [handleNetworkPlayerJoin]); // Only depends on stable handler
+
+  // Handle PIN_SUBMIT from players
+  const handlePinSubmit = useCallback((data: any) => {
+    const { deviceId, playerId, teamName, pin } = data;
+    if (!deviceId || !pin) {
+      console.warn('[QuizHost] PIN_SUBMIT missing required fields');
+      return;
+    }
+
+    const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
+    const expectedPin = currentSettings.waitingRoomPin || '';
+
+    if (pin === expectedPin) {
+      console.log(`[QuizHost] 🔐 ✅ PIN correct for ${teamName} (${deviceId})`);
+      // Add device to authorized set
+      setAuthorizedDeviceIds(prev => {
+        const updated = new Set(prev);
+        updated.add(deviceId);
+        return updated;
+      });
+      // Also update the ref immediately so the join handler sees it
+      authorizedDeviceIdsRef.current = new Set([...authorizedDeviceIdsRef.current, deviceId]);
+
+      // Send success to player
+      sendMessageToPlayer(deviceId, 'PIN_RESULT', { success: true });
+
+      // Re-process the join now that device is authorized
+      handleNetworkPlayerJoin({ deviceId, playerId, teamName, ...data });
+    } else {
+      console.log(`[QuizHost] 🔐 ❌ PIN incorrect for ${teamName} (${deviceId})`);
+      sendMessageToPlayer(deviceId, 'PIN_RESULT', { success: false, message: 'Incorrect PIN' });
+    }
+  }, [handleNetworkPlayerJoin]);
+
+  // Register PIN_SUBMIT listener
+  useEffect(() => {
+    const unsubscribe = onNetworkMessage('PIN_SUBMIT', handlePinSubmit);
+    return unsubscribe;
+  }, [handlePinSubmit]);
 
   // Wrap PLAYER_DISCONNECT handler in useCallback - uses refs to avoid re-registration
   const handleNetworkPlayerDisconnect = useCallback((data: any) => {
@@ -5890,6 +5997,9 @@ export function QuizHost() {
   // Empty lobby - delete all teams and clear crash recovery
   const handleEmptyLobby = async () => {
     setQuizzes([]);
+    // Clear authorized device IDs so PIN is required again for all devices
+    setAuthorizedDeviceIds(new Set());
+    authorizedDeviceIdsRef.current = new Set();
     // Clear saved game state on crash recovery
     await clearGameState().catch(err => console.error('[Crash Recovery] Error clearing game state:', err));
 
