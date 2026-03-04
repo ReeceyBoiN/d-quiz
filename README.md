@@ -15,9 +15,9 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   Instructions graphics need making, how to play, how to connect, how to answer, how to edit team name, add a team pic, letters questions etc etc
 
-  --Scramble keypad doesnt scramble the keypad for players
+  Scramble keypad doesnt scramble the keypad for players
 
-  sequence question is only allowing 1 answer to be selected on on the spot mode 
+  sequence question is only allowing 1 answer to be selected on on the spot mode
 
   *Needs public test - Need to make sure the nearest wins modes calculates which team is closest, if multiple teams get the closest answer or equidistant those teams should get the bonus points
 

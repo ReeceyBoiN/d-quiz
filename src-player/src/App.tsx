@@ -63,6 +63,7 @@ export default function App() {
   const [correctAnswer, setCorrectAnswer] = useState<string | number | (string | number)[] | undefined>();
   const [selectedAnswers, setSelectedAnswers] = useState<any[]>([]);
   const [showFastestTeam, setShowFastestTeam] = useState(false);
+  const [pendingDisplayMode, setPendingDisplayMode] = useState<any | null>(null);
   const [fastestTeamName, setFastestTeamName] = useState<string>('');
   const [fastestTeamPhoto, setFastestTeamPhoto] = useState<string | null>(null);
   const [showAnswerFeedback, setShowAnswerFeedback] = useState(false);
@@ -248,6 +249,141 @@ export default function App() {
       console.log('[Player] Cleared pending timer lock delay');
     }
   }, []);
+
+  const applyDisplayModeUpdate = useCallback((data: any, source: string) => {
+    if (isHostController) {
+      console.log(`[Player] 🔐 Skipping ${source} display mode transition - authenticated host controller must stay on terminal interface`);
+      return;
+    }
+
+    if (!data?.mode) {
+      console.warn(`[Player] ⚠️  DISPLAY_MODE received from ${source} but no mode in data:`, data);
+      return;
+    }
+
+    // Clear answer feedback when switching display modes
+    setShowAnswerFeedback(false);
+    setIsAnswerCorrect(undefined);
+
+    const newMode = data.mode;
+    const transitionDelay = data?.displayTransitionDelay || 0;
+    console.log('[Player] Applying display mode update from', source, 'to:', newMode, 'with transition delay:', transitionDelay, 'ms');
+
+    // Clear state for modes being exited to prevent stale state interference
+    if (newMode !== 'slideshow') {
+      console.log('[Player] Clearing slideshow state (exiting slideshow mode)');
+      setSlideshowImages([]);
+      setRotationInterval(10000);
+    }
+
+    if (newMode !== 'scores') {
+      console.log('[Player] Clearing scores state (exiting scores mode)');
+      setLeaderboardScores([]);
+    }
+
+    // Update display mode state immediately
+    console.log('[Player] Updating display mode state immediately to:', newMode);
+    setDisplayMode(newMode);
+
+    // Populate mode-specific data immediately
+    if (newMode === 'slideshow' && data.images) {
+      console.log('[Player] Setting slideshow images:', data.images.length);
+      setSlideshowImages(data.images);
+      if (data.rotationInterval) {
+        setRotationInterval(data.rotationInterval);
+      }
+    } else if (newMode === 'slideshow') {
+      console.warn('[Player] ⚠️  Slideshow mode but no images data');
+    }
+
+    if (newMode === 'scores' && data.scores) {
+      console.log('[Player] Setting leaderboard scores:', data.scores);
+      setLeaderboardScores(data.scores);
+    } else if (newMode === 'scores' && !data.scores) {
+      console.warn('[Player] ⚠️  Scores mode but no scores data:', data);
+      setLeaderboardScores([]); // Clear scores if none provided
+    }
+
+    if (newMode === 'basic') {
+      console.log('[Player] Switching to basic display mode');
+    }
+
+    // Delay the visual screen transition based on host's directive
+    if (transitionDelay > 0) {
+      console.log('[Player] Delaying screen transition for', transitionDelay, 'ms (preventing immediate team visibility)');
+      // Clear any existing timer before setting new one
+      if (displayModeTimerRef.current) {
+        clearTimeout(displayModeTimerRef.current);
+      }
+      const transitionTimer = setTimeout(() => {
+        try {
+          console.log('[Player] Screen transition delay complete, updating display');
+          setCurrentScreen('display');
+        } catch (transitionErr) {
+          console.error('❌ [Player] Error during screen transition:', transitionErr);
+        }
+      }, transitionDelay);
+
+      // Store timer in ref so QUESTION handler can cancel it
+      displayModeTimerRef.current = transitionTimer;
+    } else {
+      console.log('[Player] No transition delay, updating display immediately');
+      setCurrentScreen('display');
+    }
+  }, [isHostController]);
+
+  const applyPendingDisplayMode = useCallback((source: string) => {
+    if (!pendingDisplayMode) {
+      return false;
+    }
+
+    console.log(`[Player] Applying pending DISPLAY_MODE update after ${source}`);
+    applyDisplayModeUpdate(pendingDisplayMode, source);
+    setPendingDisplayMode(null);
+    return true;
+  }, [applyDisplayModeUpdate, pendingDisplayMode]);
+
+  const resetQuestionState = useCallback(() => {
+    console.log('[Player] Resetting question state');
+    // Clear any pending timer lock delay when moving to next question
+    clearTimerLockDelay();
+
+    setCurrentQuestion(null);
+    setGoWideEnabled(false);
+    setAnswerRevealed(false);
+    setCorrectAnswer(undefined);
+    setSelectedAnswers([]);
+    setShowTimer(false);
+    setTimerEnded(false);
+    setShowFastestTeam(false);
+    setFastestTeamName('');
+    setFastestTeamPhoto(null);
+    setShowAnswerFeedback(false);
+    setIsAnswerCorrect(undefined);
+    setSubmittedAnswer(null);
+    submittedAnswerRef.current = null;
+    timerStartTimeRef.current = null; // Clear stale timer reference to prevent using previous question's timestamp
+
+    // Cancel fastest team timer if running
+    if (fastestTeamTimerRef.current) {
+      clearTimeout(fastestTeamTimerRef.current);
+      fastestTeamTimerRef.current = null;
+    }
+
+    // Cancel any existing display mode timer
+    if (displayModeTimerRef.current) {
+      clearTimeout(displayModeTimerRef.current);
+      displayModeTimerRef.current = null;
+    }
+  }, [clearTimerLockDelay]);
+
+  const transitionToIdleDisplay = useCallback((source: string) => {
+    if (isHostController) {
+      console.log(`[Player] 🔐 Skipping ${source} transition - authenticated host controller must stay on terminal interface`);
+      return;
+    }
+    setCurrentScreen('display');
+  }, [isHostController]);
 
   const handleMessage = useCallback((message: HostMessage) => {
 
@@ -595,38 +731,22 @@ export default function App() {
         }
 
         console.log('[Player] NEXT message received - clearing all question state immediately');
-        // Clear any pending timer lock delay when moving to next question
-        clearTimerLockDelay();
-
-        setCurrentQuestion(null);
-        setGoWideEnabled(false);
-        setAnswerRevealed(false);
-        setCorrectAnswer(undefined);
-        setSelectedAnswers([]);
-        setShowTimer(false);
-        setTimerEnded(false);
-        setShowFastestTeam(false);
-        setFastestTeamName('');
-        setFastestTeamPhoto(null);
-        setShowAnswerFeedback(false);
-        setIsAnswerCorrect(undefined);
-        setSubmittedAnswer(null);
-        submittedAnswerRef.current = null;
-        timerStartTimeRef.current = null; // Clear stale timer reference to prevent using previous question's timestamp
-
-        // Cancel fastest team timer if running
-        if (fastestTeamTimerRef.current) {
-          clearTimeout(fastestTeamTimerRef.current);
-          fastestTeamTimerRef.current = null;
+        resetQuestionState();
+        if (!applyPendingDisplayMode('NEXT')) {
+          transitionToIdleDisplay('NEXT');
+        }
+        break;
+      case 'END_ROUND':
+        if (shouldIgnoreScreenTransition('END_ROUND', currentScreen)) {
+          console.log('[Player] Saving END_ROUND message for processing after buzzer selection');
+          setPendingMessage({ type: 'END_ROUND', data: message.data });
+          return;
         }
 
-        // Show keypad with blank question area immediately
-        setCurrentScreen('ready-for-question');
-
-        // Cancel any existing display mode timer
-        if (displayModeTimerRef.current) {
-          clearTimeout(displayModeTimerRef.current);
-          displayModeTimerRef.current = null;
+        console.log('[Player] END_ROUND message received - clearing all question state');
+        resetQuestionState();
+        if (!applyPendingDisplayMode('END_ROUND')) {
+          transitionToIdleDisplay('END_ROUND');
         }
         break;
       case 'PICTURE':
@@ -664,96 +784,12 @@ export default function App() {
           const isInGameScreen = currentScreen === 'question' || currentScreen === 'ready-for-question';
           if (isInGameScreen) {
             console.log('[Player] ⚠️  Ignoring DISPLAY_MODE message - question/input screen is currently active, deferring display mode change');
+            console.log('[Player] 📥 Buffered DISPLAY_MODE payload until question ends');
+            setPendingDisplayMode(message.data);
             break;
           }
 
-          // Skip display transitions for authenticated host controllers
-          // Host controllers must always remain on the terminal interface to maintain control
-          if (isHostController) {
-            console.log('[Player] 🔐 Skipping DISPLAY_MODE transition - authenticated host controller must stay on terminal interface');
-            break;
-          }
-
-          // Clear answer feedback when switching display modes
-          setShowAnswerFeedback(false);
-          setIsAnswerCorrect(undefined);
-
-          if (message.data?.mode) {
-            try {
-              const newMode = message.data.mode;
-              const transitionDelay = message.data?.displayTransitionDelay || 0;
-              console.log('[Player] Setting display mode to:', newMode, 'with transition delay:', transitionDelay, 'ms');
-
-              // Clear state for modes being exited to prevent stale state interference
-              if (newMode !== 'slideshow') {
-                console.log('[Player] Clearing slideshow state (exiting slideshow mode)');
-                setSlideshowImages([]);
-                setRotationInterval(10000);
-              }
-
-              if (newMode !== 'scores') {
-                console.log('[Player] Clearing scores state (exiting scores mode)');
-                setLeaderboardScores([]);
-              }
-
-              // Update display mode state immediately
-              console.log('[Player] Updating display mode state immediately to:', newMode);
-              setDisplayMode(newMode);
-
-              // Populate mode-specific data immediately
-              if (newMode === 'slideshow' && message.data.images) {
-                console.log('[Player] Setting slideshow images:', message.data.images.length);
-                setSlideshowImages(message.data.images);
-                if (message.data.rotationInterval) {
-                  setRotationInterval(message.data.rotationInterval);
-                }
-              } else if (newMode === 'slideshow') {
-                console.warn('[Player] ⚠️  Slideshow mode but no images data');
-              }
-
-              if (newMode === 'scores' && message.data.scores) {
-                console.log('[Player] Setting leaderboard scores:', message.data.scores);
-                setLeaderboardScores(message.data.scores);
-              } else if (newMode === 'scores' && !message.data.scores) {
-                console.warn('[Player] ⚠️  Scores mode but no scores data:', message.data);
-                setLeaderboardScores([]); // Clear scores if none provided
-              }
-
-              if (newMode === 'basic') {
-                console.log('[Player] Switching to basic display mode');
-              }
-
-              // Delay the visual screen transition based on host's directive
-              if (transitionDelay > 0) {
-                console.log('[Player] Delaying screen transition for', transitionDelay, 'ms (preventing immediate team visibility)');
-                // Clear any existing timer before setting new one
-                if (displayModeTimerRef.current) {
-                  clearTimeout(displayModeTimerRef.current);
-                }
-                const transitionTimer = setTimeout(() => {
-                  try {
-                    console.log('[Player] Screen transition delay complete, updating display');
-                    setCurrentScreen('display');
-                  } catch (transitionErr) {
-                    console.error('❌ [Player] Error during screen transition:', transitionErr);
-                  }
-                }, transitionDelay);
-
-                // Store timer in ref so QUESTION handler can cancel it
-                displayModeTimerRef.current = transitionTimer;
-              } else {
-                console.log('[Player] No transition delay, updating display immediately');
-                setCurrentScreen('display');
-              }
-            } catch (modeErr) {
-              console.error('❌ [Player] Error processing mode change:', modeErr);
-              if (modeErr instanceof Error) {
-                console.error('[Player] Error stack:', modeErr.stack);
-              }
-            }
-          } else {
-            console.warn('[Player] ⚠️  DISPLAY_MODE received but no mode in data:', message.data);
-          }
+          applyDisplayModeUpdate(message.data, 'DISPLAY_MODE');
         } catch (displayErr) {
           console.error('❌ [Player] Error in DISPLAY_MODE/UPDATE handler:', displayErr);
           if (displayErr instanceof Error) {
@@ -870,6 +906,13 @@ export default function App() {
               isQuizPackMode: message.data?.isQuizPackMode,
               keypadCurrentScreen: message.data?.keypadCurrentScreen,
             });
+
+            const isInGameScreen = currentScreen === 'question' || currentScreen === 'ready-for-question';
+            if (!message.data.isQuestionMode && isInGameScreen) {
+              if (!applyPendingDisplayMode('FLOW_STATE')) {
+                transitionToIdleDisplay('FLOW_STATE');
+              }
+            }
           } else {
             console.log('[Player] ❌ FLOW_STATE missing required fields', {
               flow: message.data?.flow,
@@ -881,7 +924,7 @@ export default function App() {
         }
         break;
     }
-  }, [teamName, currentQuestion, currentScreen, submittedAnswer, displayMode, clearTimerLockDelay, pendingApprovalData, shouldIgnoreScreenTransition, isApproved, updateBuzzerSound]);
+  }, [teamName, currentQuestion, currentScreen, submittedAnswer, displayMode, clearTimerLockDelay, pendingApprovalData, shouldIgnoreScreenTransition, isApproved, updateBuzzerSound, isHostController, applyDisplayModeUpdate, applyPendingDisplayMode, resetQuestionState, transitionToIdleDisplay]);
 
   const { isConnected, error } = useNetworkConnection({
     playerId,
@@ -1172,6 +1215,7 @@ export default function App() {
     // Process any pending messages that arrived during buzzer selection
     if (pendingMessage) {
       console.log('[App] Processing pending message after buzzer confirmation:', pendingMessage.type);
+      let handledPendingMessage = true;
 
       // Handle each message type appropriately
       switch (pendingMessage.type) {
@@ -1191,14 +1235,18 @@ export default function App() {
 
         case 'NEXT':
           console.log('[App] Applying pending NEXT message');
-          setCurrentQuestion(null);
-          setGoWideEnabled(false);
-          setAnswerRevealed(false);
-          setCorrectAnswer(undefined);
-          setSelectedAnswers([]);
-          setShowTimer(false);
-          setTimerEnded(false);
-          setCurrentScreen('ready-for-question');
+          resetQuestionState();
+          if (!applyPendingDisplayMode('PENDING_NEXT')) {
+            transitionToIdleDisplay('PENDING_NEXT');
+          }
+          break;
+
+        case 'END_ROUND':
+          console.log('[App] Applying pending END_ROUND message');
+          resetQuestionState();
+          if (!applyPendingDisplayMode('PENDING_END_ROUND')) {
+            transitionToIdleDisplay('PENDING_END_ROUND');
+          }
           break;
 
         case 'PICTURE':
@@ -1216,19 +1264,7 @@ export default function App() {
 
         case 'DISPLAY_MODE':
           console.log('[App] Applying pending DISPLAY_MODE message');
-          if (pendingMessage.data?.mode) {
-            setDisplayMode(pendingMessage.data.mode);
-            if (pendingMessage.data.mode === 'slideshow' && pendingMessage.data.images) {
-              setSlideshowImages(pendingMessage.data.images);
-              if (pendingMessage.data.rotationInterval) {
-                setRotationInterval(pendingMessage.data.rotationInterval);
-              }
-            }
-            if (pendingMessage.data.mode === 'scores' && pendingMessage.data.scores) {
-              setLeaderboardScores(pendingMessage.data.scores);
-            }
-          }
-          setCurrentScreen('display');
+          applyDisplayModeUpdate(pendingMessage.data, 'PENDING_DISPLAY_MODE');
           break;
 
         case 'APPROVAL_PENDING':
@@ -1238,10 +1274,13 @@ export default function App() {
 
         default:
           console.log('[App] Unknown pending message type:', pendingMessage.type);
+          handledPendingMessage = false;
       }
 
       setPendingMessage(null); // Clear pending message after applying
-      return; // Exit early - don't show approval screen
+      if (handledPendingMessage) {
+        return; // Exit early - don't show approval screen
+      }
     }
 
     setCurrentScreen('approval');

@@ -1983,6 +1983,23 @@ export function QuizHost() {
       pictureSent: false,
       questionSent: false,
     }));
+
+    broadcastMessage({
+      type: 'FLOW_STATE',
+      data: {
+        flow: 'idle',
+        isQuestionMode: false,
+        totalTime: flowState.totalTime,
+        currentQuestion: undefined,
+        currentLoadedQuestionIndex: 0,
+        loadedQuizQuestions: [],
+        isQuizPackMode: false,
+        selectedQuestionType: undefined,
+        answerSubmitted: undefined,
+        keypadCurrentScreen: undefined,
+      },
+    });
+
     setHideQuestionMode(false);
     timer.stop();
 
@@ -5081,8 +5098,7 @@ export function QuizHost() {
     }
   }, [quizzes, playerDevicesDisplayMode, broadcastPlayerDisplayMode]);
 
-  // Periodic safety-net sync for player display mode - low frequency heartbeat
-  // Broadcasts every 30 seconds as a backup to ensure reliability even if messages are missed
+  // Periodic safety-net sync for player display mode
   // IMPORTANT: Paused during active games to prevent display modes from interrupting question screens
   useEffect(() => {
     // Check if any game mode is currently active
@@ -5095,16 +5111,38 @@ export function QuizHost() {
       return;
     }
 
-    // Use longer interval (30s instead of 2s) for safety-net broadcasts only
-    // Primary delivery is via immediate broadcast on mode change (broadcastPlayerDisplayMode)
-    // This reduces network traffic by ~90% while maintaining reliability
     const syncInterval = setInterval(() => {
-      console.log('[QuizHost] Periodic safety-net sync (30s) - re-broadcasting current mode:', playerDevicesDisplayMode);
+      console.log('[QuizHost] Periodic safety-net sync (1s) - re-broadcasting current mode:', playerDevicesDisplayMode);
       broadcastPlayerDisplayMode(playerDevicesDisplayMode);
-    }, 30000); // Every 30 seconds for reliability safety-net (reduced from 2s periodic broadcasts)
+    }, 1000);
 
     return () => clearInterval(syncInterval);
   }, [playerDevicesDisplayMode, broadcastPlayerDisplayMode, showKeypadInterface, showBuzzInInterface, showNearestWinsInterface, showQuizPackDisplay, showWheelSpinnerInterface]);
+
+  // Periodic safety-net sync for player flow state
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      const currentFlowState = flowStateRef.current;
+      console.log('[QuizHost] Periodic flow state sync (1s) - broadcasting current flow state:', currentFlowState.flow);
+      broadcastMessage({
+        type: 'FLOW_STATE',
+        data: {
+          flow: currentFlowState.flow,
+          isQuestionMode: currentFlowState.isQuestionMode,
+          totalTime: currentFlowState.totalTime,
+          currentQuestion: currentFlowState.currentQuestion,
+          currentLoadedQuestionIndex: currentLoadedQuestionIndexRef.current,
+          loadedQuizQuestions: loadedQuizQuestionsRef.current,
+          isQuizPackMode: isQuizPackModeRef.current,
+          selectedQuestionType: currentFlowState.selectedQuestionType,
+          answerSubmitted: currentFlowState.answerSubmitted,
+          keypadCurrentScreen,
+        },
+      });
+    }, 1000);
+
+    return () => clearInterval(syncInterval);
+  }, [keypadCurrentScreen]);
 
   const handleSpeedChange = (speed: number) => {
     setSlideshowSpeed(speed);
