@@ -2268,6 +2268,70 @@ async function startBackend({ port = 4310 } = {}) {
     log.info(`📺 Broadcast DISPLAY_UPDATE to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed` : ''));
   }
 
+  function broadcastFlowState(flowStateData = {}) {
+    try {
+      log.info('[broadcastFlowState] Broadcasting FLOW_STATE to approved players:', {
+        flow: flowStateData.flow,
+        isQuestionMode: flowStateData.isQuestionMode,
+      });
+
+      let message;
+      try {
+        message = JSON.stringify({
+          type: 'FLOW_STATE',
+          data: flowStateData,
+          timestamp: Date.now()
+        });
+      } catch (serializeErr) {
+        log.error('❌ Failed to serialize FLOW_STATE message:', serializeErr.message);
+        if (serializeErr.stack) {
+          log.error('[broadcastFlowState] Serialization error stack:', serializeErr.stack);
+        }
+        return;
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+      const approvedPlayers = Array.from(networkPlayers.values()).filter(p => p.ws && p.ws.readyState === 1 && p.status === 'approved');
+      const approvedPlayerCount = approvedPlayers.length;
+
+      log.info(`[broadcastFlowState] Found ${approvedPlayerCount} approved players to send to`);
+
+      networkPlayers.forEach((player, deviceId) => {
+        if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+          try {
+            if (!checkAndLogBackpressure(player.ws, message.length)) {
+              log.warn(`[broadcastFlowState] Skipping send to ${deviceId} due to backpressure`);
+              failCount++;
+              return;
+            }
+
+            player.ws.send(message, (err) => {
+              if (err) {
+                log.error(`❌ [broadcastFlowState] ws.send callback error for ${deviceId}:`, err.message);
+              }
+            });
+
+            successCount++;
+          } catch (error) {
+            log.error(`❌ Failed to send FLOW_STATE to ${deviceId}:`, error.message);
+            if (error.stack) {
+              log.error('[broadcastFlowState] Send error stack:', error.stack);
+            }
+            failCount++;
+          }
+        }
+      });
+
+      log.info(`📡 Broadcast FLOW_STATE to ${successCount}/${approvedPlayerCount} approved players` + (failCount > 0 ? `, ${failCount} failed` : ''));
+    } catch (err) {
+      log.error('❌ broadcastFlowState error:', err.message);
+      if (err && err.stack) {
+        log.error('[broadcastFlowState] Error stack:', err.stack);
+      }
+    }
+  }
+
   function broadcastQuestion(questionData) {
     try {
       log.info(`[broadcastQuestion] Broadcasting question with type: ${questionData.type || 'default'}`);
@@ -2625,7 +2689,7 @@ async function startBackend({ port = 4310 } = {}) {
     }
   };
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos, sendToPlayer };
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastFlowState, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos, sendToPlayer };
 }
 
 export { startBackend };

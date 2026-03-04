@@ -641,6 +641,38 @@ async function boot() {
     }
   });
 
+  // Broadcast flow state to player devices
+  router.mount('network/broadcast-flow-state', async (payload) => {
+    try {
+      log.info('[IPC] network/broadcast-flow-state called with:', {
+        flow: payload?.flow,
+        isQuestionMode: payload?.isQuestionMode,
+      });
+
+      if (!backend || !backend.broadcastFlowState) {
+        log.error('[IPC] Backend not initialized for broadcast-flow-state');
+        throw new Error('Backend not initialized');
+      }
+
+      try {
+        backend.broadcastFlowState(payload || {});
+        log.info('[IPC] backend.broadcastFlowState completed successfully');
+      } catch (broadcastErr) {
+        log.error('[IPC] backend.broadcastFlowState threw error:', broadcastErr.message);
+        if (broadcastErr.stack) {
+          log.error('[IPC] broadcastFlowState error stack:', broadcastErr.stack);
+        }
+        throw broadcastErr;
+      }
+
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-flow-state error:', err.message);
+      log.error('[IPC] Error stack:', err.stack);
+      throw err;
+    }
+  });
+
   // Broadcast question to player devices
   router.mount('network/broadcast-question', async (payload) => {
     try {

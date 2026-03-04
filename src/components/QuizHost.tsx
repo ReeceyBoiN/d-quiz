@@ -38,7 +38,7 @@ import { useTimer } from "../hooks/useTimer";
 import { useHostInfo } from "../hooks/useHostInfo";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage, initialFlow } from "../state/flowState";
-import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController, sendScrambleUpdateToPlayers } from "../network/wsHost";
+import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController, sendScrambleUpdateToPlayers, sendFlowStateToPlayers } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { playApplauseSound, playFailSound } from "../utils/audioUtils";
 import { executeStartNormalTimer, executeStartSilentTimer, validateTimerDuration } from "../utils/unifiedTimerHandlers";
@@ -1984,20 +1984,17 @@ export function QuizHost() {
       questionSent: false,
     }));
 
-    broadcastMessage({
-      type: 'FLOW_STATE',
-      data: {
-        flow: 'idle',
-        isQuestionMode: false,
-        totalTime: flowState.totalTime,
-        currentQuestion: undefined,
-        currentLoadedQuestionIndex: 0,
-        loadedQuizQuestions: [],
-        isQuizPackMode: false,
-        selectedQuestionType: undefined,
-        answerSubmitted: undefined,
-        keypadCurrentScreen: undefined,
-      },
+    sendFlowStateToPlayers({
+      flow: 'idle',
+      isQuestionMode: false,
+      totalTime: flowState.totalTime,
+      currentQuestion: undefined,
+      currentLoadedQuestionIndex: 0,
+      loadedQuizQuestions: [],
+      isQuizPackMode: false,
+      selectedQuestionType: undefined,
+      answerSubmitted: undefined,
+      keypadCurrentScreen: undefined,
     });
 
     setHideQuestionMode(false);
@@ -5124,20 +5121,17 @@ export function QuizHost() {
     const syncInterval = setInterval(() => {
       const currentFlowState = flowStateRef.current;
       console.log('[QuizHost] Periodic flow state sync (1s) - broadcasting current flow state:', currentFlowState.flow);
-      broadcastMessage({
-        type: 'FLOW_STATE',
-        data: {
-          flow: currentFlowState.flow,
-          isQuestionMode: currentFlowState.isQuestionMode,
-          totalTime: currentFlowState.totalTime,
-          currentQuestion: currentFlowState.currentQuestion,
-          currentLoadedQuestionIndex: currentLoadedQuestionIndexRef.current,
-          loadedQuizQuestions: loadedQuizQuestionsRef.current,
-          isQuizPackMode: isQuizPackModeRef.current,
-          selectedQuestionType: currentFlowState.selectedQuestionType,
-          answerSubmitted: currentFlowState.answerSubmitted,
-          keypadCurrentScreen,
-        },
+      sendFlowStateToPlayers({
+        flow: currentFlowState.flow,
+        isQuestionMode: currentFlowState.isQuestionMode,
+        totalTime: currentFlowState.totalTime,
+        currentQuestion: currentFlowState.currentQuestion,
+        currentLoadedQuestionIndex: currentLoadedQuestionIndexRef.current,
+        loadedQuizQuestions: loadedQuizQuestionsRef.current,
+        isQuizPackMode: isQuizPackModeRef.current,
+        selectedQuestionType: currentFlowState.selectedQuestionType,
+        answerSubmitted: currentFlowState.answerSubmitted,
+        keypadCurrentScreen,
       });
     }, 1000);
 

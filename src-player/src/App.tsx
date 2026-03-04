@@ -94,6 +94,9 @@ export default function App() {
   const approvalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Track approval screen transition timer
   const submittedAnswerRef = useRef<any>(null); // Store answer in ref for immediate access, bypassing async state updates
   const timerStartTimeRef = useRef<number | null>(null); // Store timer start time from host for accurate response time calculation
+  const idleExitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Grace-period exit when host is idle
+
+  const IDLE_EXIT_GRACE_MS = 7000;
 
   // Visibility and focus detection refs (declared at top level to comply with React hooks rules)
   const visibilityStateRef = useRef<{ isVisible: boolean; isFocused: boolean }>({
@@ -156,6 +159,16 @@ export default function App() {
       if (approvalTimerRef.current) {
         clearTimeout(approvalTimerRef.current);
         approvalTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Cleanup idle exit timer on component unmount
+  useEffect(() => {
+    return () => {
+      if (idleExitTimeoutRef.current) {
+        clearTimeout(idleExitTimeoutRef.current);
+        idleExitTimeoutRef.current = null;
       }
     };
   }, []);
@@ -250,15 +263,23 @@ export default function App() {
     }
   }, []);
 
-  const applyDisplayModeUpdate = useCallback((data: any, source: string) => {
+  const clearIdleExitTimeout = useCallback((reason: string) => {
+    if (idleExitTimeoutRef.current) {
+      clearTimeout(idleExitTimeoutRef.current);
+      idleExitTimeoutRef.current = null;
+      console.log(`[Player] Cleared idle exit timer (${reason})`);
+    }
+  }, []);
+
+  const applyDisplayModeUpdate = useCallback((data: any, source: string): boolean => {
     if (isHostController) {
       console.log(`[Player] 🔐 Skipping ${source} display mode transition - authenticated host controller must stay on terminal interface`);
-      return;
+      return false;
     }
 
     if (!data?.mode) {
       console.warn(`[Player] ⚠️  DISPLAY_MODE received from ${source} but no mode in data:`, data);
-      return;
+      return false;
     }
 
     // Clear answer feedback when switching display modes
@@ -326,10 +347,12 @@ export default function App() {
 
       // Store timer in ref so QUESTION handler can cancel it
       displayModeTimerRef.current = transitionTimer;
-    } else {
-      console.log('[Player] No transition delay, updating display immediately');
-      setCurrentScreen('display');
+      return true;
     }
+
+    console.log('[Player] No transition delay, updating display immediately');
+    setCurrentScreen('display');
+    return true;
   }, [isHostController]);
 
   const applyPendingDisplayMode = useCallback((source: string) => {
@@ -338,9 +361,11 @@ export default function App() {
     }
 
     console.log(`[Player] Applying pending DISPLAY_MODE update after ${source}`);
-    applyDisplayModeUpdate(pendingDisplayMode, source);
-    setPendingDisplayMode(null);
-    return true;
+    const applied = applyDisplayModeUpdate(pendingDisplayMode, source);
+    if (applied) {
+      setPendingDisplayMode(null);
+    }
+    return applied;
   }, [applyDisplayModeUpdate, pendingDisplayMode]);
 
   const resetQuestionState = useCallback(() => {
@@ -384,6 +409,81 @@ export default function App() {
     }
     setCurrentScreen('display');
   }, [isHostController]);
+
+  const scheduleIdleExit = useCallback((source: string) => {
+    if (isHostController) {
+      console.log(`[Player] 🔐 Skipping idle exit scheduling from ${source} - authenticated host controller must stay on terminal interface`);
+      return;
+    }
+
+    if (idleExitTimeoutRef.current) {
+      clearTimeout(idleExitTimeoutRef.current);
+    }
+
+    console.log(`[Player] Host idle detected - scheduling idle exit in ${IDLE_EXIT_GRACE_MS} ms (${source})`);
+    idleExitTimeoutRef.current = setTimeout(() => {
+      console.log('[Player] Idle grace period elapsed - exiting question view');
+      resetQuestionState();
+      if (!applyPendingDisplayMode('IDLE_TIMEOUT')) {
+        transitionToIdleDisplay('IDLE_TIMEOUT');
+      }
+    }, IDLE_EXIT_GRACE_MS);
+  }, [applyPendingDisplayMode, isHostController, resetQuestionState, transitionToIdleDisplay]);
+
+  const applyFlowStateUpdate = useCallback((data: any, source: string) => {
+    try {
+      const flow = data?.flow;
+      const resolvedQuestionMode = data?.isQuestionMode ?? (flow === 'idle' ? false : undefined);
+
+      if (flow !== undefined && resolvedQuestionMode !== undefined) {
+        console.log('[Player] ✅ FLOW_STATE conditions met, updating local state');
+        setFlowState({
+          flow,
+          isQuestionMode: resolvedQuestionMode,
+          totalTime: data?.totalTime,
+          currentQuestion: data?.currentQuestion,
+          currentLoadedQuestionIndex: data?.currentLoadedQuestionIndex,
+          loadedQuizQuestions: data?.loadedQuizQuestions,
+          isQuizPackMode: data?.isQuizPackMode,
+          selectedQuestionType: data?.selectedQuestionType,
+          answerSubmitted: data?.answerSubmitted,
+          keypadCurrentScreen: data?.keypadCurrentScreen,
+        });
+        console.log('[Player] ✨ flowState updated, GameControlsPanel should re-render', {
+          flow,
+          isQuestionMode: resolvedQuestionMode,
+          totalTime: data?.totalTime,
+          hasCurrentQuestion: !!data?.currentQuestion,
+          loadedQuestionsCount: data?.loadedQuizQuestions?.length,
+          isQuizPackMode: data?.isQuizPackMode,
+          keypadCurrentScreen: data?.keypadCurrentScreen,
+        });
+
+        const isInGameScreen = currentScreen === 'question' || currentScreen === 'ready-for-question';
+        if (flow === 'idle') {
+          clearIdleExitTimeout(source);
+          resetQuestionState();
+          if (!applyPendingDisplayMode(`${source}_IDLE`)) {
+            transitionToIdleDisplay(`${source}_IDLE`);
+          }
+        } else {
+          clearIdleExitTimeout(source);
+          if (!resolvedQuestionMode && isInGameScreen) {
+            if (!applyPendingDisplayMode(source)) {
+              transitionToIdleDisplay(source);
+            }
+          }
+        }
+      } else {
+        console.log('[Player] ❌ FLOW_STATE missing required fields', {
+          flow: data?.flow,
+          isQuestionMode: data?.isQuestionMode,
+        });
+      }
+    } catch (err) {
+      console.error('[Player] ❌ Error handling FLOW_STATE:', err);
+    }
+  }, [applyPendingDisplayMode, clearIdleExitTimeout, currentScreen, resetQuestionState, transitionToIdleDisplay]);
 
   const handleMessage = useCallback((message: HostMessage) => {
 
@@ -581,6 +681,8 @@ export default function App() {
           return;
         }
 
+        clearIdleExitTimeout('QUESTION');
+
         // Cancel any pending display mode timer when question arrives
         if (displayModeTimerRef.current) {
           clearTimeout(displayModeTimerRef.current);
@@ -628,6 +730,8 @@ export default function App() {
         setCurrentScreen('question');
         break;
       case 'TIMER_START':
+        clearIdleExitTimeout('TIMER_START');
+
         // Clear any pending timer lock delay when new timer starts
         clearTimerLockDelay();
 
@@ -730,6 +834,8 @@ export default function App() {
           return;
         }
 
+        clearIdleExitTimeout('NEXT');
+
         console.log('[Player] NEXT message received - clearing all question state immediately');
         resetQuestionState();
         if (!applyPendingDisplayMode('NEXT')) {
@@ -742,6 +848,8 @@ export default function App() {
           setPendingMessage({ type: 'END_ROUND', data: message.data });
           return;
         }
+
+        clearIdleExitTimeout('END_ROUND');
 
         console.log('[Player] END_ROUND message received - clearing all question state');
         resetQuestionState();
@@ -882,49 +990,16 @@ export default function App() {
           messageTimestamp: message.timestamp,
         });
 
-        try {
-          if (message.data?.flow !== undefined && message.data?.isQuestionMode !== undefined) {
-            console.log('[Player] ✅ FLOW_STATE conditions met, updating local state');
-            setFlowState({
-              flow: message.data.flow,
-              isQuestionMode: message.data.isQuestionMode,
-              totalTime: message.data?.totalTime, // Settings-based timer duration from host
-              currentQuestion: message.data?.currentQuestion,
-              currentLoadedQuestionIndex: message.data?.currentLoadedQuestionIndex,
-              loadedQuizQuestions: message.data?.loadedQuizQuestions,
-              isQuizPackMode: message.data?.isQuizPackMode,
-              selectedQuestionType: message.data?.selectedQuestionType,
-              answerSubmitted: message.data?.answerSubmitted,
-              keypadCurrentScreen: message.data?.keypadCurrentScreen,
-            });
-            console.log('[Player] ✨ flowState updated, GameControlsPanel should re-render', {
-              flow: message.data.flow,
-              isQuestionMode: message.data.isQuestionMode,
-              totalTime: message.data?.totalTime,
-              hasCurrentQuestion: !!message.data?.currentQuestion,
-              loadedQuestionsCount: message.data?.loadedQuizQuestions?.length,
-              isQuizPackMode: message.data?.isQuizPackMode,
-              keypadCurrentScreen: message.data?.keypadCurrentScreen,
-            });
-
-            const isInGameScreen = currentScreen === 'question' || currentScreen === 'ready-for-question';
-            if (!message.data.isQuestionMode && isInGameScreen) {
-              if (!applyPendingDisplayMode('FLOW_STATE')) {
-                transitionToIdleDisplay('FLOW_STATE');
-              }
-            }
-          } else {
-            console.log('[Player] ❌ FLOW_STATE missing required fields', {
-              flow: message.data?.flow,
-              isQuestionMode: message.data?.isQuestionMode,
-            });
-          }
-        } catch (err) {
-          console.error('[Player] ❌ Error handling FLOW_STATE:', err);
+        if (shouldIgnoreScreenTransition('FLOW_STATE', currentScreen)) {
+          console.log('[Player] Saving FLOW_STATE message for processing after buzzer selection');
+          setPendingMessage({ type: 'FLOW_STATE', data: message.data });
+          return;
         }
+
+        applyFlowStateUpdate(message.data, 'FLOW_STATE');
         break;
     }
-  }, [teamName, currentQuestion, currentScreen, submittedAnswer, displayMode, clearTimerLockDelay, pendingApprovalData, shouldIgnoreScreenTransition, isApproved, updateBuzzerSound, isHostController, applyDisplayModeUpdate, applyPendingDisplayMode, resetQuestionState, transitionToIdleDisplay]);
+  }, [teamName, currentQuestion, currentScreen, submittedAnswer, displayMode, clearTimerLockDelay, clearIdleExitTimeout, pendingApprovalData, shouldIgnoreScreenTransition, isApproved, updateBuzzerSound, isHostController, applyDisplayModeUpdate, applyPendingDisplayMode, resetQuestionState, transitionToIdleDisplay, scheduleIdleExit, applyFlowStateUpdate]);
 
   const { isConnected, error } = useNetworkConnection({
     playerId,
@@ -1270,6 +1345,11 @@ export default function App() {
         case 'APPROVAL_PENDING':
           console.log('[App] Applying pending APPROVAL_PENDING message');
           setCurrentScreen('approval');
+          break;
+
+        case 'FLOW_STATE':
+          console.log('[App] Applying pending FLOW_STATE message');
+          applyFlowStateUpdate(pendingMessage.data, 'PENDING_FLOW_STATE');
           break;
 
         default:

@@ -433,6 +433,27 @@ export function sendTimeUpToPlayers() {
   }
 }
 
+export function sendFlowStateToPlayers(flowData: any) {
+  hostNetwork.broadcast({
+    type: 'FLOW_STATE',
+    data: flowData,
+  });
+
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.broadcastFlowState) {
+      console.log('[wsHost] Calling IPC broadcastFlowState to notify players');
+      api.network.broadcastFlowState(flowData).catch((err: any) => {
+        console.error('[wsHost] IPC broadcastFlowState error:', err);
+      });
+    } else {
+      console.log('[wsHost] broadcastFlowState IPC not available (browser mode or dev)');
+    }
+  } catch (err) {
+    console.error('[wsHost] Error calling broadcastFlowState IPC:', err);
+  }
+}
+
 export function sendBuzzerFolderChangeToPlayers(folderPath: string) {
   // Send local listeners first (for internal displays)
   hostNetwork.sendBuzzerFolderChange(folderPath);
