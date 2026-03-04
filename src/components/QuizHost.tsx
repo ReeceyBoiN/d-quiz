@@ -2437,27 +2437,6 @@ export function QuizHost() {
         // Update state with the calculated statuses
         setTeamAnswerStatuses(newStatuses);
 
-        // Award points to teams that answered correctly in quiz pack mode
-        if (isQuizPackMode) {
-          const correctTeamIds = Object.entries(newStatuses)
-            .filter(([_, status]) => status === 'correct')
-            .map(([teamId, _]) => teamId);
-
-          if (correctTeamIds.length > 0) {
-            // Calculate fastest team among correct answers for speed bonus
-            let fastestTeamId: string | undefined;
-            const correctTeamTimes = correctTeamIds
-              .map(id => ({ id, time: teamResponseTimes[id] || Infinity }))
-              .sort((a, b) => a.time - b.time);
-            if (correctTeamTimes.length > 0) {
-              fastestTeamId = correctTeamTimes[0].id;
-            }
-
-            // Award points using the full scoring factory
-            handleComputeAndAwardScores(correctTeamIds, 'keypad', fastestTeamId, teamResponseTimes);
-          }
-        }
-
         // Send the answer to all players and external display
         if (externalWindow) {
           // For quiz pack mode, send results summary; for on-the-spot, send the answer

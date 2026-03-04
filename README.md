@@ -17,8 +17,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   Scramble keypad doesnt scramble the keypad for players
 
-  duplicate points getting awarded
-
   sequence question is only allowing 1 answer to be selected on on the spot mode
 
   *Needs public test - Need to make sure the nearest wins modes calculates which team is closest, if multiple teams get the closest answer or equidistant those teams should get the bonus points
