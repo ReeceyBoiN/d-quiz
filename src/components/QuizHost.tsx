@@ -6167,34 +6167,6 @@ export function QuizHost() {
   };
 
   const renderTabContent = () => {
-    // Show team window when a team is double-clicked
-    if (selectedTeamForWindow) {
-      const team = quizzes.find(q => q.id === selectedTeamForWindow);
-      if (team) {
-        return (
-          <TeamWindow
-            team={team}
-            teams={quizzes}
-            hostLocation={hostLocation}
-            onClose={handleCloseTeamWindow}
-            onLocationChange={handleTeamLocationChange}
-            onNameChange={handleNameChange}
-            onBuzzerChange={handleBuzzerChange}
-            onBackgroundColorChange={handleBackgroundColorChange}
-            onPhotoUpload={handlePhotoUpload}
-            onKickTeam={handleKickTeam}
-            onDisconnectTeam={handleDisconnectTeam}
-            onReconnectTeam={handleReconnectTeam}
-            onBlockTeam={handleBlockTeam}
-            onScrambleKeypad={handleScrambleKeypad}
-            onHotSwap={handleHotSwap}
-            onHostLocationChange={handleHostLocationChange}
-            onClearAllLocations={handleClearAllLocations}
-          />
-        );
-      }
-    }
-
     // Show buzz-in display when active
     if (showBuzzInMode && buzzInConfig) {
       const teamData = quizzes.map(quiz => ({
@@ -6658,8 +6630,40 @@ export function QuizHost() {
           {/* Content area with right panel */}
           <div className="flex flex-1 min-h-0">
             {/* Main content - theme-aware background */}
-            <div className="flex-1 bg-background min-w-0 flex flex-col">
-              {renderTabContent()}
+            <div className="flex-1 bg-background min-w-0 flex flex-col relative">
+              {/* Always render tab content to keep game mode components mounted */}
+              <div className={selectedTeamForWindow ? "flex-1 flex flex-col invisible" : "flex-1 flex flex-col"}>
+                {renderTabContent()}
+              </div>
+
+              {/* Team window overlay - renders on top without unmounting game content */}
+              {selectedTeamForWindow && (() => {
+                const team = quizzes.find(q => q.id === selectedTeamForWindow);
+                if (!team) return null;
+                return (
+                  <div className="absolute inset-0 z-40 bg-background overflow-auto">
+                    <TeamWindow
+                      team={team}
+                      teams={quizzes}
+                      hostLocation={hostLocation}
+                      onClose={handleCloseTeamWindow}
+                      onLocationChange={handleTeamLocationChange}
+                      onNameChange={handleNameChange}
+                      onBuzzerChange={handleBuzzerChange}
+                      onBackgroundColorChange={handleBackgroundColorChange}
+                      onPhotoUpload={handlePhotoUpload}
+                      onKickTeam={handleKickTeam}
+                      onDisconnectTeam={handleDisconnectTeam}
+                      onReconnectTeam={handleReconnectTeam}
+                      onBlockTeam={handleBlockTeam}
+                      onScrambleKeypad={handleScrambleKeypad}
+                      onHotSwap={handleHotSwap}
+                      onHostLocationChange={handleHostLocationChange}
+                      onClearAllLocations={handleClearAllLocations}
+                    />
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Right panel - fixed width - only show when no game modes are active and team window is closed and not in question mode */}

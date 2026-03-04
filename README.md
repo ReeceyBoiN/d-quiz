@@ -25,6 +25,24 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   in settings, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
 
+  Nearest wins mode on the spot doesnt always show the answer input method on the player devices.
+
+  leaderboard needs to show and reveal the scores with each new team and also needs simplifying the UI on the host app for leaderboard interface
+
+  leaderboard needs to play that teams buzzer or an applause with each reveal of a team on the socreboard - give the host a choice in the settings
+
+  leaderboard export image needs to be made to work
+
+  on player device when scores / leaderboard is shown, it needs to be scrolable so players can scroll up or down the leaderboard
+
+  sequence question needs to be able to tap the correct answer 
+
+  player device goes to standby / dim screen if not touched for a few sec
+
+  picture questions and multiple choice need to reveal options together
+
+  if a team doesnt have a buzzer chosen it needs to show a simble in the host app
+
   in settings, waiting room should have the ability to display waiting room images.
 
   Music round?
