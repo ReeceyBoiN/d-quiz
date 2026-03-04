@@ -69,7 +69,7 @@ export function DisplayModeToggle({
       {/* Settings Button */}
       <button
         onClick={onDisplaySettings}
-        className="h-9 px-1 bg-[#3d5166] text-[#ecf0f1] hover:bg-[#4a617a] hover:text-white border border-[#4a5568] rounded-l-md transition-all duration-200 hover:scale-102 flex items-center justify-center border-r-0"
+        className="h-8 lg:h-9 px-0.5 lg:px-1 bg-[#3d5166] text-[#ecf0f1] hover:bg-[#4a617a] hover:text-white border border-[#4a5568] rounded-l-md transition-all duration-200 hover:scale-102 flex items-center justify-center border-r-0"
         title="Display Settings"
       >
         <Settings className="w-5 h-5" />
@@ -81,7 +81,7 @@ export function DisplayModeToggle({
       {/* Display Mode Button */}
       <button
         onClick={handleToggle}
-        className={`h-9 w-28 border-t border-b border-[#4a5568] transition-all duration-200 flex flex-col items-center justify-center hover:scale-102 ${
+        className={`h-8 lg:h-9 w-24 lg:w-28 border-t border-b border-[#4a5568] transition-all duration-200 flex flex-col items-center justify-center hover:scale-102 ${
           isExternalDisplayOpen
             ? 'text-white'
             : 'text-[#ecf0f1] bg-[#3d5166] hover:bg-[#4a617a] hover:text-white'
@@ -115,7 +115,7 @@ export function DisplayModeToggle({
       {onExternalDisplayToggle && (
         <button
           onClick={onExternalDisplayToggle}
-          className="h-9 px-1 bg-[#3d5166] hover:bg-[#4a617a] border border-[#4a5568] rounded-r-md transition-all duration-200 hover:scale-102 flex items-center justify-center border-l-0"
+          className="h-8 lg:h-9 px-0.5 lg:px-1 bg-[#3d5166] hover:bg-[#4a617a] border border-[#4a5568] rounded-r-md transition-all duration-200 hover:scale-102 flex items-center justify-center border-l-0"
           title={isExternalDisplayOpen ? "Close External Display" : "Open External Display"}
         >
           <div className={`w-5 h-5 flex items-center justify-center border-2 rounded transition-all duration-200 ${
