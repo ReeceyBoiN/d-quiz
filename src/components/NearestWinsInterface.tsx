@@ -886,7 +886,7 @@ export function NearestWinsInterface({
             <div className="text-center">
               <div className="mb-6">
                 <h3 className="text-xl text-[#95a5a6] mb-4">Correct Answer</h3>
-                <div className={`bg-[#34495e] border-2 ${answerConfirmed ? 'border-green-500' : 'border-[#4a5568]'} rounded-lg p-6 mb-6 max-w-md mx-auto`}>
+                <div className={`bg-[#34495e] border-2 ${answerConfirmed ? 'border-green-500' : 'border-[#4a5568]'} rounded-lg p-4 mb-6 max-w-sm mx-auto`}>
                   <input
                     type="text"
                     value={answer}
@@ -895,7 +895,7 @@ export function NearestWinsInterface({
                       setAnswer(value);
                     }}
                     disabled={answerConfirmed}
-                    className={`w-full bg-transparent text-center text-6xl font-bold outline-none ${answerConfirmed ? 'text-green-400 cursor-not-allowed' : 'text-white'}`}
+                    className={`w-full bg-transparent text-center text-5xl font-bold outline-none ${answerConfirmed ? 'text-green-400 cursor-not-allowed' : 'text-white'}`}
                     placeholder="0"
                     maxLength={10}
                   />
