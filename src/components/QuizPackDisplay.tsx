@@ -255,9 +255,10 @@ export function QuizPackDisplay({
       case 'multi':
         return 'Multiple Choice';
       case 'numbers':
+        return 'Numbers';
       case 'nearest':
       case 'nearestwins':
-        return 'Numbers';
+        return 'Nearest Wins';
       case 'sequence':
         return 'Sequence';
       case 'buzzin':

@@ -66,7 +66,7 @@ function parseQuestion(qEl, roundGame) {
   let type;
   if (userView === "multi") type = "multi";
   else if (userView === "letters") type = "letters";
-  else if (userView === "numbers") type = "nearest";
+  else if (userView === "numbers") type = roundGame === "Nearest Wins" ? "nearest" : "numbers";
   else if (userView === "sequence") type = "sequence";
   else type = roundGame === "Nearest Wins" ? "nearest" : "buzzin";
 
