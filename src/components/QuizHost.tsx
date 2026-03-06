@@ -688,7 +688,10 @@ export function QuizHost() {
   const [fastestTeamData, setFastestTeamData] = useState<{
     team: Quiz;
     responseTime: number;
+    guess?: number;
+    difference?: number;
   } | null>(null);
+  const [fastestTeamDisplayMode, setFastestTeamDisplayMode] = useState<'fastest' | 'closest'>('fastest');
 
   // Results summary display state for quiz pack mode (shown when timer ends)
   const [showResultsSummary, setShowResultsSummary] = useState(false);
@@ -1231,7 +1234,7 @@ export function QuizHost() {
 
   // Handle timer when flow state changes to 'running'
   useEffect(() => {
-    if ((flowState.flow as any) === 'running') {
+    if ((flowState.flow as any) === 'running' && !showNearestWinsInterface) {
       console.log('[QuizHost] Timer starting');
 
       const isSilent = flowState.answerSubmitted === 'silent'; // Check if silent timer was used
@@ -1315,7 +1318,11 @@ export function QuizHost() {
       if (!gameTimerRunning && gameTimerFinished && !gameAnswerRevealed && flowState.flow === 'running') {
         setFlowState(prev => ({ ...prev, flow: 'timeup' }));
       } else if (gameAnswerRevealed && !gameFastestRevealed && flowState.flow !== 'revealed') {
-        if (!teamsAnsweredCorrectly) {
+        // For nearest wins, always treat as "teams answered correctly" since there's always a closest team
+        if (showNearestWinsInterface) {
+          setTeamsAnsweredCorrectly(true);
+          setFlowState(prev => ({ ...prev, flow: 'revealed' }));
+        } else if (!teamsAnsweredCorrectly) {
           setFlowState(prev => ({ ...prev, flow: 'fastest' }));
         } else {
           setFlowState(prev => ({ ...prev, flow: 'revealed' }));
@@ -1433,7 +1440,7 @@ export function QuizHost() {
 
           try {
             const data = JSON.parse(event.data);
-            const DEBUG = process.env.REACT_APP_DEBUG_MODE === 'true' || (window as any).__DEBUG_MODE__;
+            const DEBUG = (window as any).__DEBUG_MODE__;
             if (DEBUG) {
               console.log('[WebSocket Message]', data.type);
             }
@@ -2487,7 +2494,11 @@ export function QuizHost() {
         setTeamAnswerStatuses(newStatuses);
 
         // Send the answer to all players and external display
-        if (externalWindow) {
+        // Skip for nearest wins questions - handleRevealAnswer already sends the correct format
+        const questionType_reveal = currentQuestion?.type?.toLowerCase() || '';
+        const isNearestWinsReveal = questionType_reveal === 'nearest' || questionType_reveal === 'nearestwins';
+
+        if (externalWindow && !isNearestWinsReveal) {
           // For quiz pack mode, send results summary; for on-the-spot, send the answer
           if (isQuizPackMode && loadedQuizQuestions.length > 0) {
             // Calculate answer statistics for quiz pack using just-calculated statuses
@@ -2535,8 +2546,10 @@ export function QuizHost() {
           }
         }
 
-        // Broadcast reveal to player devices
-        broadcastAnswerReveal(currentQuestion);
+        // Broadcast reveal to player devices (skip for nearest wins - handleRevealAnswer already broadcasts)
+        if (!isNearestWinsReveal) {
+          broadcastAnswerReveal(currentQuestion);
+        }
 
         const isOnTheSpotMode = showKeypadInterface && !isQuizPackMode;
 
@@ -2621,10 +2634,28 @@ export function QuizHost() {
               const fastestTeamResponseTime = teamResponseTimes[fastestTeam.id] || 0;
               console.log('[QuizHost] QUIZ_PACK: Using stored fastest team -', fastestTeam.name, 'with responseTime from teamResponseTimes:', fastestTeamResponseTime, 'ms, will display as:', (fastestTeamResponseTime / 1000).toFixed(2), 's');
 
+              // Check if this is a nearest wins question
+              const questionType = currentQuestion?.type?.toLowerCase() || '';
+              const isNearestQuestion = questionType === 'nearest' || questionType === 'nearestwins';
+
+              // For nearest wins, compute the winner's guess and difference
+              let winnerGuess: number | undefined;
+              let winnerDifference: number | undefined;
+              if (isNearestQuestion) {
+                const correctAnswer = getAnswerText(currentQuestion);
+                const targetNumber = parseInt(String(correctAnswer).trim(), 10);
+                const teamAnswer = teamAnswers[fastestTeam.id];
+                if (teamAnswer && !isNaN(targetNumber)) {
+                  winnerGuess = parseInt(String(teamAnswer).trim(), 10);
+                  winnerDifference = isNaN(winnerGuess) ? undefined : Math.abs(winnerGuess - targetNumber);
+                }
+              }
+
               // Show FastestTeamDisplay on host screen (same as keypad mode)
               handleFastestTeamReveal({
                 team: fastestTeam,
-                responseTime: fastestTeamResponseTime
+                responseTime: fastestTeamResponseTime,
+                ...(isNearestQuestion ? { guess: winnerGuess, difference: winnerDifference, displayMode: 'closest' as const } : {})
               });
 
               // Send to player portals
@@ -2633,11 +2664,16 @@ export function QuizHost() {
               // Broadcast fastest team to player devices
               if ((window as any).api?.network?.broadcastFastest) {
                 try {
-                  const fastestData = {
+                  const fastestData: any = {
                     teamName: fastestTeam.name,
                     questionNumber: currentLoadedQuestionIndex + 1,
                     teamPhoto: fastestTeam.photoUrl || null
                   };
+                  // Include guess/difference for nearest wins so player devices show "guessed X, off by Y"
+                  if (isNearestQuestion && winnerGuess !== undefined && winnerDifference !== undefined) {
+                    fastestData.guess = winnerGuess;
+                    fastestData.difference = winnerDifference;
+                  }
                   console.log('[QuizHost] Broadcasting fastest team to players:', fastestData);
                   (window as any).api.network.broadcastFastest(fastestData);
                 } catch (err) {
@@ -2647,9 +2683,59 @@ export function QuizHost() {
 
               // Send to external display
               if (externalWindow) {
-                sendToExternalDisplay(
-                  { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name, teamPhoto: fastestTeam.photoUrl } }
-                );
+                if (isNearestQuestion) {
+                  // For nearest wins, send nearest-wins-results with closestTeamRevealed flag
+                  const correctAnswer = getAnswerText(currentQuestion);
+                  const targetNumber = parseInt(String(correctAnswer).trim(), 10);
+
+                  const submissions = quizzes
+                    .filter(team => {
+                      const teamAnswer = teamAnswers[team.id];
+                      return teamAnswer && String(teamAnswer).trim() !== '';
+                    })
+                    .map(team => {
+                      const teamAnswer = teamAnswers[team.id];
+                      const guess = parseInt(String(teamAnswer).trim(), 10);
+                      const difference = isNaN(guess) || isNaN(targetNumber) ? Infinity : Math.abs(guess - targetNumber);
+                      return { id: team.id, name: team.name, guess, difference, rank: 0 };
+                    })
+                    .sort((a, b) => a.difference - b.difference);
+
+                  let currentRank = 1;
+                  submissions.forEach((team, index) => {
+                    if (index > 0 && team.difference === submissions[index - 1].difference) {
+                      team.rank = submissions[index - 1].rank;
+                    } else {
+                      team.rank = currentRank;
+                    }
+                    currentRank++;
+                  });
+
+                  const winners = submissions.filter(t => t.rank === 1);
+
+                  sendToExternalDisplay({
+                    type: 'DISPLAY_UPDATE',
+                    mode: 'nearest-wins-results',
+                    data: {
+                      targetNumber,
+                      correctAnswer: targetNumber,
+                      results: {
+                        winner: submissions[0] || null,
+                        winners,
+                        runnerUp: submissions.find(t => t.rank > 1) || null,
+                        submissions
+                      },
+                      answerRevealed: true,
+                      closestTeamRevealed: true,
+                      questionNumber: currentLoadedQuestionIndex + 1,
+                      totalQuestions: loadedQuizQuestions.length
+                    }
+                  });
+                } else {
+                  sendToExternalDisplay(
+                    { type: 'DISPLAY_UPDATE', mode: 'fastestTeam', data: { question: currentLoadedQuestionIndex + 1, teamName: fastestTeam.name, teamPhoto: fastestTeam.photoUrl } }
+                  );
+                }
 
                 fastestTeamTimeoutRef.current = setTimeout(() => {
                   if (lastExternalDisplayMessageRef.current) {
@@ -3020,6 +3106,7 @@ export function QuizHost() {
     setCurrentRoundWinnerPoints(gameModePoints.nearestwins); // Initialize winner points to settings default value
     setShowNearestWinsInterface(true);
     setActiveTab("teams"); // Switch to teams tab when nearest wins starts
+    setFlowState(prev => ({ ...prev, isQuestionMode: true })); // Keep player devices in question mode
 
     // Ensure external display stays on basic mode when in config
     handleExternalDisplayUpdate('basic');
@@ -3029,6 +3116,7 @@ export function QuizHost() {
   const handleNearestWinsClose = () => {
     setShowNearestWinsInterface(false);
     setActiveTab("home"); // Return to home when nearest wins is closed
+    setFlowState(prev => ({ ...prev, isQuestionMode: false, flow: 'idle' })); // Reset player devices
   };
 
   // Handle buzzers management open
@@ -3108,7 +3196,13 @@ export function QuizHost() {
   // Helper function to determine current game mode
   const getCurrentGameMode = (): "keypad" | "buzzin" | "nearestwins" | "wheelspinner" | null => {
     if (showKeypadInterface) return "keypad";
-    if (showQuizPackDisplay) return "keypad"; // Quiz packs use keypad-style controls (both config and question modes)
+    if (showQuizPackDisplay) {
+      // Check if current quizpack question is a nearest wins type
+      const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+      const qType = currentQuestion?.type?.toLowerCase();
+      if (qType === 'nearest' || qType === 'nearestwins') return "nearestwins";
+      return "keypad"; // Quiz packs use keypad-style controls by default
+    }
     if (showBuzzInInterface || showBuzzInMode) return "buzzin";
     if (showNearestWinsInterface) return "nearestwins";
     if (showWheelSpinnerInterface) return "wheelspinner";
@@ -3145,12 +3239,13 @@ export function QuizHost() {
   }, []);
 
   // Handle fastest team reveal
-  const handleFastestTeamReveal = useCallback((fastestTeam: { team: Quiz; responseTime: number }) => {
+  const handleFastestTeamReveal = useCallback((fastestTeam: { team: Quiz; responseTime: number; guess?: number; difference?: number; displayMode?: 'fastest' | 'closest' }) => {
     // Ensure team data is synced with the latest info from quizzes array (includes photoUrl, name, etc.)
     const currentTeam = quizzes.find(q => q.id === fastestTeam.team.id);
     const teamToUse = currentTeam || fastestTeam.team;
-    console.log('[QuizHost] Setting fastestTeamData - responseTime value:', fastestTeam.responseTime, 'typeof:', typeof fastestTeam.responseTime, 'expected ~671 for 0.67s display');
-    setFastestTeamData({ team: teamToUse, responseTime: fastestTeam.responseTime });
+    console.log('[QuizHost] Setting fastestTeamData - responseTime value:', fastestTeam.responseTime, 'typeof:', typeof fastestTeam.responseTime, 'displayMode:', fastestTeam.displayMode);
+    setFastestTeamData({ team: teamToUse, responseTime: fastestTeam.responseTime, guess: fastestTeam.guess, difference: fastestTeam.difference });
+    setFastestTeamDisplayMode(fastestTeam.displayMode || 'fastest');
 
     // Play the team's buzzer sound
     if (teamToUse.buzzerSound) {
@@ -3683,7 +3778,7 @@ export function QuizHost() {
       const { deviceId, playerId, commandType, commandData } = data;
       const deps = adminListenerDepsRef.current;
 
-      const DEBUG = process.env.REACT_APP_DEBUG_MODE === 'true' || (window as any).__DEBUG_MODE__;
+      const DEBUG = (window as any).__DEBUG_MODE__;
       if (DEBUG) {
         console.log('[QuizHost] 🎮 Admin command:', { commandType, deviceId });
       }
@@ -4469,7 +4564,7 @@ export function QuizHost() {
   // Send flow state to host controller whenever it changes
   useEffect(() => {
     if (hostControllerEnabled && authenticatedControllerId) {
-      const DEBUG = process.env.REACT_APP_DEBUG_MODE === 'true' || (window as any).__DEBUG_MODE__;
+      const DEBUG = (window as any).__DEBUG_MODE__;
       if (DEBUG) {
         console.log('[QuizHost] 📡 FLOW_STATE:', {
           flow: flowState.flow,
@@ -4808,6 +4903,66 @@ export function QuizHost() {
         const correctAnswer = getAnswerText(currentQuestion);
         const questionType = currentQuestion.type?.toLowerCase() || '';
 
+        // Check if this is a nearest wins question
+        if (questionType === 'nearest' || questionType === 'nearestwins') {
+          // NEAREST WINS SCORING: closest guess to the target number wins
+          const targetNumber = parseInt(String(correctAnswer).trim(), 10);
+
+          if (!isNaN(targetNumber)) {
+            // Calculate differences for all teams that submitted answers
+            const teamsWithDifferences = quizzes
+              .filter(team => {
+                const teamAnswer = teamAnswers[team.id];
+                return teamAnswer && String(teamAnswer).trim() !== '';
+              })
+              .map(team => {
+                const teamAnswer = teamAnswers[team.id];
+                const guessNum = parseInt(String(teamAnswer).trim(), 10);
+                const difference = isNaN(guessNum) ? Infinity : Math.abs(guessNum - targetNumber);
+                return { teamId: team.id, guess: guessNum, difference };
+              })
+              .sort((a, b) => a.difference - b.difference);
+
+            // Find the closest team(s) - could be ties
+            if (teamsWithDifferences.length > 0) {
+              const bestDifference = teamsWithDifferences[0].difference;
+              correctTeamIds = teamsWithDifferences
+                .filter(t => t.difference === bestDifference)
+                .map(t => t.teamId);
+
+              playApplauseSound().catch(err => console.warn('Failed to play applause:', err));
+
+              // Award winner points to the closest team(s)
+              const pointsToAward = currentRoundWinnerPoints || 0;
+              correctTeamIds.forEach(teamId => {
+                handleScoreChange(teamId, pointsToAward);
+              });
+
+              console.log(`[QuizPack] Nearest wins: target=${targetNumber}, winners=${correctTeamIds.length}, points=${pointsToAward}, bestDiff=${bestDifference}`);
+            }
+
+            // Store for display
+            setFastestTeamIdForDisplay(correctTeamIds[0] || null);
+
+            wrongTeamIds = quizzes
+              .filter(team => {
+                const teamAnswer = teamAnswers[team.id];
+                return teamAnswer && String(teamAnswer).trim() !== '' && !correctTeamIds.includes(team.id);
+              })
+              .map(team => team.id);
+
+            noAnswerTeamIds = quizzes
+              .filter(team => {
+                const teamAnswer = teamAnswers[team.id];
+                return !teamAnswer || String(teamAnswer).trim() === '';
+              })
+              .map(team => team.id);
+          }
+
+          console.log(`[QuizPack] Nearest wins scoring applied for question ${currentLoadedQuestionIndex + 1}`);
+        } else {
+          // STANDARD SCORING: exact match comparison
+
         // Helper function to compare answers based on question type
         const isAnswerCorrect = (teamAns: string, correctAns: string): boolean => {
           // For numbers type, use numeric comparison (like player-side does)
@@ -4872,6 +5027,7 @@ export function QuizHost() {
         }
 
         console.log(`[QuizPack] Scoring applied for question ${currentLoadedQuestionIndex + 1}`);
+        }
       }
     }
 
@@ -4889,7 +5045,60 @@ export function QuizHost() {
         options = currentQuestion.options;
       } else if (currentQuestion.type?.toLowerCase() === 'letters') {
         answerText = currentQuestion.answerText || '';
+      } else if (currentQuestion.type?.toLowerCase() === 'nearest' || currentQuestion.type?.toLowerCase() === 'nearestwins') {
+        answerText = answerLetter; // The target number
       }
+
+      // For nearest wins questions, send nearest-wins-results display instead
+      if (currentQuestion.type?.toLowerCase() === 'nearest' || currentQuestion.type?.toLowerCase() === 'nearestwins') {
+        const targetNumber = parseInt(answerLetter, 10);
+
+        // Build results with differences for each team
+        const submissions = quizzes
+          .filter(team => {
+            const teamAnswer = teamAnswers[team.id];
+            return teamAnswer && String(teamAnswer).trim() !== '';
+          })
+          .map(team => {
+            const teamAnswer = teamAnswers[team.id];
+            const guess = parseInt(String(teamAnswer).trim(), 10);
+            const difference = isNaN(guess) || isNaN(targetNumber) ? Infinity : Math.abs(guess - targetNumber);
+            return { id: team.id, name: team.name, guess, difference, rank: 0 };
+          })
+          .sort((a, b) => a.difference - b.difference);
+
+        // Assign ranks with ties
+        let currentRank = 1;
+        submissions.forEach((team, index) => {
+          if (index > 0 && team.difference === submissions[index - 1].difference) {
+            team.rank = submissions[index - 1].rank;
+          } else {
+            team.rank = currentRank;
+          }
+          currentRank++;
+        });
+
+        const winners = submissions.filter(t => t.rank === 1);
+
+        sendToExternalDisplay({
+          type: 'DISPLAY_UPDATE',
+          mode: 'nearest-wins-results',
+          data: {
+            targetNumber,
+            correctAnswer: targetNumber,
+            results: {
+              winner: submissions[0] || null,
+              winners,
+              runnerUp: submissions.find(t => t.rank > 1) || null,
+              submissions
+            },
+            answerRevealed: true,
+            questionNumber: currentLoadedQuestionIndex + 1,
+            totalQuestions: loadedQuizQuestions.length
+          }
+        });
+      } else {
+        // Standard results summary for non-nearest-wins questions
 
       // Build fastest team data if available
       let fastestTeamData: { teamName: string; responseTime: number } | undefined;
@@ -4922,6 +5131,7 @@ export function QuizHost() {
           fastestTeam: fastestTeamData
         }
       });
+      }
       }
     }
 
@@ -5636,13 +5846,14 @@ export function QuizHost() {
   const handleNearestWinsAwardPoints = useCallback(
     (correctTeamIds: string[], gameMode: 'nearestwins') => {
       if (gameMode === 'nearestwins' && correctTeamIds.length > 0) {
+        playApplauseSound().catch(err => console.warn('Failed to play applause:', err));
         // Award fixed points to the winner
         correctTeamIds.forEach(teamId => {
           handleScoreChange(teamId, currentRoundWinnerPoints || 0);
         });
       }
     },
-    [currentRoundWinnerPoints, handleScoreChange]
+    [currentRoundWinnerPoints, handleScoreChange, playApplauseSound]
   );
 
   const handleScoreSet = useCallback((teamId: string, newScore: number) => {
@@ -6223,6 +6434,7 @@ export function QuizHost() {
                 onBlockTeam={handleBlockTeam}
                 buzzerVolumes={buzzerVolumes}
                 onBuzzerVolumeChange={handleBuzzerVolumeChange}
+                displayMode={fastestTeamDisplayMode}
               />
             </div>
           )}
@@ -6312,6 +6524,7 @@ export function QuizHost() {
                 onBlockTeam={handleBlockTeam}
                 buzzerVolumes={buzzerVolumes}
                 onBuzzerVolumeChange={handleBuzzerVolumeChange}
+                displayMode={fastestTeamDisplayMode}
               />
             </div>
           )}
@@ -6334,6 +6547,7 @@ export function QuizHost() {
             onBlockTeam={handleBlockTeam}
             buzzerVolumes={buzzerVolumes}
             onBuzzerVolumeChange={handleBuzzerVolumeChange}
+            displayMode={fastestTeamDisplayMode}
           />
         </div>
       );
@@ -6356,6 +6570,8 @@ export function QuizHost() {
             onSpeedBonusChange={handleCurrentRoundSpeedBonusChange}
             currentRoundPoints={currentRoundPoints}
             currentRoundSpeedBonus={currentRoundSpeedBonus}
+            onWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
+            currentRoundWinnerPoints={currentRoundWinnerPoints}
             onGameTimerStateChange={(isRunning, duration) => {
               setGameTimerRunning(isRunning);
               if (isRunning && !isQuizPackMode) {
@@ -6394,15 +6610,17 @@ export function QuizHost() {
         <div className="flex-1 overflow-hidden">
           <NearestWinsInterface
             teams={quizzes}
+            teamAnswers={teamAnswers}
+            onTeamAnswerUpdate={handleTeamAnswerUpdate}
             onBack={handleNearestWinsClose}
             currentRoundWinnerPoints={currentRoundWinnerPoints}
-            onWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
+            onCurrentRoundWinnerPointsChange={handleCurrentRoundWinnerPointsChange}
             externalWindow={externalWindow}
             onExternalDisplayUpdate={handleExternalDisplayUpdate}
             onAwardPoints={handleNearestWinsAwardPoints}
             onGetActionHandlers={setGameActionHandlers}
             remoteSubmittedAnswer={flowState.answerSubmitted}
-            onFlowStateChange={(flow) => setFlowState(prev => ({...prev, flow: flow as any}))}
+            onFlowStateChange={(flow) => setFlowState(prev => ({...prev, flow: flow as any, isQuestionMode: flow === 'idle' || flow === 'complete' ? false : true}))}
             onAnswerConfirmed={(ans) => setFlowState(prev => ({ ...prev, answerSubmitted: ans }))}
             onGameTimerStateChange={(isRunning, duration) => {
               setGameTimerRunning(isRunning);
@@ -6418,6 +6636,15 @@ export function QuizHost() {
             onGameTimerUpdate={(remaining, total) => {
               setGameTimerTimeRemaining(remaining);
               setGameTimerTotalTime(total);
+            }}
+            onGameTimerFinished={setGameTimerFinished}
+            onGameAnswerRevealed={setGameAnswerRevealed}
+            onGameFastestRevealed={setGameFastestRevealed}
+            onPlayTeamBuzzer={(teamId) => {
+              const team = quizzes.find(q => q.id === teamId);
+              if (team?.buzzerSound) {
+                playFastestTeamBuzzer(team.buzzerSound);
+              }
             }}
           />
         </div>
@@ -6688,8 +6915,8 @@ export function QuizHost() {
               (flowState.isQuestionMode && showQuizPackDisplay) ||
               // Show for on-the-spot keypad when in a game-playing screen or results
               (showKeypadInterface && ['letters-game', 'multiple-choice-game', 'numbers-game', 'sequence-game', 'quiz-pack-question', 'results'].includes(keypadCurrentScreen)) ||
-              // Show for on-the-spot nearest wins when playing
-              (showNearestWinsInterface && nearestWinsCurrentScreen === 'playing') ||
+              // Show for on-the-spot nearest wins when playing or showing results
+              (showNearestWinsInterface && (nearestWinsCurrentScreen === 'playing' || nearestWinsCurrentScreen === 'results')) ||
               // Show for buzz in mode
               showBuzzInMode
             }
@@ -6711,6 +6938,10 @@ export function QuizHost() {
               if (isQuizPackMode) {
                 // Quiz pack mode - use primary action handler which manages flow state machine
                 handlePrimaryAction();
+              } else if (showNearestWinsInterface) {
+                // NearestWins handleNextRound handles everything: resets state,
+                // sends QUESTION to players, and manages flow
+                gameActionHandlers?.nextQuestion?.();
               } else {
                 // On-the-spot mode - use game action handlers AND update flow state
                 gameActionHandlers?.nextQuestion?.();
@@ -6745,6 +6976,10 @@ export function QuizHost() {
             onNextQuestion={() => {
               if (isQuizPackMode) {
                 handleQuizPackNext();
+              } else if (showNearestWinsInterface) {
+                // NearestWins handleNextRound handles everything: resets state,
+                // sends QUESTION to players, and manages flow
+                gameActionHandlers?.nextQuestion?.();
               } else {
                 gameActionHandlers?.nextQuestion?.();
                 const defaultOnTheSpotTimer = gameModeTimers.keypad || 30;

@@ -183,10 +183,11 @@ export function QuestionNavigationBar({
 
     // After answer revealed
     if (onTheSpotAnswerRevealed && !onTheSpotFastestRevealed) {
-      // If teams answered correctly, show "Fastest Team" button
+      // If teams answered correctly, show "Fastest Team" or "Closest Team" button
       if (hasTeamsAnsweredCorrectly) {
+        const isNearest = currentQuestion?.type?.toLowerCase() === 'nearest' || currentQuestion?.type?.toLowerCase() === 'nearestwins';
         return {
-          label: 'Fastest Team',
+          label: isNearest ? 'Closest Team' : 'Fastest Team',
           icon: <Zap className="h-4 w-4" />,
           color: 'bg-blue-600 hover:bg-blue-700',
         };
@@ -237,12 +238,21 @@ export function QuestionNavigationBar({
           icon: <Eye className="h-4 w-4" />,
           color: 'bg-blue-600 hover:bg-blue-700',
         };
-      case 'revealed':
+      case 'revealed': {
+        const isNearest = currentQuestion?.type?.toLowerCase() === 'nearest' || currentQuestion?.type?.toLowerCase() === 'nearestwins';
+        if (isNearest) {
+          return {
+            label: 'Closest Team',
+            icon: <Zap className="h-4 w-4" />,
+            color: 'bg-blue-600 hover:bg-blue-700',
+          };
+        }
         return {
           label: isOnTheSpotsMode ? 'Fastest Answer' : 'Fastest Team',
           icon: <Zap className="h-4 w-4" />,
           color: 'bg-blue-600 hover:bg-blue-700',
         };
+      }
       case 'fastest':
         // For on-the-spot mode: always show 'Next Question' (returns to question selection)
         // For quiz pack mode: show 'End Round' only on last question
@@ -288,6 +298,8 @@ export function QuestionNavigationBar({
         return onReveal || null;
       case 'Fastest Team':
       case 'Fastest Answer':
+      case 'Closest Team':
+      case 'Closest Answer':
         return onRevealFastestTeam || null;
       case 'Next Question':
       case 'End Round':
@@ -494,7 +506,7 @@ export function QuestionNavigationBar({
                     // Determine which handler to call based on button content
                     if (flowButton.label === 'Reveal Answer') {
                       onReveal?.();
-                    } else if (flowButton.label === 'Fastest Team' || flowButton.label === 'Fastest Answer') {
+                    } else if (flowButton.label === 'Fastest Team' || flowButton.label === 'Fastest Answer' || flowButton.label === 'Closest Team' || flowButton.label === 'Closest Answer') {
                       onRevealFastestTeam?.();
                     } else if (flowButton.label === 'Next Question' || flowButton.label === 'End Round') {
                       onNextAction?.();

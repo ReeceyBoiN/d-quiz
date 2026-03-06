@@ -6,31 +6,38 @@ import { Slider } from "./ui/slider";
 import { Checkbox } from "./ui/checkbox";
 import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
-import { sendTimeUpToPlayers } from "../network/wsHost";
+import { sendTimeUpToPlayers, sendQuestionToPlayers, sendTimerToPlayers } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
+import { playApplauseSound } from "../utils/audioUtils";
 interface NearestWinsInterfaceProps {
   onBack: () => void;
   onExternalDisplayUpdate?: (data: any) => void;
   teams?: Array<{id: string, name: string, score?: number}>; // Teams data from main app
+  teamAnswers?: {[teamId: string]: string}; // Network player answers from QuizHost
   onTeamAnswerUpdate?: (answers: {[teamId: string]: string}) => void; // Team answer update callback
   onAwardPoints?: (correctTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner", fastestTeamId?: string) => void; // Award points callback
   currentRoundWinnerPoints?: number | null; // Winner points from bottom navigation
   onCurrentRoundWinnerPointsChange?: (winnerPoints: number) => void; // Handler for winner points changes
   onTimerLockChange?: (isLocked: boolean) => void; // Timer lock state callback
   externalWindow?: Window | null; // External display window
-  onGetActionHandlers?: (handlers: { reveal: () => void; nextQuestion: () => void; startTimer: (duration?: number) => void; silentTimer?: (duration?: number) => void }) => void; // Pass action handlers to parent for nav bar
+  onGetActionHandlers?: (handlers: { reveal: () => void; revealFastestTeam?: () => void; nextQuestion: () => void; startTimer: (duration?: number) => void; silentTimer?: (duration?: number) => void }) => void; // Pass action handlers to parent for nav bar
   onGameTimerStateChange?: (isTimerRunning: boolean, duration?: number) => void; // Notify parent of timer state changes
   onCurrentScreenChange?: (screen: string) => void; // Notify parent of current screen changes
   onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void; // Notify parent of timer values for nav bar
   remoteSubmittedAnswer?: string; // Sync remote answer submission
   onFlowStateChange?: (flow: string) => void; // Sync flow state for remote controls
   onAnswerConfirmed?: (answer: string | undefined) => void; // Notify parent of confirmed answer
+  onGameTimerFinished?: (finished: boolean) => void; // Notify parent when timer finishes
+  onGameAnswerRevealed?: (revealed: boolean) => void; // Notify parent when answer is revealed
+  onGameFastestRevealed?: (revealed: boolean) => void; // Notify parent when closest team is revealed
+  onPlayTeamBuzzer?: (teamId: string) => void; // Play the winning team's buzzer sound
 }
 
 export function NearestWinsInterface({
   onBack,
   onExternalDisplayUpdate,
   teams = [],
+  teamAnswers: parentTeamAnswers,
   onTeamAnswerUpdate,
   onAwardPoints,
   currentRoundWinnerPoints,
@@ -43,19 +50,28 @@ export function NearestWinsInterface({
   onGameTimerUpdate,
   remoteSubmittedAnswer,
   onFlowStateChange,
-  onAnswerConfirmed
+  onAnswerConfirmed,
+  onGameTimerFinished,
+  onGameAnswerRevealed,
+  onGameFastestRevealed,
+  onPlayTeamBuzzer
 }: NearestWinsInterfaceProps) {
   const { gameModeTimers, gameModePoints, voiceCountdown, keypadDesign } = useSettings();
   const nearestWinsTimer = gameModeTimers?.nearestwins || 30;
 
   // Wrapper function to clear team answers when going back
   const handleBackWithCleanup = () => {
-    console.log('NearestWins: handleBackWithCleanup called');
+
     
     // Reset all local state
     if (onFlowStateChange) {
       onFlowStateChange('idle');
     }
+    // Reset parent game state flags
+    if (onGameTimerFinished) onGameTimerFinished(false);
+    if (onGameAnswerRevealed) onGameAnswerRevealed(false);
+    if (onGameFastestRevealed) onGameFastestRevealed(false);
+
     setCurrentScreen('config');
     setGameActive(false);
     setAnswerRevealed(false);
@@ -63,16 +79,16 @@ export function NearestWinsInterface({
     setIsTimerRunning(false);
     setTimerHasBeenStarted(false);
     setTimerLocked(false); // Reset timer lock
-    
+
     // Notify parent component about timer lock state reset
     if (onTimerLockChange) {
       onTimerLockChange(false);
     }
-    
+
     setAnswer('');
     setAnswerConfirmed(false);
     setCorrectAnswer(null);
-    setTeamAnswers({});
+    setLocalTeamAnswers({});
     setSubmissions([]);
 
     // Clear parent flowState answer
@@ -84,15 +100,14 @@ export function NearestWinsInterface({
     if (onTeamAnswerUpdate) {
       onTeamAnswerUpdate({});
     }
-    
+
     // Return external display to basic mode with a slight delay to ensure cleanup
     setTimeout(() => {
-      console.log('NearestWins: Setting display to basic mode');
       if (onExternalDisplayUpdate) {
         onExternalDisplayUpdate('basic');
       }
     }, 100);
-    
+
     // Call the original onBack function with a delay
     setTimeout(() => {
       onBack();
@@ -101,28 +116,32 @@ export function NearestWinsInterface({
 
   // Wrapper function to clear team answers when going back to config
   const handleBackToConfig = () => {
-    console.log('NearestWins: handleBackToConfig called');
-    
+
     // Reset game state
     if (onFlowStateChange) {
       onFlowStateChange('idle');
     }
+    // Reset parent game state flags
+    if (onGameTimerFinished) onGameTimerFinished(false);
+    if (onGameAnswerRevealed) onGameAnswerRevealed(false);
+    if (onGameFastestRevealed) onGameFastestRevealed(false);
+
     setGameActive(false);
     setAnswerRevealed(false);
     setCountdown(null);
     setIsTimerRunning(false);
     setTimerHasBeenStarted(false);
     setTimerLocked(false); // Reset timer lock
-    
+
     // Notify parent component about timer lock state reset
     if (onTimerLockChange) {
       onTimerLockChange(false);
     }
-    
+
     setAnswer('');
     setAnswerConfirmed(false);
     setCorrectAnswer(null);
-    setTeamAnswers({});
+    setLocalTeamAnswers({});
     setSubmissions([]);
 
     // Clear parent flowState answer
@@ -137,7 +156,7 @@ export function NearestWinsInterface({
     
     // Return external display to basic mode when returning to config
     setTimeout(() => {
-      console.log('NearestWins: Setting display to basic mode from config');
+
       if (onExternalDisplayUpdate) {
         onExternalDisplayUpdate('basic');
       }
@@ -180,10 +199,26 @@ export function NearestWinsInterface({
   const [answer, setAnswer] = useState('');
   const [answerConfirmed, setAnswerConfirmed] = useState(false);
   const [correctAnswer, setCorrectAnswer] = useState<number | null>(null);
-  const [teamAnswers, setTeamAnswers] = useState<{[teamId: string]: number}>({});
+  const [localTeamAnswers, setLocalTeamAnswers] = useState<{[teamId: string]: number}>({});
   const [questionNumber, setQuestionNumber] = useState(1);
   const [timerLocked, setTimerLocked] = useState(false); // Lock state to prevent submissions after timer ends
-  
+
+  // Sync incoming teamAnswers from parent (network player submissions) into internal submissions state
+  useEffect(() => {
+    if (!parentTeamAnswers || Object.keys(parentTeamAnswers).length === 0) return;
+
+    setSubmissions(prev => prev.map(s => {
+      const val = parentTeamAnswers[s.id];
+      if (val !== undefined && String(val).trim() !== '') {
+        const guessNum = parseInt(String(val).trim(), 10);
+        if (!isNaN(guessNum)) {
+          return { ...s, guess: guessNum, submitted: true };
+        }
+      }
+      return s;
+    }));
+  }, [parentTeamAnswers]);
+
   // Handle remote answer submission sync
   useEffect(() => {
     if (remoteSubmittedAnswer !== undefined && currentScreen === 'playing' && !answerConfirmed) {
@@ -343,7 +378,7 @@ export function NearestWinsInterface({
     })));
     
     // Clear team answers
-    setTeamAnswers({});
+    setLocalTeamAnswers({});
     
     // Clear team answers in the parent component (teams column)
     if (onTeamAnswerUpdate) {
@@ -364,19 +399,19 @@ export function NearestWinsInterface({
       }
     }, 0);
 
-    // Broadcast QUESTION message to player portal devices to ensure they show the question screen
-    // instead of display modes (BASIC/SCORES/SLIDESHOW)
+    // Broadcast QUESTION message to player portal devices to ensure they show the number keypad
+    // Uses both WebSocket (sendQuestionToPlayers) and IPC for reliability
+    sendQuestionToPlayers('Nearest Wins', undefined, 'numbers');
     try {
       (window as any).api?.ipc?.invoke('network/broadcast-question', {
         question: {
           type: 'nearestwins',
-          text: `Target: ${targetNumber[0]}`,
+          text: 'Nearest Wins',
           tolerance: tolerance[0],
           timestamp: Date.now()
         }
       }).catch((error: any) => {
         console.warn('[NearestWins] Failed to broadcast question to players:', error);
-        // This is non-critical - if players aren't connected, it's fine
       });
     } catch (err) {
       console.warn('[NearestWins] Error calling broadcast-question IPC:', err);
@@ -416,12 +451,20 @@ export function NearestWinsInterface({
     setTimerHasBeenStarted(true); // Mark timer as started
     setTimerLocked(false); // Unlock timer when starting
 
+    // Reset timer finished state when starting a new timer
+    if (onGameTimerFinished) {
+      onGameTimerFinished(false);
+    }
+
     // Notify parent component about timer lock state
     if (onTimerLockChange) {
       onTimerLockChange(false);
     }
 
     setCountdown(durationToUse); // Use setting from context
+
+    // Broadcast TIMER_START to player devices so they see the countdown
+    sendTimerToPlayers(durationToUse, isSilent, Date.now());
 
     const initialDisplayData = {
       timerValue: durationToUse,
@@ -434,76 +477,67 @@ export function NearestWinsInterface({
       gameMode: 'nearestwins'
     };
 
-    console.log('NearestWins: Starting timer and sending initial display update', {
-      nearestWinsTimer,
-      durationToUse,
-      initialTimerValue: durationToUse,
-      displayData: initialDisplayData,
-      externalWindow: !!externalWindow,
-      windowClosed: externalWindow ? externalWindow.closed : 'no window',
-      isSilent
-    });
-
     // Update external display to show timer immediately with full timer value
     if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
-      console.log('NearestWins: Actually sending INITIAL timer update to external display');
       onExternalDisplayUpdate('nearest-wins-timer', initialDisplayData);
-    } else {
-      console.log('NearestWins: NOT sending INITIAL timer update - external window not available or closed');
     }
   }, [nearestWinsTimer, onTimerLockChange, targetNumber, tolerance, externalWindow, onExternalDisplayUpdate]);
 
 
 
-  // Timer countdown effect - smooth animation with 100ms updates
+  // Ref to track if timer finish side effects have already fired (prevents duplicates)
+  const timerFinishedRef = useRef(false);
+
+  // Timer countdown effect - only updates countdown value, no side effects
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isTimerRunning) {
+      timerFinishedRef.current = false;
       interval = setInterval(() => {
         setCountdown(prev => {
           if (prev === null) return 0;
-
           const newValue = prev - 0.1;
-
-          // Use text-to-speech for countdown - only at 5-second intervals
-          // Check newValue instead of prev to stay in sync after initial announcement
-          if (voiceCountdown && newValue > 0 && newValue < nearestWinsTimer) {
-
-          }
-
-          if (newValue < 0) {
-            setIsTimerRunning(false);
-
-            // Notify host remote about time up
-            if (onFlowStateChange) {
-              onFlowStateChange('timeup');
-            }
-
-            // Lock the timer to prevent any further submissions
-            setTimerLocked(true);
-
-            // Notify parent component about timer lock state
-            if (onTimerLockChange) {
-              onTimerLockChange(true);
-            }
-
-            // Notify players that time is up
-            sendTimeUpToPlayers();
-
-
-            // Only move to results screen if answer has been confirmed
-            if (answerConfirmed) {
-              setCurrentScreen('results');
-            }
-            return 0; // Keep at 0 instead of going negative
-          }
-
+          if (newValue < 0) return 0;
           return newValue;
         });
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [isTimerRunning, answerConfirmed, voiceCountdown, nearestWinsTimer, onTimerLockChange]);
+  }, [isTimerRunning]);
+
+  // Separate effect to handle timer reaching 0 - fires side effects exactly once
+  useEffect(() => {
+    if (countdown !== null && countdown <= 0 && isTimerRunning && !timerFinishedRef.current) {
+      timerFinishedRef.current = true;
+      setIsTimerRunning(false);
+
+      // Notify host remote about time up
+      if (onFlowStateChange) {
+        onFlowStateChange('timeup');
+      }
+
+      // Lock the timer to prevent any further submissions
+      setTimerLocked(true);
+
+      // Notify parent component about timer lock state
+      if (onTimerLockChange) {
+        onTimerLockChange(true);
+      }
+
+      // Notify players that time is up
+      sendTimeUpToPlayers();
+
+      // Notify parent that timer has finished
+      if (onGameTimerFinished) {
+        onGameTimerFinished(true);
+      }
+
+      // Only move to results screen if answer has been confirmed
+      if (answerConfirmed) {
+        setCurrentScreen('results');
+      }
+    }
+  }, [countdown, isTimerRunning, answerConfirmed, onFlowStateChange, onTimerLockChange, onGameTimerFinished]);
 
   // Handle display updates separately to avoid circular dependencies
   useEffect(() => {
@@ -519,20 +553,9 @@ export function NearestWinsInterface({
         gameMode: 'nearestwins'
       };
       
-      console.log('NearestWins: Sending timer update to external display', {
-        countdown,
-        totalTime: nearestWinsTimer,
-        displayData,
-        externalWindow: !!externalWindow,
-        windowClosed: externalWindow ? externalWindow.closed : 'no window'
-      });
-      
       // Update display immediately for timer updates
       if (externalWindow && !externalWindow.closed && onExternalDisplayUpdate) {
-        console.log('NearestWins: Actually sending timer update to external display');
         onExternalDisplayUpdate('nearest-wins-timer', displayData);
-      } else {
-        console.log('NearestWins: NOT sending timer update - external window not available or closed');
       }
     }
   }, [countdown, isTimerRunning, targetNumber[0], tolerance[0], nearestWinsTimer, onExternalDisplayUpdate, externalWindow]);
@@ -581,11 +604,7 @@ export function NearestWinsInterface({
       // Use calculatedResults if available, otherwise fallback to mockResults for demonstration
       const resultsToSend = calculatedResults.winner ? calculatedResults : mockResults;
       
-      console.log('NearestWins: Results screen effect', {
-        currentScreen,
-        answerRevealed,
-        resultsToSend
-      });
+
       
       // Only update display if answer hasn't been revealed yet (to avoid overriding reveal state)
       if (!answerRevealed) {
@@ -606,88 +625,130 @@ export function NearestWinsInterface({
 
 
 
-  // Spacebar shortcut for progression buttons
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      // Only trigger if spacebar is pressed and not in an input field
-      if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-        e.preventDefault();
-        
-        // Playing screen - Start Timer button
-        if (currentScreen === 'playing' && !timerHasBeenStarted) {
-          handleStartTimer();
-        }
-        // Results screen - Reveal Winner or Next Round button
-        else if (currentScreen === 'results' && answerConfirmed) {
-          if (!answerRevealed) {
-            handleRevealResults();
-          } else {
-            handleNextRound();
-          }
-        }
-      }
-    };
+  // Spacebar shortcut is handled by QuestionNavigationBar to avoid double-firing
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentScreen, timerHasBeenStarted, answerConfirmed, answerRevealed]);
-
-  // Reveal results
-  const handleRevealResults = useCallback(() => {
+  // Reveal answer only (stage 1) - shows the correct answer but NOT the closest team
+  const handleRevealAnswer = useCallback(() => {
     setAnswerRevealed(true);
 
-    // Notify host remote about reveal
-    if (onFlowStateChange) {
-      onFlowStateChange('revealed');
+    // Play applause sound on reveal
+    playApplauseSound().catch(err => console.warn('Failed to play applause:', err));
+
+    // Do NOT call onFlowStateChange('revealed') here - let QuizHost's flow sync effect
+    // handle the transition so it correctly sets teamsAnsweredCorrectly=true first
+
+    // Broadcast REVEAL to player devices so they see the correct answer
+    if (correctAnswer !== null) {
+      try {
+        (window as any).api?.network?.broadcastReveal({
+          answer: String(correctAnswer),
+          type: 'nearestwins',
+          selectedAnswers: []
+        });
+        console.log('[NearestWins] Broadcasted REVEAL to players:', correctAnswer);
+      } catch (err) {
+        console.error('[NearestWins] Error broadcasting reveal:', err);
+      }
     }
 
-    // Use calculatedResults if available, otherwise fallback to mockResults for demonstration
+    // Use calculatedResults if available, otherwise fallback to mockResults
     const resultsToSend = calculatedResults.winner ? calculatedResults : mockResults;
 
-    console.log('NearestWins: Revealing results', {
-      answerRevealed: true,
-      correctAnswer,
-      resultsToSend,
-      calculatedResults,
-      mockResults
-    });
-
-    // Award points to the winners
-    if (onAwardPoints && calculatedResults.winners && calculatedResults.winners.length > 0) {
-      const winnerTeamIds = calculatedResults.winners.map(w => w.id).filter(Boolean) as string[];
-      if (winnerTeamIds.length > 0) {
-        console.log('NearestWins: Awarding points to winners', {
-          winnerTeamIds,
-          points: effectiveWinnerPoints
-        });
-        onAwardPoints(winnerTeamIds, 'nearestwins');
-      }
-    } else if (onAwardPoints && calculatedResults.winner && calculatedResults.winner.id) {
-      const winnerTeamId = calculatedResults.winner.id;
-      console.log('NearestWins: Awarding points to winner (fallback)', {
-        winnerTeamId,
-        points: effectiveWinnerPoints
-      });
-      onAwardPoints([winnerTeamId], 'nearestwins');
+    // Only notify parent that answer is revealed (NOT fastest/closest yet)
+    if (onGameAnswerRevealed) {
+      onGameAnswerRevealed(true);
     }
 
+    // Send results to external display (answer only, winner highlight comes in stage 2)
     setTimeout(() => {
       if (onExternalDisplayUpdate) {
         onExternalDisplayUpdate('nearest-wins-results', {
           targetNumber: targetNumber[0],
           correctAnswer: correctAnswer,
           results: resultsToSend,
-          answerRevealed: true
+          answerRevealed: true,
+          closestTeamRevealed: false
         });
       }
     }, 0);
-  }, [targetNumber, correctAnswer, calculatedResults, onAwardPoints, effectiveWinnerPoints, onExternalDisplayUpdate]);
+  }, [targetNumber, correctAnswer, calculatedResults, onExternalDisplayUpdate, onGameAnswerRevealed]);
+
+  // Reveal closest team (stage 2) - awards points and shows the winning team
+  const handleRevealClosestTeam = useCallback(() => {
+
+    // Notify parent that fastest/closest team is revealed
+    if (onGameFastestRevealed) {
+      onGameFastestRevealed(true);
+    }
+
+    // Play the winning team's buzzer sound
+    if (onPlayTeamBuzzer && calculatedResults.winner?.id) {
+      onPlayTeamBuzzer(calculatedResults.winner.id);
+    }
+
+    // Award points to the winners
+    if (onAwardPoints && calculatedResults.winners && calculatedResults.winners.length > 0) {
+      const winnerTeamIds = calculatedResults.winners.map(w => w.id).filter(Boolean) as string[];
+      if (winnerTeamIds.length > 0) {
+        onAwardPoints(winnerTeamIds, 'nearestwins');
+      }
+    } else if (onAwardPoints && calculatedResults.winner && calculatedResults.winner.id) {
+      const winnerTeamId = calculatedResults.winner.id;
+      onAwardPoints([winnerTeamId], 'nearestwins');
+    }
+
+    // Broadcast closest team to player devices
+    if (calculatedResults.winner) {
+      const winnerTeam = teams.find(t => t.id === calculatedResults.winner.id);
+      if ((window as any).api?.network?.broadcastFastest) {
+        try {
+          const fastestData = {
+            teamName: calculatedResults.winner.name || winnerTeam?.name || 'Unknown',
+            teamPhoto: (winnerTeam as any)?.photoUrl || null,
+            guess: calculatedResults.winner.guess,
+            difference: calculatedResults.winner.difference
+          };
+          console.log('[NearestWins] Broadcasting closest team to players:', fastestData);
+          (window as any).api.network.broadcastFastest(fastestData);
+        } catch (err) {
+          console.error('[NearestWins] Error broadcasting closest team:', err);
+        }
+      }
+    }
+
+    // Use calculatedResults if available, otherwise fallback to mockResults
+    const resultsToSend = calculatedResults.winner ? calculatedResults : mockResults;
+
+    // Update external display with full results including winner highlight
+    setTimeout(() => {
+      if (onExternalDisplayUpdate) {
+        onExternalDisplayUpdate('nearest-wins-results', {
+          targetNumber: targetNumber[0],
+          correctAnswer: correctAnswer,
+          results: resultsToSend,
+          answerRevealed: true,
+          closestTeamRevealed: true
+        });
+      }
+    }, 0);
+  }, [targetNumber, correctAnswer, calculatedResults, onAwardPoints, effectiveWinnerPoints, onExternalDisplayUpdate, onGameFastestRevealed, onPlayTeamBuzzer, teams]);
 
   // Next round - reset for new question
   const handleNextRound = useCallback(() => {
     // Notify host remote about new question
     if (onFlowStateChange) {
       onFlowStateChange('sent-question');
+    }
+
+    // Reset parent game state flags
+    if (onGameTimerFinished) {
+      onGameTimerFinished(false);
+    }
+    if (onGameAnswerRevealed) {
+      onGameAnswerRevealed(false);
+    }
+    if (onGameFastestRevealed) {
+      onGameFastestRevealed(false);
     }
 
     // Reset all game state for new question
@@ -698,7 +759,7 @@ export function NearestWinsInterface({
     setAnswer(''); // Clear the number pad
     setAnswerConfirmed(false);
     setCorrectAnswer(null);
-    setTeamAnswers({});
+    setLocalTeamAnswers({});
     setQuestionNumber(prev => prev + 1); // Increment question number
 
     // Clear parent flowState answer
@@ -735,28 +796,47 @@ export function NearestWinsInterface({
         });
       }
     }, 0);
-  }, [teams, mockTeams, onTeamAnswerUpdate, onExternalDisplayUpdate, targetNumber, tolerance, questionNumber]);
+
+    // Re-broadcast QUESTION to player devices so they show the number keypad for the new question
+    sendQuestionToPlayers('Nearest Wins', undefined, 'numbers');
+    try {
+      (window as any).api?.ipc?.invoke('network/broadcast-question', {
+        question: {
+          type: 'nearestwins',
+          text: `Nearest Wins Q${questionNumber + 1}`,
+          timestamp: Date.now()
+        }
+      }).catch((error: any) => {
+        console.warn('[NearestWins] Failed to re-broadcast question to players:', error);
+      });
+    } catch (err) {
+      console.warn('[NearestWins] Error calling broadcast-question IPC:', err);
+    }
+  }, [teams, mockTeams, onTeamAnswerUpdate, onExternalDisplayUpdate, targetNumber, tolerance, questionNumber, onGameTimerFinished, onGameAnswerRevealed, onGameFastestRevealed]);
 
   // Action handlers refs to avoid infinite re-renders
   const handlersRef = useRef({
-    reveal: handleRevealResults,
+    reveal: handleRevealAnswer,
+    revealFastestTeam: handleRevealClosestTeam,
     nextQuestion: handleNextRound,
     startTimer: handleStartTimer,
   });
 
   useEffect(() => {
     handlersRef.current = {
-      reveal: handleRevealResults,
+      reveal: handleRevealAnswer,
+      revealFastestTeam: handleRevealClosestTeam,
       nextQuestion: handleNextRound,
       startTimer: handleStartTimer,
     };
-  }, [handleRevealResults, handleNextRound, handleStartTimer]);
+  }, [handleRevealAnswer, handleRevealClosestTeam, handleNextRound, handleStartTimer]);
 
   // Expose action handlers to parent for nav bar integration
   useEffect(() => {
     if (onGetActionHandlers) {
       onGetActionHandlers({
         reveal: () => handlersRef.current.reveal(),
+        revealFastestTeam: () => handlersRef.current.revealFastestTeam(),
         nextQuestion: () => handlersRef.current.nextQuestion(),
         startTimer: (duration?: number) => handlersRef.current.startTimer(duration, false),
         silentTimer: (duration?: number) => handlersRef.current.startTimer(duration, true),
@@ -952,7 +1032,6 @@ export function NearestWinsInterface({
                     if (answer && !answerConfirmed) {
                       setAnswerConfirmed(true);
                       setCorrectAnswer(parseInt(answer));
-                      console.log('Confirmed answer:', answer);
 
                       if (onAnswerConfirmed) {
                         onAnswerConfirmed(answer);

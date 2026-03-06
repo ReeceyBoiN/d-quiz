@@ -1191,46 +1191,58 @@ export function ExternalDisplayWindow() {
             </div>
 
             {/* Results stats if available */}
-            {resultsData && Object.keys(resultsData).length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', width: '100%', maxWidth: '800px' }}>
+            {resultsData && resultsData.submissions && resultsData.submissions.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(resultsData.submissions.length, 3)}, 1fr)`, gap: '16px', width: '100%', maxWidth: '800px' }}>
                 {/* 1st Place */}
-                <div style={{
-                  backgroundColor: '#f59e0b',
-                  borderRadius: '24px',
-                  padding: '30px',
-                  textAlign: 'center',
-                  border: `4px solid ${displayData.borderColor}`,
-                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
-                }}>
-                  <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>🥇 Closest</div>
-                  <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{resultsData.closest?.name || 'N/A'}</div>
-                </div>
+                {resultsData.submissions[0] && (
+                  <div style={{
+                    backgroundColor: '#f59e0b',
+                    borderRadius: '24px',
+                    padding: '30px',
+                    textAlign: 'center',
+                    border: `4px solid ${displayData.borderColor}`,
+                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+                  }}>
+                    <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>🥇 Closest</div>
+                    <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{resultsData.submissions[0].name || 'N/A'}</div>
+                    <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), color: 'rgba(255,255,255,0.9)', marginTop: '8px' }}>Guessed: {resultsData.submissions[0].guess}</div>
+                    <div style={{ fontSize: scaleFontSize('20px', textSizeMultiplier), color: 'rgba(255,255,255,0.7)', marginTop: '4px' }}>Off by {resultsData.submissions[0].difference}</div>
+                  </div>
+                )}
 
                 {/* 2nd Place */}
-                <div style={{
-                  backgroundColor: '#8b8b8b',
-                  borderRadius: '24px',
-                  padding: '30px',
-                  textAlign: 'center',
-                  border: `4px solid ${displayData.borderColor}`,
-                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
-                }}>
-                  <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>🥈 2nd Close</div>
-                  <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{resultsData.secondClosest?.name || 'N/A'}</div>
-                </div>
+                {resultsData.submissions[1] && (
+                  <div style={{
+                    backgroundColor: '#8b8b8b',
+                    borderRadius: '24px',
+                    padding: '30px',
+                    textAlign: 'center',
+                    border: `4px solid ${displayData.borderColor}`,
+                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+                  }}>
+                    <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>🥈 2nd Close</div>
+                    <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{resultsData.submissions[1].name || 'N/A'}</div>
+                    <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), color: 'rgba(255,255,255,0.9)', marginTop: '8px' }}>Guessed: {resultsData.submissions[1].guess}</div>
+                    <div style={{ fontSize: scaleFontSize('20px', textSizeMultiplier), color: 'rgba(255,255,255,0.7)', marginTop: '4px' }}>Off by {resultsData.submissions[1].difference}</div>
+                  </div>
+                )}
 
                 {/* 3rd Place */}
-                <div style={{
-                  backgroundColor: '#cd7f32',
-                  borderRadius: '24px',
-                  padding: '30px',
-                  textAlign: 'center',
-                  border: `4px solid ${displayData.borderColor}`,
-                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
-                }}>
-                  <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>🥉 3rd Close</div>
-                  <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{resultsData.thirdClosest?.name || 'N/A'}</div>
-                </div>
+                {resultsData.submissions[2] && (
+                  <div style={{
+                    backgroundColor: '#cd7f32',
+                    borderRadius: '24px',
+                    padding: '30px',
+                    textAlign: 'center',
+                    border: `4px solid ${displayData.borderColor}`,
+                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
+                  }}>
+                    <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), fontWeight: '600', color: 'white', marginBottom: '10px' }}>🥉 3rd Close</div>
+                    <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: 'white' }}>{resultsData.submissions[2].name || 'N/A'}</div>
+                    <div style={{ fontSize: scaleFontSize('24px', textSizeMultiplier), color: 'rgba(255,255,255,0.9)', marginTop: '8px' }}>Guessed: {resultsData.submissions[2].guess}</div>
+                    <div style={{ fontSize: scaleFontSize('20px', textSizeMultiplier), color: 'rgba(255,255,255,0.7)', marginTop: '4px' }}>Off by {resultsData.submissions[2].difference}</div>
+                  </div>
+                )}
               </div>
             )}
           </div>

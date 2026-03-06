@@ -72,8 +72,10 @@ export function getTotalTimeForQuestion(
 
   switch (qType) {
     case 'nearest':
-    case 'numbers':
+    case 'nearestwins':
       return timers.nearestwins ?? 30;
+    case 'numbers':
+      return timers.keypad ?? 30;
     case 'buzzin':
       return timers.buzzin ?? 30;
     case 'letters':
@@ -104,6 +106,7 @@ export function getQuestionTypeLabel(type: string): string {
       return 'Multiple Choice';
     case 'numbers':
     case 'nearest':
+    case 'nearestwins':
       return 'Numbers';
     case 'sequence':
       return 'Sequence';

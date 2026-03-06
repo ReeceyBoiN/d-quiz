@@ -121,7 +121,9 @@ export function QuestionDisplay({
   // Hide answer options when image overlay is visible
   const hideAnswers = showImageOverlay && question?.imageUrl;
 
-  // Reset state when question changes
+  // Reset state when question changes - use identity keys instead of object reference
+  // to avoid false resets when TIMEUP clears imageUrl (creating a new object reference)
+  const questionIdentity = `${question?.q || ''}|${question?.type || ''}|${question?.text || ''}`;
   useEffect(() => {
     setSelectedAnswers([]);
     setSubmitted(false);
@@ -130,7 +132,7 @@ export function QuestionDisplay({
     setNumberInput('0');
     setNumberSubmitted(false);
     setShowImageOverlay(true);
-  }, [question]);
+  }, [questionIdentity]);
 
   // Handle keypad shuffling when scrambled state changes or question changes
   // NOTE: Unscrambling resets the visual layout but PRESERVES user's selected answer
@@ -595,6 +597,30 @@ export function QuestionDisplay({
               </div>
             )}
 
+            {/* Correct Answer Reveal for Numbers */}
+            {answerRevealed && correctAnswer !== undefined && (
+              <div className="mb-3 sm:mb-4 md:mb-5 p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-cyan-400 text-center shadow-lg shadow-cyan-500/20">
+                <p className="text-cyan-300 text-xs sm:text-sm font-semibold uppercase tracking-wider mb-1">Correct Answer</p>
+                <p className="text-white font-bold text-3xl sm:text-4xl md:text-5xl">{correctAnswer}</p>
+                {submittedAnswer && (
+                  <div className="mt-2 sm:mt-3">
+                    <p className="text-slate-300 text-sm sm:text-base">Your guess: <span className="text-white font-bold">{submittedAnswer}</span></p>
+                    <p className={`text-sm sm:text-base font-semibold mt-1 ${
+                      Number(submittedAnswer) === Number(correctAnswer) ? 'text-green-400' : 'text-orange-400'
+                    }`}>
+                      {Number(submittedAnswer) === Number(correctAnswer)
+                        ? 'Exact match!'
+                        : `Off by ${Math.abs(Number(submittedAnswer) - Number(correctAnswer))}`
+                      }
+                    </p>
+                  </div>
+                )}
+                {!submittedAnswer && (
+                  <p className="mt-2 text-slate-400 text-sm">No answer submitted</p>
+                )}
+              </div>
+            )}
+
             {/* Display area for entered number */}
             <div className="mb-2 sm:mb-3 md:mb-4 p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl border-2 border-cyan-400 bg-slate-800 text-center">
               <p className="text-white font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl">{numberInput}</p>
@@ -605,11 +631,11 @@ export function QuestionDisplay({
                 <button
                   key={index}
                   onClick={() => handleNumberDigit(number)}
-                  disabled={timerEnded || numberSubmitted}
+                  disabled={timerEnded || numberSubmitted || answerRevealed}
                   className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform ${
-                    !numberSubmitted && !timerEnded ? 'active:scale-95' : ''
+                    !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
                   } ${
-                    numberSubmitted || timerEnded
+                    numberSubmitted || timerEnded || answerRevealed
                       ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
                       : 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
                   }`}
@@ -622,11 +648,11 @@ export function QuestionDisplay({
             <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
               <button
                 onClick={handleClearNumber}
-                disabled={timerEnded || numberSubmitted}
+                disabled={timerEnded || numberSubmitted || answerRevealed}
                 className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
-                  !numberSubmitted && !timerEnded ? 'active:scale-95' : ''
+                  !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
                 } ${
-                  numberSubmitted || timerEnded
+                  numberSubmitted || timerEnded || answerRevealed
                     ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
                     : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer'
                 }`}
@@ -635,11 +661,11 @@ export function QuestionDisplay({
               </button>
               <button
                 onClick={handleNumberZero}
-                disabled={timerEnded || numberSubmitted}
+                disabled={timerEnded || numberSubmitted || answerRevealed}
                 className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
-                  !numberSubmitted && !timerEnded ? 'active:scale-95' : ''
+                  !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
                 } ${
-                  numberSubmitted || timerEnded
+                  numberSubmitted || timerEnded || answerRevealed
                     ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
                     : 'bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer'
                 }`}
@@ -648,11 +674,11 @@ export function QuestionDisplay({
               </button>
               <button
                 onClick={handleSubmitNumber}
-                disabled={timerEnded || numberSubmitted}
+                disabled={timerEnded || numberSubmitted || answerRevealed}
                 className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
-                  !numberSubmitted && !timerEnded ? 'active:scale-95' : ''
+                  !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
                 } ${
-                  numberSubmitted || timerEnded
+                  numberSubmitted || timerEnded || answerRevealed
                     ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
                     : 'bg-green-500 hover:bg-green-600 text-white cursor-pointer'
                 }`}

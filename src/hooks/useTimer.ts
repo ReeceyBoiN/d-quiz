@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 
 export interface UseTimerConfig {
   onEnd?: () => void;
@@ -143,7 +143,7 @@ export function useTimer(config?: UseTimerConfig): UseTimerControls {
     };
   }, []);
 
-  return {
+  return useMemo(() => ({
     start,
     stop,
     pause,
@@ -154,5 +154,5 @@ export function useTimer(config?: UseTimerConfig): UseTimerControls {
     isRunning,
     isPaused,
     progress,
-  };
+  }), [start, stop, pause, resume, reset, timeRemaining, totalTime, isRunning, isPaused, progress]);
 }

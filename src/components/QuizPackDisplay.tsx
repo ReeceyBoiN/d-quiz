@@ -33,6 +33,8 @@ interface QuizPackDisplayProps {
   currentRoundPoints?: number | null; // Current round points from parent
   currentRoundSpeedBonus?: number | null; // Current round speed bonus from parent
   onGameTimerStateChange?: (isRunning: boolean, duration?: number) => void; // Notify parent when timer state changes
+  onWinnerPointsChange?: (winnerPoints: number) => void; // Callback when winner points slider changes (nearest wins)
+  currentRoundWinnerPoints?: number | null; // Current round winner points from parent (nearest wins)
 }
 
 export function QuizPackDisplay({
@@ -49,7 +51,9 @@ export function QuizPackDisplay({
   onSpeedBonusChange,
   currentRoundPoints,
   currentRoundSpeedBonus,
-  onGameTimerStateChange
+  onGameTimerStateChange,
+  onWinnerPointsChange,
+  currentRoundWinnerPoints
 }: QuizPackDisplayProps) {
   const [currentScreen, setCurrentScreen] = useState<'config' | 'question'>('config');
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
@@ -58,6 +62,7 @@ export function QuizPackDisplay({
   const [timerFinished, setTimerFinished] = useState(false);
   const [localPoints, setLocalPoints] = useState<number | null>(null);
   const [localSpeedBonus, setLocalSpeedBonus] = useState<number | null>(null);
+  const [localWinnerPoints, setLocalWinnerPoints] = useState<number | null>(null);
   const [autoDisableEnabled, setAutoDisableEnabled] = useState(false);
   const [timerStartValue, setTimerStartValue] = useState<number | null>(null);
   const isMountedRef = useRef(true);
@@ -77,7 +82,8 @@ export function QuizPackDisplay({
     updateStaggeredEnabled,
     punishmentEnabled,
     updatePunishmentEnabled,
-    gameModeTimers
+    gameModeTimers,
+    gameModePoints
   } = useSettings();
 
   // Use parent's round values if set, otherwise use local state, otherwise use defaults
@@ -87,6 +93,11 @@ export function QuizPackDisplay({
   const speedBonus = [currentSpeedBonus];
 
   const currentQuestion = questions[currentQuestionIndex];
+  const isNearestWinsQuestion = currentQuestion?.type?.toLowerCase() === 'nearest' || currentQuestion?.type?.toLowerCase() === 'nearestwins';
+
+  // Winner points for nearest wins questions
+  const currentWinnerPoints = currentRoundWinnerPoints !== null && currentRoundWinnerPoints !== undefined ? currentRoundWinnerPoints : (localWinnerPoints !== null ? localWinnerPoints : (gameModePoints?.nearestwins || 10));
+  const winnerPoints = [currentWinnerPoints];
   const totalQuestions = questions.length;
   const isFirstQuestion = currentQuestionIndex === 0;
   const isLastQuestion = currentQuestionIndex === totalQuestions - 1;
@@ -245,6 +256,7 @@ export function QuizPackDisplay({
         return 'Multiple Choice';
       case 'numbers':
       case 'nearest':
+      case 'nearestwins':
         return 'Numbers';
       case 'sequence':
         return 'Sequence';
@@ -312,8 +324,107 @@ export function QuizPackDisplay({
     }
   }, [currentRoundSpeedBonus]);
 
+  useEffect(() => {
+    if (currentRoundWinnerPoints !== null && currentRoundWinnerPoints !== undefined && localWinnerPoints !== currentRoundWinnerPoints) {
+      setLocalWinnerPoints(currentRoundWinnerPoints);
+    }
+  }, [currentRoundWinnerPoints]);
+
   // Configuration Screen - exact copy of KeypadInterface layout
   if (currentScreen === 'config') {
+    // Nearest Wins questions get a simplified config with just Winner Points
+    if (isNearestWinsQuestion) {
+      return (
+        <div className="h-full bg-[#2c3e50] text-[#ecf0f1] p-6">
+          {/* Nearest Wins Label */}
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-[#27ae60]">NEAREST WINS QUESTION</h2>
+            <p className="text-sm text-[#95a5a6] mt-1">Closest guess to the answer wins the points</p>
+          </div>
+
+          {/* Single Winner Points Configuration Card */}
+          <div className="flex justify-center mb-8">
+            <div className="w-full max-w-md">
+              <Card className="bg-[#34495e] border-[#4a5568]">
+                <CardContent className="p-8">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="bg-[#e74c3c] p-4 rounded-lg mb-4">
+                      <Star className="h-8 w-8 text-white" />
+                    </div>
+                    <div className="text-4xl font-bold text-white mb-3">{winnerPoints[0]}</div>
+                    <h2 className="text-xl font-semibold mb-2">Winner Points</h2>
+                    <p className="text-sm text-[#95a5a6] mb-6">
+                      Points awarded to the team with the closest guess.
+                    </p>
+
+                    {/* Text Input for exact entry */}
+                    <div className="w-full mb-6">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={winnerPoints[0]}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || 0;
+                          const clampedValue = Math.max(0, Math.min(100, value));
+                          setLocalWinnerPoints(clampedValue);
+                          if (onWinnerPointsChange) {
+                            onWinnerPointsChange(clampedValue);
+                          }
+                        }}
+                        className="w-full px-4 py-3 bg-[#2c3e50] border border-[#4a5568] rounded-lg text-white text-center text-lg focus:outline-none focus:border-[#3498db] transition-colors"
+                        placeholder="0-100"
+                      />
+                    </div>
+
+                    {/* Slider */}
+                    <div className="w-full">
+                      <Slider
+                        value={winnerPoints}
+                        onValueChange={(value) => {
+                          if (value[0] !== winnerPoints[0]) {
+                            setLocalWinnerPoints(value[0]);
+                            if (onWinnerPointsChange) {
+                              onWinnerPointsChange(value[0]);
+                            }
+                          }
+                        }}
+                        max={100}
+                        min={0}
+                        step={1}
+                        className="w-full h-3"
+                      />
+                      <div className="flex justify-between text-xs text-[#95a5a6] mt-2">
+                        <span>0</span>
+                        <span>100</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-4">
+            <Button
+              onClick={handleStartRound}
+              className="flex-1 h-16 bg-[#27ae60] hover:bg-[#229954] text-white flex items-center justify-center gap-3 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg text-xl font-bold"
+            >
+              START ROUND
+            </Button>
+            <Button
+              onClick={onBack}
+              variant="outline"
+              className="flex-1 h-16 border-[#4a5568] hover:bg-[#4a5568] text-[#ecf0f1] flex items-center justify-center gap-3 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg text-xl font-bold"
+            >
+              CANCEL
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
     return (
     <div className="h-full bg-[#2c3e50] text-[#ecf0f1] p-6">
       <div className="grid grid-cols-4 gap-4 mb-6">

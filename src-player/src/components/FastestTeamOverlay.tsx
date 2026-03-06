@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react';
 interface FastestTeamOverlayProps {
   teamName: string;
   teamPhoto: string | null;
+  guess?: number;
+  difference?: number;
 }
 
-export function FastestTeamOverlay({ teamName, teamPhoto }: FastestTeamOverlayProps) {
+export function FastestTeamOverlay({ teamName, teamPhoto, guess, difference }: FastestTeamOverlayProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [photoLoaded, setPhotoLoaded] = useState(false);
   const [photoError, setPhotoError] = useState(false);
@@ -69,6 +71,12 @@ export function FastestTeamOverlay({ teamName, teamPhoto }: FastestTeamOverlayPr
               <div className="text-white text-4xl sm:text-5xl md:text-6xl font-bold drop-shadow-2xl break-words">
                 {teamName}
               </div>
+              {guess !== undefined && difference !== undefined && (
+                <div className="mt-4">
+                  <div className="text-white text-2xl sm:text-3xl font-semibold drop-shadow-lg">Guessed: {guess}</div>
+                  <div className="text-white/80 text-xl sm:text-2xl drop-shadow-lg">Off by {difference}</div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -82,10 +90,16 @@ export function FastestTeamOverlay({ teamName, teamPhoto }: FastestTeamOverlayPr
             }`}
           >
             <div className="flex flex-col items-center gap-6">
-              <span className="text-9xl">🏆</span>
+              <span className="text-9xl">{guess !== undefined ? '🎯' : '🏆'}</span>
               <div className="text-white text-4xl sm:text-5xl md:text-6xl font-bold drop-shadow-lg text-center break-words max-w-2xl px-4">
                 {teamName}
               </div>
+              {guess !== undefined && difference !== undefined && (
+                <div className="text-center">
+                  <div className="text-white text-2xl sm:text-3xl font-semibold drop-shadow-lg">Guessed: {guess}</div>
+                  <div className="text-white/80 text-xl sm:text-2xl drop-shadow-lg">Off by {difference}</div>
+                </div>
+              )}
             </div>
           </div>
         </div>

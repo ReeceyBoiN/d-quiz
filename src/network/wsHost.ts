@@ -523,7 +523,7 @@ export async function sendFlowStateToController(flow: string, isQuestionMode: bo
     timestamp: Date.now()
   };
 
-  const DEBUG = process.env.REACT_APP_DEBUG_MODE === 'true' || (window as any).__DEBUG_MODE__;
+  const DEBUG = (window as any).__DEBUG_MODE__;
   if (DEBUG) {
     console.log('[wsHost] 📦 FLOW_STATE payload ready', {
       flow: payload.data.flow,

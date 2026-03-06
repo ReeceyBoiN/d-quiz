@@ -232,7 +232,6 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
                     <RotateCcw className="w-4 h-4 text-purple-600 bg-purple-100 dark:bg-purple-900 rounded p-0.5 flex-shrink-0" title="Team's keypad is scrambled" />
                   )}
                   {/* Debug logging for scrambled state */}
-                  {process.env.NODE_ENV === 'development' && console.log(`🔀 LeftSidebar render: Team ${quiz.name} (${quiz.id}) scrambled state:`, quiz.scrambled)}
                   <div className="leading-[1.15] text-left break-words whitespace-normal max-h-full text-[17px] flex-1">
                     {quiz.name}
                   </div>

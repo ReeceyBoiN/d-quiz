@@ -70,6 +70,8 @@ export default function App() {
   const [pendingDisplayMode, setPendingDisplayMode] = useState<any | null>(null);
   const [fastestTeamName, setFastestTeamName] = useState<string>('');
   const [fastestTeamPhoto, setFastestTeamPhoto] = useState<string | null>(null);
+  const [fastestTeamGuess, setFastestTeamGuess] = useState<number | undefined>();
+  const [fastestTeamDifference, setFastestTeamDifference] = useState<number | undefined>();
   const [showAnswerFeedback, setShowAnswerFeedback] = useState(false);
   const [isAnswerCorrect, setIsAnswerCorrect] = useState<boolean | undefined>();
   const [submittedAnswer, setSubmittedAnswer] = useState<any>(null);
@@ -137,6 +139,8 @@ export default function App() {
         setShowFastestTeam(false);
         setFastestTeamName('');
         setFastestTeamPhoto(null);
+        setFastestTeamGuess(undefined);
+        setFastestTeamDifference(undefined);
       }, 5000);
     }
 
@@ -395,6 +399,8 @@ export default function App() {
     setShowFastestTeam(false);
     setFastestTeamName('');
     setFastestTeamPhoto(null);
+    setFastestTeamGuess(undefined);
+    setFastestTeamDifference(undefined);
     setShowAnswerFeedback(false);
     setIsAnswerCorrect(undefined);
     setSubmittedAnswer(null);
@@ -854,24 +860,33 @@ export default function App() {
         // Determine if player's answer is correct using CACHED values
         // This ensures we use the values from submission, not potentially cleared state
         try {
-          console.log('[Player] 📢 Calling determineAnswerCorrectness with CACHED values:', {
-            submittedAnswer: cachedSubmittedAnswer,
-            revealedCorrectAnswer: revealedCorrectAnswer,
-            questionType: cachedQuestionType,
-            questionTypeDebug: {
-              raw: cachedQuestionType,
-              normalized: cachedQuestionType?.toLowerCase()
-            }
-          });
+          // Check if this is a nearest wins question - skip correctness feedback
+          // Nearest wins isn't about right/wrong, it's about closest guess
+          const revealType = message.data?.type?.toLowerCase();
+          if (revealType === 'nearestwins' || revealType === 'nearest') {
+            console.log('[Player] 📢 Nearest wins question - skipping correctness feedback');
+            setShowAnswerFeedback(false);
+            setIsAnswerCorrect(undefined);
+          } else {
+            console.log('[Player] 📢 Calling determineAnswerCorrectness with CACHED values:', {
+              submittedAnswer: cachedSubmittedAnswer,
+              revealedCorrectAnswer: revealedCorrectAnswer,
+              questionType: cachedQuestionType,
+              questionTypeDebug: {
+                raw: cachedQuestionType,
+                normalized: cachedQuestionType?.toLowerCase()
+              }
+            });
 
-          const isCorrect = determineAnswerCorrectness(
-            cachedSubmittedAnswer,
-            revealedCorrectAnswer,
-            cachedQuestionType
-          );
-          console.log('[Player] ✅ Answer correctness result:', isCorrect, 'submitted:', cachedSubmittedAnswer, 'correct:', revealedCorrectAnswer, 'cached question type:', cachedQuestionType);
-          setShowAnswerFeedback(true);
-          setIsAnswerCorrect(isCorrect);
+            const isCorrect = determineAnswerCorrectness(
+              cachedSubmittedAnswer,
+              revealedCorrectAnswer,
+              cachedQuestionType
+            );
+            console.log('[Player] ✅ Answer correctness result:', isCorrect, 'submitted:', cachedSubmittedAnswer, 'correct:', revealedCorrectAnswer, 'cached question type:', cachedQuestionType);
+            setShowAnswerFeedback(true);
+            setIsAnswerCorrect(isCorrect);
+          }
         } catch (err) {
           console.error('[Player] ❌ Error determining answer correctness:', err);
         }
@@ -971,12 +986,14 @@ export default function App() {
       case 'FASTEST':
         try {
           console.log('[Player] FASTEST message received:', message.data);
-          const { teamName, teamPhoto } = message.data || {};
+          const { teamName, teamPhoto, guess, difference } = message.data || {};
           if (teamName) {
             setFastestTeamName(teamName);
             setFastestTeamPhoto(teamPhoto || null);
+            setFastestTeamGuess(guess !== undefined ? Number(guess) : undefined);
+            setFastestTeamDifference(difference !== undefined ? Number(difference) : undefined);
             setShowFastestTeam(true);
-            console.log('[Player] Showing fastest team:', teamName);
+            console.log('[Player] Showing fastest team:', teamName, guess !== undefined ? `(guessed ${guess}, off by ${difference})` : '');
           } else {
             console.warn('[Player] ⚠️  FASTEST message received but no teamName in data');
           }
@@ -1651,6 +1668,8 @@ export default function App() {
                 <FastestTeamOverlay
                   teamName={fastestTeamName}
                   teamPhoto={fastestTeamPhoto}
+                  guess={fastestTeamGuess}
+                  difference={fastestTeamDifference}
                 />
               )}
             </>

@@ -19,13 +19,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   sequence question is only allowing 1 answer to be selected on on the spot mode
 
-  *Needs public test - Need to make sure the nearest wins modes calculates which team is closest, if multiple teams get the closest answer or equidistant those teams should get the bonus points
-
   Buzz in mode needs just making in general hahaha
-
-  in settings, Waiting room should have an option to enforce a password to connect, this function is so hosts can charge teams individually and if a team doesnt pay, the host wont type in the password (can be a 4 digit pin system)
-
-  Nearest wins mode on the spot doesnt always show the answer input method on the player devices.
 
   leaderboard needs to show and reveal the scores with each new team and also needs simplifying the UI on the host app for leaderboard interface
 

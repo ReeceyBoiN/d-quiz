@@ -20,7 +20,10 @@ interface FastestTeamDisplayProps {
   fastestTeam: {
     team: Team;
     responseTime: number;
+    guess?: number;
+    difference?: number;
   } | null;
+  displayMode?: 'fastest' | 'closest';
   teams: Team[];
   hostLocation?: { x: number; y: number } | null;
   onClose: () => void;
@@ -42,7 +45,8 @@ export function FastestTeamDisplay({
   onScrambleKeypad,
   onBlockTeam,
   buzzerVolumes = {},
-  onBuzzerVolumeChange
+  onBuzzerVolumeChange,
+  displayMode = 'fastest'
 }: FastestTeamDisplayProps) {
   // Derive buzzer volume from parent prop, or default to 75
   const currentBuzzerVolume = fastestTeam?.team.buzzerSound
@@ -150,9 +154,13 @@ export function FastestTeamDisplay({
           <div className="flex items-center gap-4">
             <div className="text-4xl">🏃</div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Fastest Team</h1>
+              <h1 className="text-2xl font-bold text-foreground">{displayMode === 'closest' ? 'Closest Team' : 'Fastest Team'}</h1>
               <p className="text-muted-foreground">
-                {fastestTeam ? `${fastestTeam.team.name} answered in ${formatResponseTime(fastestTeam.responseTime)}` : 'No data available'}
+                {fastestTeam
+                  ? displayMode === 'closest'
+                    ? `${fastestTeam.team.name} guessed ${fastestTeam.guess ?? '?'} (off by ${fastestTeam.difference ?? '?'})`
+                    : `${fastestTeam.team.name} answered in ${formatResponseTime(fastestTeam.responseTime)}`
+                  : 'No data available'}
               </p>
             </div>
           </div>

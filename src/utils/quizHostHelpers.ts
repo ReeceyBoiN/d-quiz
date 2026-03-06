@@ -20,6 +20,11 @@ export const getAnswerText = (question: any): string => {
     return String.fromCharCode(65 + question.correctIndex);
   }
 
+  // For nearest wins: return the target number from answerText or meta.short_answer
+  if (question.type?.toLowerCase() === 'nearest' || question.type?.toLowerCase() === 'nearestwins') {
+    return question.answerText || question.meta?.short_answer || '';
+  }
+
   // For sequence: return the sequence item at correctIndex
   if (question.type?.toLowerCase() === 'sequence' && question.options && question.correctIndex !== undefined) {
     return question.options[question.correctIndex] || '';
