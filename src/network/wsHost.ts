@@ -161,10 +161,10 @@ class HostNetwork {
   /**
    * Helper to send question to players and external display.
    */
-  public sendQuestion(text: string, options?: string[], type?: string, scrambled?: boolean) {
+  public sendQuestion(text: string, options?: string[], type?: string, teamScrambleStates?: Record<string, boolean>) {
     this.broadcast({
       type: 'QUESTION',
-      data: { text, options, type, scrambled },
+      data: { text, options, type, teamScrambleStates },
     });
   }
 
@@ -236,10 +236,10 @@ class HostNetwork {
   /**
    * Helper to broadcast keypad scramble state change to players.
    */
-  public sendScrambleUpdate(scrambled: boolean) {
+  public sendScrambleUpdate(teamScrambleStates: Record<string, boolean>) {
     this.broadcast({
       type: 'SCRAMBLE_UPDATE',
-      data: { scrambled },
+      data: { teamScrambleStates },
     });
   }
 
@@ -368,8 +368,8 @@ export function sendPictureToPlayers(imageDataUrl: string) {
   hostNetwork.sendPicture(imageDataUrl);
 }
 
-export function sendQuestionToPlayers(text: string, options?: string[], type?: string, scrambled?: boolean) {
-  hostNetwork.sendQuestion(text, options, type, scrambled);
+export function sendQuestionToPlayers(text: string, options?: string[], type?: string, teamScrambleStates?: Record<string, boolean>) {
+  hostNetwork.sendQuestion(text, options, type, teamScrambleStates);
 }
 
 export function sendTimerToPlayers(seconds: number, silent: boolean = false, timerStartTime?: number) {
@@ -396,8 +396,8 @@ export function sendScoresToDisplay(scores: { teamId: string; teamName: string; 
   hostNetwork.sendScores(scores);
 }
 
-export function sendScrambleUpdateToPlayers(scrambled: boolean) {
-  hostNetwork.sendScrambleUpdate(scrambled);
+export function sendScrambleUpdateToPlayers(teamScrambleStates: Record<string, boolean>) {
+  hostNetwork.sendScrambleUpdate(teamScrambleStates);
 }
 
 export function registerNetworkPlayer(playerId: string, teamName: string, deviceId?: string) {

@@ -27,7 +27,7 @@ interface KeypadInterfaceProps {
   onHome?: () => void; // Add home navigation prop
   externalWindow?: Window | null; // External display window
   onExternalDisplayUpdate?: (mode: string, data?: any) => void; // External display update function
-  teams?: Array<{id: string, name: string, score?: number}>; // Teams data for simulation
+  teams?: Array<{id: string, name: string, score?: number, scrambled?: boolean}>; // Teams data for simulation
   teamAnswers?: {[teamId: string]: string}; // Team answers from parent (for results display)
   onTeamAnswerUpdate?: (answers: {[teamId: string]: string}) => void; // Team answer update callback
   onTeamResponseTimeUpdate?: (responseTimes: {[teamId: string]: number}) => void; // Team response time update callback
@@ -562,12 +562,16 @@ export function KeypadInterface({
 
         console.log('[Keypad] Broadcasting question type:', type, 'with', placeholderOptions.length, 'options:', placeholderOptions);
 
+        const teamScrambleStates: Record<string, boolean> = {};
+        (teams || []).forEach(t => { teamScrambleStates[t.name] = t.scrambled ?? false; });
+
         (window as any).api?.ipc?.invoke('network/broadcast-question', {
           question: {
             type: type,
             text: 'Question is ready...',
             options: placeholderOptions,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            teamScrambleStates,
           }
         }).catch((error: any) => {
           console.warn('[Keypad] Failed to broadcast question to players:', error);

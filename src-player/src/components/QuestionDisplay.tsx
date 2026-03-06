@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useRef } from 'react';
 import { NetworkContext } from '../context/NetworkContext';
 import { usePlayerSettings, type KeypadColor } from '../hooks/usePlayerSettings';
 import { Button } from '../ui/button';
@@ -134,7 +134,24 @@ export function QuestionDisplay({
     setShowImageOverlay(true);
   }, [questionIdentity]);
 
-  // Handle keypad shuffling when scrambled state changes or question changes
+  // Track a stable question round counter that increments only on genuine new questions
+  // This prevents re-shuffling when transitioning from placeholder to revealed question
+  // We use questionType + options.length as the stable identity since these don't change
+  // between placeholder and reveal phases of the same question
+  const [questionRound, setQuestionRound] = useState(0);
+  const prevStableKeyRef = useRef<string>('');
+
+  // Increment questionRound only when a genuinely new question arrives
+  // The stable key uses type + options count, which stays constant through placeholder -> reveal
+  useEffect(() => {
+    const stableKey = `${questionType}|${options.length}`;
+    if (stableKey !== prevStableKeyRef.current) {
+      prevStableKeyRef.current = stableKey;
+      setQuestionRound(prev => prev + 1);
+    }
+  }, [questionType, options.length]);
+
+  // Handle keypad shuffling when scrambled state changes or a new question round starts
   // NOTE: Unscrambling resets the visual layout but PRESERVES user's selected answer
   // because selectedAnswers state and answer submission use actual values, not display positions
   useEffect(() => {
@@ -143,7 +160,7 @@ export function QuestionDisplay({
       const newShuffledLetterGrid = shuffleGrid(LETTERS_GRID);
       setShuffledLetterGrid(newShuffledLetterGrid);
 
-      const newShuffledNumbers = shuffleArray(['1', '2', '3', '4', '5', '6', '7', '8', '9']);
+      const newShuffledNumbers = shuffleArray(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
       setShuffledNumbers(newShuffledNumbers);
 
       // For multiple choice/sequence options, create mapping with original indices
@@ -156,7 +173,7 @@ export function QuestionDisplay({
         setShuffledOptions(shuffledOpts);
       }
 
-      console.log('[QuestionDisplay] 🔀 Keypad shuffled');
+      console.log('[QuestionDisplay] 🔀 Keypad shuffled for round', questionRound);
     } else {
       // Reset to unscrambled layouts
       // User's selected answer is PRESERVED - only the visual layout resets
@@ -174,7 +191,25 @@ export function QuestionDisplay({
 
       console.log('[QuestionDisplay] 🔓 Keypad unscrambled (answer preserved)');
     }
-  }, [scrambled, question, options.length])
+  }, [scrambled, questionRound])
+
+  // Update option texts in shuffledOptions when real options arrive (placeholder -> revealed),
+  // while preserving the shuffled order established above
+  useEffect(() => {
+    if (options.length > 0) {
+      setShuffledOptions(prev => {
+        // If no existing shuffle order or length mismatch, build fresh (unscrambled) order
+        if (prev.length !== options.length) {
+          return options.map((option, index) => ({ originalIndex: index, option }));
+        }
+        // Update option text while preserving the existing display order
+        return prev.map(item => ({
+          ...item,
+          option: options[item.originalIndex] ?? item.option
+        }));
+      });
+    }
+  }, [options]);
 
   // Track when timer ends (from both prop and local timer)
   useEffect(() => {
@@ -625,67 +660,139 @@ export function QuestionDisplay({
             <div className="mb-2 sm:mb-3 md:mb-4 p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl border-2 border-cyan-400 bg-slate-800 text-center">
               <p className="text-white font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl">{numberInput}</p>
             </div>
-            {/* Number grid - 3 columns */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 mb-2 sm:mb-3 md:mb-4 lg:mb-5">
-              {shuffledNumbers.map((number, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleNumberDigit(number)}
-                  disabled={timerEnded || numberSubmitted || answerRevealed}
-                  className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform ${
-                    !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
-                  } ${
-                    numberSubmitted || timerEnded || answerRevealed
-                      ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
-                      : 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
-                  }`}
-                >
-                  {number}
-                </button>
-              ))}
-            </div>
-            {/* Control buttons row */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
-              <button
-                onClick={handleClearNumber}
-                disabled={timerEnded || numberSubmitted || answerRevealed}
-                className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
-                  !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
-                } ${
-                  numberSubmitted || timerEnded || answerRevealed
-                    ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
-                    : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer'
-                }`}
-              >
-                CLR
-              </button>
-              <button
-                onClick={handleNumberZero}
-                disabled={timerEnded || numberSubmitted || answerRevealed}
-                className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
-                  !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
-                } ${
-                  numberSubmitted || timerEnded || answerRevealed
-                    ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
-                    : 'bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer'
-                }`}
-              >
-                0
-              </button>
-              <button
-                onClick={handleSubmitNumber}
-                disabled={timerEnded || numberSubmitted || answerRevealed}
-                className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
-                  !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
-                } ${
-                  numberSubmitted || timerEnded || answerRevealed
-                    ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
-                    : 'bg-green-500 hover:bg-green-600 text-white cursor-pointer'
-                }`}
-              >
-                ✓
-              </button>
-            </div>
+            {/* Number grid - when scrambled, all 10 digits in grid; when not, 1-9 grid + control row with 0 */}
+            {scrambled ? (
+              <>
+                {/* Scrambled: first 9 digits in 3x3 grid */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 mb-2 sm:mb-3 md:mb-4 lg:mb-5">
+                  {shuffledNumbers.slice(0, 9).map((number, index) => (
+                    <button
+                      key={index}
+                      onClick={() => number === '0' ? handleNumberZero() : handleNumberDigit(number)}
+                      disabled={timerEnded || numberSubmitted || answerRevealed}
+                      className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform ${
+                        !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
+                      } ${
+                        numberSubmitted || timerEnded || answerRevealed
+                          ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                          : 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
+                      }`}
+                    >
+                      {number}
+                    </button>
+                  ))}
+                </div>
+                {/* Control row: CLR, 10th digit, Submit - matching unscrambled layout */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
+                  <button
+                    onClick={handleClearNumber}
+                    disabled={timerEnded || numberSubmitted || answerRevealed}
+                    className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
+                      !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
+                    } ${
+                      numberSubmitted || timerEnded || answerRevealed
+                        ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                        : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer'
+                    }`}
+                  >
+                    CLR
+                  </button>
+                  <button
+                    onClick={() => {
+                      const tenthDigit = shuffledNumbers[9];
+                      tenthDigit === '0' ? handleNumberZero() : handleNumberDigit(tenthDigit);
+                    }}
+                    disabled={timerEnded || numberSubmitted || answerRevealed}
+                    className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
+                      !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
+                    } ${
+                      numberSubmitted || timerEnded || answerRevealed
+                        ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                        : 'bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer'
+                    }`}
+                  >
+                    {shuffledNumbers[9]}
+                  </button>
+                  <button
+                    onClick={handleSubmitNumber}
+                    disabled={timerEnded || numberSubmitted || answerRevealed}
+                    className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
+                      !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
+                    } ${
+                      numberSubmitted || timerEnded || answerRevealed
+                        ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                        : 'bg-green-500 hover:bg-green-600 text-white cursor-pointer'
+                    }`}
+                  >
+                    ✓
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Unscrambled: standard 1-9 grid + control row with CLR, 0, Submit */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 mb-2 sm:mb-3 md:mb-4 lg:mb-5">
+                  {shuffledNumbers.map((number, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleNumberDigit(number)}
+                      disabled={timerEnded || numberSubmitted || answerRevealed}
+                      className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform ${
+                        !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
+                      } ${
+                        numberSubmitted || timerEnded || answerRevealed
+                          ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                          : 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
+                      }`}
+                    >
+                      {number}
+                    </button>
+                  ))}
+                </div>
+                {/* Control buttons row */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4">
+                  <button
+                    onClick={handleClearNumber}
+                    disabled={timerEnded || numberSubmitted || answerRevealed}
+                    className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
+                      !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
+                    } ${
+                      numberSubmitted || timerEnded || answerRevealed
+                        ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                        : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer'
+                    }`}
+                  >
+                    CLR
+                  </button>
+                  <button
+                    onClick={handleNumberZero}
+                    disabled={timerEnded || numberSubmitted || answerRevealed}
+                    className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
+                      !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
+                    } ${
+                      numberSubmitted || timerEnded || answerRevealed
+                        ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                        : 'bg-cyan-500 hover:bg-cyan-600 text-white cursor-pointer'
+                    }`}
+                  >
+                    0
+                  </button>
+                  <button
+                    onClick={handleSubmitNumber}
+                    disabled={timerEnded || numberSubmitted || answerRevealed}
+                    className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-sm sm:text-base md:text-lg lg:text-xl transition-all ${
+                      !numberSubmitted && !timerEnded && !answerRevealed ? 'active:scale-95' : ''
+                    } ${
+                      numberSubmitted || timerEnded || answerRevealed
+                        ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                        : 'bg-green-500 hover:bg-green-600 text-white cursor-pointer'
+                    }`}
+                  >
+                    ✓
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

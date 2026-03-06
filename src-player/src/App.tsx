@@ -760,10 +760,18 @@ export default function App() {
         setGoWideEnabled(goWideFlag);
         console.log('[Player] Question received, go wide enabled:', goWideFlag);
 
-        // Extract scrambled flag from question
-        const scrambledFlag = message.data?.scrambled ?? false;
-        setIsKeypadScrambled(scrambledFlag);
-        console.log('[Player] Question received, keypad scrambled:', scrambledFlag);
+        // Extract scrambled flag from question - supports per-team map or legacy boolean
+        const teamScrambleStates = message.data?.teamScrambleStates;
+        if (teamScrambleStates && teamName) {
+          const myScrambled = teamScrambleStates[teamName] ?? false;
+          setIsKeypadScrambled(myScrambled);
+          console.log('[Player] Question received, per-team keypad scrambled:', myScrambled, 'for team:', teamName);
+        } else {
+          // Legacy fallback: single boolean
+          const scrambledFlag = message.data?.scrambled ?? false;
+          setIsKeypadScrambled(scrambledFlag);
+          console.log('[Player] Question received, keypad scrambled (legacy):', scrambledFlag);
+        }
 
         // Reset reveal state
         setAnswerRevealed(false);
@@ -1036,9 +1044,18 @@ export default function App() {
         break;
       case 'SCRAMBLE_UPDATE':
         try {
-          const scrambledState = message.data?.scrambled ?? false;
-          console.log('[Player] SCRAMBLE_UPDATE message received - keypad scrambled:', scrambledState);
-          setIsKeypadScrambled(scrambledState);
+          // Supports per-team map or legacy boolean
+          const scrambleTeamStates = message.data?.teamScrambleStates;
+          if (scrambleTeamStates && teamName) {
+            const myScrambledState = scrambleTeamStates[teamName] ?? false;
+            console.log('[Player] SCRAMBLE_UPDATE per-team - keypad scrambled:', myScrambledState, 'for team:', teamName);
+            setIsKeypadScrambled(myScrambledState);
+          } else {
+            // Legacy fallback
+            const scrambledState = message.data?.scrambled ?? false;
+            console.log('[Player] SCRAMBLE_UPDATE message received - keypad scrambled (legacy):', scrambledState);
+            setIsKeypadScrambled(scrambledState);
+          }
           console.log('[Player] ✅ Keypad scramble state updated instantly');
         } catch (scrambleErr) {
           console.error('❌ [Player] Error in SCRAMBLE_UPDATE handler:', scrambleErr);

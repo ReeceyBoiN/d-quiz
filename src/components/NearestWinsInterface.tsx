@@ -12,7 +12,7 @@ import { playApplauseSound } from "../utils/audioUtils";
 interface NearestWinsInterfaceProps {
   onBack: () => void;
   onExternalDisplayUpdate?: (data: any) => void;
-  teams?: Array<{id: string, name: string, score?: number}>; // Teams data from main app
+  teams?: Array<{id: string, name: string, score?: number, scrambled?: boolean}>; // Teams data from main app
   teamAnswers?: {[teamId: string]: string}; // Network player answers from QuizHost
   onTeamAnswerUpdate?: (answers: {[teamId: string]: string}) => void; // Team answer update callback
   onAwardPoints?: (correctTeamIds: string[], gameMode: "keypad" | "buzzin" | "nearestwins" | "wheelspinner", fastestTeamId?: string) => void; // Award points callback
@@ -403,12 +403,16 @@ export function NearestWinsInterface({
     // Uses both WebSocket (sendQuestionToPlayers) and IPC for reliability
     sendQuestionToPlayers('Nearest Wins', undefined, 'numbers');
     try {
+      const teamScrambleStates: Record<string, boolean> = {};
+      (teams || []).forEach(t => { teamScrambleStates[t.name] = t.scrambled ?? false; });
+
       (window as any).api?.ipc?.invoke('network/broadcast-question', {
         question: {
           type: 'nearestwins',
           text: 'Nearest Wins',
           tolerance: tolerance[0],
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          teamScrambleStates,
         }
       }).catch((error: any) => {
         console.warn('[NearestWins] Failed to broadcast question to players:', error);
@@ -800,11 +804,15 @@ export function NearestWinsInterface({
     // Re-broadcast QUESTION to player devices so they show the number keypad for the new question
     sendQuestionToPlayers('Nearest Wins', undefined, 'numbers');
     try {
+      const teamScrambleStates2: Record<string, boolean> = {};
+      (teams || []).forEach(t => { teamScrambleStates2[t.name] = t.scrambled ?? false; });
+
       (window as any).api?.ipc?.invoke('network/broadcast-question', {
         question: {
           type: 'nearestwins',
           text: `Nearest Wins Q${questionNumber + 1}`,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          teamScrambleStates: teamScrambleStates2,
         }
       }).catch((error: any) => {
         console.warn('[NearestWins] Failed to re-broadcast question to players:', error);

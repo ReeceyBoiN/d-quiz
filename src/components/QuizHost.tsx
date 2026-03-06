@@ -1126,6 +1126,8 @@ export function QuizHost() {
           const placeholderOptions = Array.from({ length: placeholderCount }, (_, i) => `option_${i + 1}`);
 
           const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          const teamScrambleStates: Record<string, boolean> = {};
+          quizzes.forEach(quiz => { teamScrambleStates[quiz.name] = quiz.scrambled ?? false; });
           broadcastQuestionToPlayers({
             text: 'Waiting for question...',
             q: 'Waiting for question...',
@@ -1133,6 +1135,7 @@ export function QuizHost() {
             type: normalizedType,
             isPlaceholder: true,
             goWideEnabled: goWideEnabled,
+            teamScrambleStates,
           });
 
           console.log('[QuizHost] Broadcasting placeholder question with type:', currentQuestion.type, '-> normalized:', normalizedType, 'options count:', placeholderCount);
@@ -1141,7 +1144,7 @@ export function QuizHost() {
         }
       }
     }
-  }, [currentLoadedQuestionIndex, showQuizPackDisplay, loadedQuizQuestions, gameModeTimers, flowState.currentQuestionIndex, timer, flowState.isQuestionMode]);
+  }, [currentLoadedQuestionIndex, showQuizPackDisplay, loadedQuizQuestions, gameModeTimers, flowState.currentQuestionIndex, timer, flowState.isQuestionMode, quizzes]);
 
   // Initialize state for the first question (index 0) when quiz pack first loads
   // This effect runs separately from the question-change effect because the change effect
@@ -1190,6 +1193,8 @@ export function QuizHost() {
           const placeholderOptions = Array.from({ length: placeholderCount }, (_, i) => `option_${i + 1}`);
 
           const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          const teamScrambleStates: Record<string, boolean> = {};
+          quizzes.forEach(quiz => { teamScrambleStates[quiz.name] = quiz.scrambled ?? false; });
           broadcastQuestionToPlayers({
             text: 'Waiting for question...',
             q: 'Waiting for question...',
@@ -1197,6 +1202,7 @@ export function QuizHost() {
             type: normalizedType,
             isPlaceholder: true,
             goWideEnabled: goWideEnabled,
+            teamScrambleStates,
           });
 
           console.log('[QuizHost] Broadcasting placeholder question for first question with type:', currentQuestion.type, '-> normalized:', normalizedType, 'options count:', placeholderCount);
@@ -1205,7 +1211,7 @@ export function QuizHost() {
         }
       }
     }
-  }, [showQuizPackDisplay, flowState.isQuestionMode, loadedQuizQuestions, gameModeTimers, timer, goWideEnabled]);
+  }, [showQuizPackDisplay, flowState.isQuestionMode, loadedQuizQuestions, gameModeTimers, timer, goWideEnabled, quizzes]);
 
   // Strict Mid-Session Settings Sync: Actively recalculate timer duration when settings change mid-session
   // but only if the timer hasn't started yet.
@@ -2330,8 +2336,10 @@ export function QuizHost() {
         } else {
           // No picture, send question directly
           const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
-          const scrambledState = selectedQuiz?.scrambled ?? false;
-          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType, scrambledState);
+          // Build per-team scramble states map for all teams
+          const teamScrambleStates: Record<string, boolean> = {};
+          quizzes.forEach(quiz => { teamScrambleStates[quiz.name] = quiz.scrambled ?? false; });
+          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType, teamScrambleStates);
 
           // Broadcast question to player devices via backend
           broadcastQuestionToPlayers({
@@ -2340,7 +2348,7 @@ export function QuizHost() {
             options: currentQuestion.options || [],
             type: normalizedType,
             goWideEnabled: goWideEnabled,
-            scrambled: scrambledState,
+            teamScrambleStates,
           });
 
           if (externalWindow) {
@@ -2379,8 +2387,10 @@ export function QuizHost() {
         // Send question after picture (unless hideQuestionMode is true)
         if (!hideQuestionMode) {
           const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
-          const scrambledState = selectedQuiz?.scrambled ?? false;
-          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType, scrambledState);
+          // Build per-team scramble states map for all teams
+          const teamScrambleStates2: Record<string, boolean> = {};
+          quizzes.forEach(quiz => { teamScrambleStates2[quiz.name] = quiz.scrambled ?? false; });
+          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType, teamScrambleStates2);
 
           // Broadcast question to player devices via backend
           broadcastQuestionToPlayers({
@@ -2389,7 +2399,7 @@ export function QuizHost() {
             options: currentQuestion.options || [],
             type: normalizedType,
             goWideEnabled: goWideEnabled,
-            scrambled: scrambledState,
+            teamScrambleStates: teamScrambleStates2,
           });
 
           if (externalWindow) {
@@ -3041,6 +3051,8 @@ export function QuizHost() {
         // This will trigger players to show the appropriate input interface (letters/numbers/multiple-choice)
         // with a blank question area waiting for the actual question text
         const normalizedType = normalizeQuestionTypeForBroadcast(questionData.type);
+        const teamScrambleStates: Record<string, boolean> = {};
+        quizzes.forEach(quiz => { teamScrambleStates[quiz.name] = quiz.scrambled ?? false; });
         broadcastQuestionToPlayers({
           text: 'Waiting for question...',
           q: 'Waiting for question...',
@@ -3050,13 +3062,14 @@ export function QuizHost() {
           isPlaceholder: true, // Mark this as a placeholder message
           timestamp: Date.now(),
           goWideEnabled: goWideEnabled,
+          teamScrambleStates,
         });
         console.log('[QuizHost] Broadcasted placeholder question to players with type:', questionData.type, '-> normalized:', normalizedType, 'options count:', optionsToSend.length);
       } catch (error) {
         console.error('[QuizHost] Error broadcasting placeholder question:', error);
       }
     },
-    []
+    [quizzes, goWideEnabled]
   );
 
   // Handle buzz-in interface toggle
@@ -6138,22 +6151,24 @@ export function QuizHost() {
 
   // Handle scramble team keypad
   const handleScrambleKeypad = (teamId: string) => {
-    setQuizzes(prevQuizzes =>
-      prevQuizzes.map(quiz =>
+    setQuizzes(prevQuizzes => {
+      const updated = prevQuizzes.map(quiz =>
         quiz.id === teamId
           ? { ...quiz, scrambled: !quiz.scrambled }
           : quiz
-      )
-    );
+      );
+      // Build per-team scramble states map from the updated state
+      const teamScrambleStates: Record<string, boolean> = {};
+      updated.forEach(quiz => {
+        teamScrambleStates[quiz.name] = quiz.scrambled ?? false;
+      });
+      // Broadcast scramble state change to players with per-team map
+      sendScrambleUpdateToPlayers(teamScrambleStates);
+      console.log(`[QuizHost] Broadcasted per-team SCRAMBLE_UPDATE:`, teamScrambleStates);
+      return updated;
+    });
 
-    // Get the new scrambled state for logging and broadcasting
-    const newScrambledState = quizzes.find(q => q.id === teamId)?.scrambled;
-    const actualNewState = !newScrambledState; // Inverse because state hasn't updated yet
-    console.log(`Team ${teamId}'s keypad has been ${actualNewState ? 'scrambled' : 'unscrambled'}`);
-
-    // Broadcast scramble state change to players
-    sendScrambleUpdateToPlayers(actualNewState);
-    console.log(`[QuizHost] Broadcasted SCRAMBLE_UPDATE with state: ${actualNewState}`);
+    console.log(`Team ${teamId}'s keypad scramble toggled`);
 
     // Trigger debounced auto-save for crash recovery
     debouncedSaveGameState();
@@ -6168,15 +6183,20 @@ export function QuizHost() {
     // If half or less are scrambled, scramble all
     const shouldScrambleAll = scrambledTeams <= totalTeams / 2;
 
-    setQuizzes(prevQuizzes =>
-      prevQuizzes.map(quiz => ({ ...quiz, scrambled: shouldScrambleAll }))
-    );
+    setQuizzes(prevQuizzes => {
+      const updated = prevQuizzes.map(quiz => ({ ...quiz, scrambled: shouldScrambleAll }));
+      // Build per-team scramble states map
+      const teamScrambleStates: Record<string, boolean> = {};
+      updated.forEach(quiz => {
+        teamScrambleStates[quiz.name] = shouldScrambleAll;
+      });
+      // Broadcast scramble state change to all players with per-team map
+      sendScrambleUpdateToPlayers(teamScrambleStates);
+      console.log(`[QuizHost] Broadcasted global SCRAMBLE_UPDATE:`, teamScrambleStates);
+      return updated;
+    });
 
     console.log(`${shouldScrambleAll ? 'Scrambled' : 'Unscrambled'} all team keypads`);
-
-    // Broadcast scramble state change to all players
-    sendScrambleUpdateToPlayers(shouldScrambleAll);
-    console.log(`[QuizHost] Broadcasted global SCRAMBLE_UPDATE with state: ${shouldScrambleAll}`);
 
     // Trigger debounced auto-save for crash recovery
     debouncedSaveGameState();
