@@ -23,17 +23,13 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   leaderboard needs to play that teams buzzer or an applause with each reveal of a team on the socreboard - give the host a choice in the settings
 
-  --leaderboard export image needs to be made to work
-
   on player device when scores / leaderboard is shown, it needs to be scrolable so players can scroll up or down the leaderboard
 
-  sequence question needs to be able to tap the correct answer 
-
-  player device goes to standby / dim screen if not touched for a few sec
+  sequence question needs to be able to tap the correct sequence of answers, not just one answer 
 
   picture questions and multiple choice need to reveal options together
 
-  if a team doesnt have a buzzer chosen it needs to show a simble in the host app
+  --if a team doesnt have a buzzer chosen it needs to show a simble in the host app
 
   in settings, waiting room should have the ability to display waiting room images.
 
@@ -71,6 +67,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
   Leaderboard announcement with export PNG = 
   Network status accurate = 
   Settings tab and all sub tabs, comands, options = 
+  Does phone player app go on standby / screen dims or does it stay awake without input
   Log In portal at top right and all functions like activate quiz = 
 
   Advanced functions testing checklist:

@@ -11,6 +11,7 @@ import { HostTerminal } from './components/HostTerminal';
 import { NetworkContext } from './context/NetworkContext';
 import { useNetworkConnection } from './hooks/useNetworkConnection';
 import { usePlayerSettings } from './hooks/usePlayerSettings';
+import { useWakeLock } from './hooks/useWakeLock';
 import { getOrCreateDeviceId } from './lib/deviceId';
 import type { HostMessage } from './types/network';
 import { normalizeQuestionType } from './types/network';
@@ -43,6 +44,7 @@ interface PendingMessage {
 }
 
 export default function App() {
+  useWakeLock();
   const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'buzzer-selection' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display' | 'host-terminal' | 'pin-entry'>('team-entry');
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [pinError, setPinError] = useState('');
