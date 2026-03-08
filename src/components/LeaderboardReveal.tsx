@@ -20,118 +20,229 @@ function exportLeaderboardImage(teams: Quiz[]) {
   // Sort teams by score descending (best first) for the export
   const ranked = [...teams].sort((a, b) => b.score - a.score);
 
-  const padding = 40;
-  const rowHeight = 52;
-  const headerHeight = 160;
-  const footerHeight = 50;
-  const width = 700;
-  const height = headerHeight + ranked.length * rowHeight + footerHeight + padding * 2;
+  const logoUrl = 'https://cdn.builder.io/api/v1/image/assets%2Ffc9fa4b494f14138b58309dabb6bd450%2Fb0568b833d844f8db7ee325b5de9e5fb?format=webp&width=800&height=1200';
 
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d')!;
+  // Load logo first, then draw canvas
+  const logo = new Image();
+  logo.crossOrigin = 'anonymous';
+  logo.onload = () => {
+    const padding = 40;
+    const rowHeight = 52;
+    const logoHeight = 120;
+    const logoAspect = logo.naturalWidth / logo.naturalHeight;
+    const logoWidth = logoHeight * logoAspect;
+    const headerHeight = logoHeight + 80; // logo + subtitle + divider spacing
+    const footerHeight = 50;
+    const width = 700;
+    const height = headerHeight + ranked.length * rowHeight + footerHeight + padding * 2;
 
-  // Background
-  ctx.fillStyle = '#1a1a2e';
-  ctx.fillRect(0, 0, width, height);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d')!;
 
-  // Decorative top bar
-  const grad = ctx.createLinearGradient(0, 0, width, 0);
-  grad.addColorStop(0, '#f39c12');
-  grad.addColorStop(1, '#e67e22');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, width, 6);
+    // Background
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, width, height);
 
-  // "POP QUIZ" logo text
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#f39c12';
-  ctx.font = 'bold 48px Arial, sans-serif';
-  ctx.fillText('POP QUIZ', width / 2, padding + 50);
+    // Decorative top bar
+    const grad = ctx.createLinearGradient(0, 0, width, 0);
+    grad.addColorStop(0, '#f39c12');
+    grad.addColorStop(1, '#e67e22');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, 6);
 
-  // Subtitle
-  ctx.fillStyle = '#ecf0f1';
-  ctx.font = 'bold 24px Arial, sans-serif';
-  ctx.fillText('LEADERBOARD', width / 2, padding + 90);
+    // Draw logo centered at top
+    const logoX = (width - logoWidth) / 2;
+    const logoY = padding + 10;
+    ctx.drawImage(logo, logoX, logoY, logoWidth, logoHeight);
 
-  // Divider line
-  ctx.strokeStyle = '#f39c12';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(padding, padding + 110);
-  ctx.lineTo(width - padding, padding + 110);
-  ctx.stroke();
+    // Subtitle below logo
+    const subtitleY = logoY + logoHeight + 28;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ecf0f1';
+    ctx.font = 'bold 24px Arial, sans-serif';
+    ctx.fillText('LEADERBOARD', width / 2, subtitleY);
 
-  // Column headers
-  const tableTop = padding + headerHeight;
-  ctx.fillStyle = '#95a5a6';
-  ctx.font = 'bold 14px Arial, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('RANK', padding + 10, tableTop - 10);
-  ctx.fillText('TEAM', padding + 90, tableTop - 10);
-  ctx.textAlign = 'right';
-  ctx.fillText('SCORE', width - padding - 10, tableTop - 10);
+    // Divider line
+    const dividerY = subtitleY + 18;
+    ctx.strokeStyle = '#f39c12';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(padding, dividerY);
+    ctx.lineTo(width - padding, dividerY);
+    ctx.stroke();
 
-  // Team rows
-  ranked.forEach((team, i) => {
-    const y = tableTop + i * rowHeight;
-    const pos = i + 1;
-
-    // Alternating row background
-    if (i % 2 === 0) {
-      ctx.fillStyle = 'rgba(255,255,255,0.04)';
-      ctx.fillRect(padding, y, width - padding * 2, rowHeight);
-    }
-
-    // Highlight top 3
-    const medal = pos === 1 ? '\u{1F947}' : pos === 2 ? '\u{1F948}' : pos === 3 ? '\u{1F949}' : null;
-    const nameColor = pos === 1 ? '#f1c40f' : pos === 2 ? '#bdc3c7' : pos === 3 ? '#e67e22' : '#ecf0f1';
-
-    // Position
+    // Column headers
+    const tableTop = padding + headerHeight;
+    ctx.fillStyle = '#95a5a6';
+    ctx.font = 'bold 14px Arial, sans-serif';
     ctx.textAlign = 'left';
-    ctx.font = 'bold 22px Arial, sans-serif';
-    ctx.fillStyle = nameColor;
-    const posText = medal ? `${medal}` : `${pos}`;
-    ctx.fillText(posText, padding + 16, y + 34);
-
-    // Team name (truncate if too long to avoid overlapping score)
-    ctx.font = '20px Arial, sans-serif';
-    ctx.fillStyle = nameColor;
-    const maxNameWidth = width - padding * 2 - 90 - 80; // space between name start and score column
-    let displayName = team.name;
-    if (ctx.measureText(displayName).width > maxNameWidth) {
-      while (displayName.length > 0 && ctx.measureText(displayName + '…').width > maxNameWidth) {
-        displayName = displayName.slice(0, -1);
-      }
-      displayName += '…';
-    }
-    ctx.fillText(displayName, padding + 90, y + 34);
-
-    // Score
+    ctx.fillText('RANK', padding + 10, tableTop - 10);
+    ctx.fillText('TEAM', padding + 90, tableTop - 10);
     ctx.textAlign = 'right';
-    ctx.font = 'bold 22px Arial, sans-serif';
-    ctx.fillStyle = '#3498db';
-    ctx.fillText(`${team.score}`, width - padding - 16, y + 34);
-  });
+    ctx.fillText('SCORE', width - padding - 10, tableTop - 10);
 
-  // Footer watermark
-  ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(243, 156, 18, 0.4)';
-  ctx.font = '12px Arial, sans-serif';
-  ctx.fillText('popquiz', width / 2, height - 20);
+    // Team rows
+    ranked.forEach((team, i) => {
+      const y = tableTop + i * rowHeight;
+      const pos = i + 1;
 
-  // Trigger download
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'PopQuiz_Leaderboard.png';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 'image/png');
+      // Alternating row background
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.04)';
+        ctx.fillRect(padding, y, width - padding * 2, rowHeight);
+      }
+
+      // Highlight top 3
+      const medal = pos === 1 ? '\u{1F947}' : pos === 2 ? '\u{1F948}' : pos === 3 ? '\u{1F949}' : null;
+      const nameColor = pos === 1 ? '#f1c40f' : pos === 2 ? '#bdc3c7' : pos === 3 ? '#e67e22' : '#ecf0f1';
+
+      // Position
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 22px Arial, sans-serif';
+      ctx.fillStyle = nameColor;
+      const posText = medal ? `${medal}` : `${pos}`;
+      ctx.fillText(posText, padding + 16, y + 34);
+
+      // Team name (truncate if too long to avoid overlapping score)
+      ctx.font = '20px Arial, sans-serif';
+      ctx.fillStyle = nameColor;
+      const maxNameWidth = width - padding * 2 - 90 - 80; // space between name start and score column
+      let displayName = team.name;
+      if (ctx.measureText(displayName).width > maxNameWidth) {
+        while (displayName.length > 0 && ctx.measureText(displayName + '…').width > maxNameWidth) {
+          displayName = displayName.slice(0, -1);
+        }
+        displayName += '…';
+      }
+      ctx.fillText(displayName, padding + 90, y + 34);
+
+      // Score
+      ctx.textAlign = 'right';
+      ctx.font = 'bold 22px Arial, sans-serif';
+      ctx.fillStyle = '#3498db';
+      ctx.fillText(`${team.score}`, width - padding - 16, y + 34);
+    });
+
+    // Footer watermark
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(243, 156, 18, 0.4)';
+    ctx.font = '12px Arial, sans-serif';
+    ctx.fillText('popquiz', width / 2, height - 20);
+
+    // Trigger download
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'PopQuiz_Leaderboard.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  };
+
+  // Fallback if logo fails to load — export without logo
+  logo.onerror = () => {
+    console.warn('Failed to load logo, exporting without it');
+    const padding = 40;
+    const rowHeight = 52;
+    const headerHeight = 160;
+    const footerHeight = 50;
+    const width = 700;
+    const height = headerHeight + ranked.length * rowHeight + footerHeight + padding * 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, width, height);
+
+    const grad = ctx.createLinearGradient(0, 0, width, 0);
+    grad.addColorStop(0, '#f39c12');
+    grad.addColorStop(1, '#e67e22');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, 6);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#f39c12';
+    ctx.font = 'bold 48px Arial, sans-serif';
+    ctx.fillText('POP QUIZ', width / 2, padding + 50);
+
+    ctx.fillStyle = '#ecf0f1';
+    ctx.font = 'bold 24px Arial, sans-serif';
+    ctx.fillText('LEADERBOARD', width / 2, padding + 90);
+
+    ctx.strokeStyle = '#f39c12';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(padding, padding + 110);
+    ctx.lineTo(width - padding, padding + 110);
+    ctx.stroke();
+
+    const tableTop = padding + headerHeight;
+    ctx.fillStyle = '#95a5a6';
+    ctx.font = 'bold 14px Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('RANK', padding + 10, tableTop - 10);
+    ctx.fillText('TEAM', padding + 90, tableTop - 10);
+    ctx.textAlign = 'right';
+    ctx.fillText('SCORE', width - padding - 10, tableTop - 10);
+
+    ranked.forEach((team, i) => {
+      const y = tableTop + i * rowHeight;
+      const pos = i + 1;
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.04)';
+        ctx.fillRect(padding, y, width - padding * 2, rowHeight);
+      }
+      const medal = pos === 1 ? '\u{1F947}' : pos === 2 ? '\u{1F948}' : pos === 3 ? '\u{1F949}' : null;
+      const nameColor = pos === 1 ? '#f1c40f' : pos === 2 ? '#bdc3c7' : pos === 3 ? '#e67e22' : '#ecf0f1';
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 22px Arial, sans-serif';
+      ctx.fillStyle = nameColor;
+      ctx.fillText(medal ? `${medal}` : `${pos}`, padding + 16, y + 34);
+      ctx.font = '20px Arial, sans-serif';
+      ctx.fillStyle = nameColor;
+      const maxNameWidth = width - padding * 2 - 90 - 80;
+      let displayName = team.name;
+      if (ctx.measureText(displayName).width > maxNameWidth) {
+        while (displayName.length > 0 && ctx.measureText(displayName + '…').width > maxNameWidth) {
+          displayName = displayName.slice(0, -1);
+        }
+        displayName += '…';
+      }
+      ctx.fillText(displayName, padding + 90, y + 34);
+      ctx.textAlign = 'right';
+      ctx.font = 'bold 22px Arial, sans-serif';
+      ctx.fillStyle = '#3498db';
+      ctx.fillText(`${team.score}`, width - padding - 16, y + 34);
+    });
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(243, 156, 18, 0.4)';
+    ctx.font = '12px Arial, sans-serif';
+    ctx.fillText('popquiz', width / 2, height - 20);
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'PopQuiz_Leaderboard.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  };
+
+  logo.src = logoUrl;
 }
 
 export function LeaderboardReveal({ quizzes, onExternalDisplayUpdate }: LeaderboardRevealProps) {
