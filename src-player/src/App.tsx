@@ -99,6 +99,7 @@ export default function App() {
   const timerLockDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Track 1-second delay before locking inputs
   const approvalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Track approval screen transition timer
   const submittedAnswerRef = useRef<any>(null); // Store answer in ref for immediate access, bypassing async state updates
+  const imageCacheRef = useRef<Map<string, string>>(new Map()); // Pre-cached images keyed by cacheKey
   const timerStartTimeRef = useRef<number | null>(null); // Store timer start time from host for accurate response time calculation
   const idleExitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Grace-period exit when host is idle
 
@@ -125,23 +126,23 @@ export default function App() {
     return shouldIgnore;
   }, []);
 
-  // Handle 5-second display of fastest team overlay
+  // Handle 30-second display of fastest team overlay
   useEffect(() => {
     if (showFastestTeam) {
-      console.log('[Player] Starting 5-second fastest team display timer');
+      console.log('[Player] Starting 30-second fastest team display timer');
       // Clear any existing timer
       if (fastestTeamTimerRef.current) {
         clearTimeout(fastestTeamTimerRef.current);
       }
-      // Set 5-second timer to hide fastest team overlay
+      // Set 30-second timer to hide fastest team overlay
       fastestTeamTimerRef.current = setTimeout(() => {
-        console.log('[Player] 5-second fastest team display timer ended');
+        console.log('[Player] 30-second fastest team display timer ended');
         setShowFastestTeam(false);
         setFastestTeamName('');
         setFastestTeamPhoto(null);
         setFastestTeamGuess(undefined);
         setFastestTeamDifference(undefined);
-      }, 5000);
+      }, 30000);
     }
 
     return () => {
@@ -739,6 +740,17 @@ export default function App() {
 
         clearIdleExitTimeout('QUESTION');
 
+        // Clear fastest team overlay immediately when new question arrives
+        if (fastestTeamTimerRef.current) {
+          clearTimeout(fastestTeamTimerRef.current);
+          fastestTeamTimerRef.current = null;
+        }
+        setShowFastestTeam(false);
+        setFastestTeamName('');
+        setFastestTeamPhoto(null);
+        setFastestTeamGuess(undefined);
+        setFastestTeamDifference(undefined);
+
         // Cancel any pending display mode timer when question arrives
         if (displayModeTimerRef.current) {
           clearTimeout(displayModeTimerRef.current);
@@ -776,7 +788,11 @@ export default function App() {
         // Reset reveal state
         setAnswerRevealed(false);
         setCorrectAnswer(undefined);
-        setSelectedAnswers([]);
+        // Only clear selected answers if the player hasn't already submitted for this question
+        // This preserves answers submitted during the picture-only phase of picture questions
+        if (!submittedAnswerRef.current) {
+          setSelectedAnswers([]);
+        }
 
         // Normalize the question type from host to standard player type
         const normalizedQuestionData = {
@@ -910,6 +926,7 @@ export default function App() {
         clearIdleExitTimeout('NEXT');
 
         console.log('[Player] NEXT message received - clearing all question state immediately');
+        imageCacheRef.current.clear();
         resetQuestionState();
         if (!applyPendingDisplayMode('NEXT')) {
           transitionToIdleDisplay('NEXT');
@@ -925,6 +942,7 @@ export default function App() {
         clearIdleExitTimeout('END_ROUND');
 
         console.log('[Player] END_ROUND message received - clearing all question state');
+        imageCacheRef.current.clear();
         resetQuestionState();
         if (!applyPendingDisplayMode('END_ROUND')) {
           transitionToIdleDisplay('END_ROUND');
@@ -938,13 +956,31 @@ export default function App() {
           return;
         }
 
+        // Clear fastest team overlay immediately when picture arrives
+        if (fastestTeamTimerRef.current) {
+          clearTimeout(fastestTeamTimerRef.current);
+          fastestTeamTimerRef.current = null;
+        }
+        setShowFastestTeam(false);
+        setFastestTeamName('');
+        setFastestTeamPhoto(null);
+        setFastestTeamGuess(undefined);
+        setFastestTeamDifference(undefined);
+
         setCurrentScreen('question');
         setShowAnswerFeedback(false);
         setIsAnswerCorrect(undefined);
         if (message.data?.image) {
+          // Check if image was pre-cached
+          const cachedPictureUrl = imageCacheRef.current.get('picture-question');
+          const imageToUse = cachedPictureUrl || message.data.image;
+          if (cachedPictureUrl) {
+            console.log('[Player] Using pre-cached picture question image');
+            imageCacheRef.current.delete('picture-question');
+          }
           setCurrentQuestion((prev: any) => ({
             ...prev,
-            imageUrl: message.data.image,
+            imageUrl: imageToUse,
           }));
         }
         break;
@@ -994,14 +1030,16 @@ export default function App() {
       case 'FASTEST':
         try {
           console.log('[Player] FASTEST message received:', message.data);
-          const { teamName, teamPhoto, guess, difference } = message.data || {};
-          if (teamName) {
-            setFastestTeamName(teamName);
-            setFastestTeamPhoto(teamPhoto || null);
+          const { teamName: fastTeamName, teamPhoto: fastTeamPhoto, guess, difference } = message.data || {};
+          if (fastTeamName) {
+            setFastestTeamName(fastTeamName);
+            // Team photo was pre-cached via PRECACHE message (browser HTTP cache),
+            // so it should load instantly from browser cache when set here
+            setFastestTeamPhoto(fastTeamPhoto || null);
             setFastestTeamGuess(guess !== undefined ? Number(guess) : undefined);
             setFastestTeamDifference(difference !== undefined ? Number(difference) : undefined);
             setShowFastestTeam(true);
-            console.log('[Player] Showing fastest team:', teamName, guess !== undefined ? `(guessed ${guess}, off by ${difference})` : '');
+            console.log('[Player] Showing fastest team:', fastTeamName, guess !== undefined ? `(guessed ${guess}, off by ${difference})` : '');
           } else {
             console.warn('[Player] ⚠️  FASTEST message received but no teamName in data');
           }
@@ -1064,6 +1102,21 @@ export default function App() {
       case 'SCORE_UPDATE':
         console.log('[Player] SCORE_UPDATE message received:', message.data);
         // Score updates are handled on display side, just log here
+        break;
+
+      case 'PRECACHE':
+        try {
+          const { cacheKey, imageUrl: precacheImageUrl } = message.data || {};
+          if (cacheKey && precacheImageUrl) {
+            console.log('[Player] PRECACHE received, pre-loading image for:', cacheKey);
+            imageCacheRef.current.set(cacheKey, precacheImageUrl);
+            // Force browser to download/decode the image
+            const preloadImg = new Image();
+            preloadImg.src = precacheImageUrl;
+          }
+        } catch (precacheErr) {
+          console.error('❌ [Player] Error in PRECACHE handler:', precacheErr);
+        }
         break;
 
       case 'FLOW_STATE':
@@ -1389,7 +1442,20 @@ export default function App() {
           setGoWideEnabled(pendingMessage.data?.goWideEnabled ?? false);
           setAnswerRevealed(false);
           setCorrectAnswer(undefined);
-          setSelectedAnswers([]);
+          // Only clear selected answers if the player hasn't already submitted for this question
+          if (!submittedAnswerRef.current) {
+            setSelectedAnswers([]);
+          }
+          // Clear fastest team overlay
+          if (fastestTeamTimerRef.current) {
+            clearTimeout(fastestTeamTimerRef.current);
+            fastestTeamTimerRef.current = null;
+          }
+          setShowFastestTeam(false);
+          setFastestTeamName('');
+          setFastestTeamPhoto(null);
+          setFastestTeamGuess(undefined);
+          setFastestTeamDifference(undefined);
           setCurrentScreen('question');
           break;
 
@@ -1411,6 +1477,16 @@ export default function App() {
 
         case 'PICTURE':
           console.log('[App] Applying pending PICTURE message');
+          // Clear fastest team overlay
+          if (fastestTeamTimerRef.current) {
+            clearTimeout(fastestTeamTimerRef.current);
+            fastestTeamTimerRef.current = null;
+          }
+          setShowFastestTeam(false);
+          setFastestTeamName('');
+          setFastestTeamPhoto(null);
+          setFastestTeamGuess(undefined);
+          setFastestTeamDifference(undefined);
           setCurrentScreen('question');
           setShowAnswerFeedback(false);
           setIsAnswerCorrect(undefined);

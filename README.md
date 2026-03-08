@@ -23,7 +23,7 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   leaderboard needs to play that teams buzzer or an applause with each reveal of a team on the socreboard - give the host a choice in the settings
 
-  leaderboard export image needs to be made to work
+  --leaderboard export image needs to be made to work
 
   on player device when scores / leaderboard is shown, it needs to be scrolable so players can scroll up or down the leaderboard
 

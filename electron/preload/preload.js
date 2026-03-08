@@ -113,6 +113,7 @@ contextBridge.exposeInMainWorld('api', {
     broadcastReveal: (data) => invoke('network/broadcast-reveal', data),
     broadcastTimeUp: () => invoke('network/broadcast-timeup'),
     broadcastFlowState: (data) => invoke('network/broadcast-flow-state', data),
+    broadcastPrecache: (data) => invoke('network/broadcast-precache', data),
     broadcastBuzzerFolderChange: (data) => invoke('network/broadcast-buzzer-folder-change', data),
     sendToPlayer: (data) => invoke('network/send-to-player', data),
   },

@@ -38,7 +38,7 @@ import { useTimer } from "../hooks/useTimer";
 import { useHostInfo } from "../hooks/useHostInfo";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage, initialFlow } from "../state/flowState";
-import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController, sendScrambleUpdateToPlayers, sendFlowStateToPlayers } from "../network/wsHost";
+import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController, sendScrambleUpdateToPlayers, sendFlowStateToPlayers, sendPrecacheToPlayers } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { playApplauseSound, playFailSound } from "../utils/audioUtils";
 import { executeStartNormalTimer, executeStartSilentTimer, validateTimerDuration } from "../utils/unifiedTimerHandlers";
@@ -1113,6 +1113,16 @@ export function QuizHost() {
         setTeamCorrectRankings({});
         setGameTimerStartTime(null); // Reset timer start time for new question
 
+        // Pre-cache picture question image on player devices before reveal
+        if (hasQuestionImage(currentQuestion) && currentQuestion.imageDataUrl) {
+          try {
+            sendPrecacheToPlayers('picture-question', currentQuestion.imageDataUrl);
+            console.log('[QuizHost] PRECACHE: Sent picture question image to players for pre-loading');
+          } catch (err) {
+            console.error('[QuizHost] Error sending precache for picture question:', err);
+          }
+        }
+
         // Broadcast placeholder question to players immediately so they see answer pads right away
         try {
           let placeholderCount =
@@ -1179,6 +1189,16 @@ export function QuizHost() {
         setTeamAnswerStatuses({});
         setTeamCorrectRankings({});
         setGameTimerStartTime(null); // Ensure timer start time is null until timer actually starts
+
+        // Pre-cache picture question image on player devices before reveal
+        if (hasQuestionImage(currentQuestion) && currentQuestion.imageDataUrl) {
+          try {
+            sendPrecacheToPlayers('picture-question', currentQuestion.imageDataUrl);
+            console.log('[QuizHost] PRECACHE: Sent first question picture image to players for pre-loading');
+          } catch (err) {
+            console.error('[QuizHost] Error sending precache for first question picture:', err);
+          }
+        }
 
         // Broadcast placeholder question to players immediately so they see answer pads right away
         try {
@@ -2463,6 +2483,22 @@ export function QuizHost() {
         setGameTimerStartTime(now);
         console.log('[QuizHost] SENT_QUESTION->RUNNING: Setting gameTimerStartTime to', now);
 
+        // Pre-cache team photos on player devices so they're ready for fastest team reveal
+        try {
+          const teamsWithPhotos = quizzes.filter(team => team.photoUrl);
+          if (teamsWithPhotos.length > 0) {
+            // Pre-cache the first team photo with a generic key
+            // All team photos will be sent via the FASTEST message, but pre-caching
+            // ensures the browser has already downloaded and decoded the image
+            teamsWithPhotos.forEach(team => {
+              sendPrecacheToPlayers('fastest-team-photo', team.photoUrl!);
+            });
+            console.log('[QuizHost] PRECACHE: Sent', teamsWithPhotos.length, 'team photo(s) to players for pre-loading');
+          }
+        } catch (err) {
+          console.error('[QuizHost] Error sending precache for team photos:', err);
+        }
+
         sendTimerToPlayers(flowState.totalTime, false, now);
         // Play countdown audio with normal sound
         playCountdownAudio(flowState.totalTime, false).catch(error => {
@@ -2884,8 +2920,19 @@ export function QuizHost() {
     const customDuration = typeof customDurationOrEvent === 'number' ? customDurationOrEvent : undefined;
     console.log('[QuizHost] handleNavBarStartTimer called with customDuration:', customDuration, 'isQuizPackMode:', isQuizPackMode, 'isQuestionMode:', flowState.isQuestionMode, 'showKeypadInterface:', showKeypadInterface, 'showNearestWinsInterface:', showNearestWinsInterface, 'showBuzzInMode:', showBuzzInMode, 'showQuizPackDisplay:', showQuizPackDisplay);
 
-    // For quiz pack mode: check isQuizPackMode (quiz pack specific) AND showQuizPackDisplay (UI is visible)
-    // Note: flowState.isQuestionMode can be true for both quiz pack AND on-the-spot modes, so don't use it here
+    // Pre-cache team photos on player devices before timer starts
+    try {
+      const teamsWithPhotos = quizzes.filter(team => team.photoUrl);
+      if (teamsWithPhotos.length > 0) {
+        teamsWithPhotos.forEach(team => {
+          sendPrecacheToPlayers('fastest-team-photo', team.photoUrl!);
+        });
+        console.log('[QuizHost] handleNavBarStartTimer PRECACHE: Sent', teamsWithPhotos.length, 'team photo(s) to players');
+      }
+    } catch (err) {
+      console.error('[QuizHost] Error sending precache for team photos in handleNavBarStartTimer:', err);
+    }
+
     if (isQuizPackMode && showQuizPackDisplay) {
       console.log('[QuizHost] -> Quiz Pack Mode branch');
       // For quiz pack mode, use the timer parameters (custom duration from admin command or flow state)
@@ -2935,7 +2982,7 @@ export function QuizHost() {
     } else {
       console.log('[QuizHost] -> No matching mode! isQuizPackMode:', isQuizPackMode, 'isQuestionMode:', flowState.isQuestionMode, 'showKeypadInterface:', showKeypadInterface, 'showNearestWinsInterface:', showNearestWinsInterface, 'showBuzzInMode:', showBuzzInMode);
     }
-  }, [isQuizPackMode, showQuizPackDisplay, flowState.totalTime, gameActionHandlers, gameTimerRunning, gameTimerFinished, gameAnswerRevealed, gameFastestRevealed, teamsAnsweredCorrectly, showKeypadInterface, showNearestWinsInterface, showBuzzInMode, externalWindow]);
+  }, [isQuizPackMode, showQuizPackDisplay, flowState.totalTime, gameActionHandlers, gameTimerRunning, gameTimerFinished, gameAnswerRevealed, gameFastestRevealed, teamsAnsweredCorrectly, showKeypadInterface, showNearestWinsInterface, showBuzzInMode, externalWindow, quizzes]);
 
   /**
    * Wrapper for nav bar's onSilentTimer - handles both quiz pack and on-the-spot modes
@@ -2944,6 +2991,19 @@ export function QuizHost() {
     // Prevent passing React event objects as duration
     const customDuration = typeof customDurationOrEvent === 'number' ? customDurationOrEvent : undefined;
     console.log('[QuizHost] handleNavBarSilentTimer called with customDuration:', customDuration, 'isQuizPackMode:', isQuizPackMode, 'isQuestionMode:', flowState.isQuestionMode, 'showKeypadInterface:', showKeypadInterface, 'showQuizPackDisplay:', showQuizPackDisplay);
+
+    // Pre-cache team photos on player devices before timer starts
+    try {
+      const teamsWithPhotos = quizzes.filter(team => team.photoUrl);
+      if (teamsWithPhotos.length > 0) {
+        teamsWithPhotos.forEach(team => {
+          sendPrecacheToPlayers('fastest-team-photo', team.photoUrl!);
+        });
+        console.log('[QuizHost] handleNavBarSilentTimer PRECACHE: Sent', teamsWithPhotos.length, 'team photo(s) to players');
+      }
+    } catch (err) {
+      console.error('[QuizHost] Error sending precache for team photos in handleNavBarSilentTimer:', err);
+    }
 
     // For quiz pack mode: check isQuizPackMode (quiz pack specific) AND showQuizPackDisplay (UI is visible)
     // Note: flowState.isQuestionMode can be true for both quiz pack AND on-the-spot modes, so don't use it here
@@ -2976,7 +3036,7 @@ export function QuizHost() {
       const durationToPass = customDuration;
       gameActionHandlers.silentTimer(durationToPass);
     }
-  }, [isQuizPackMode, flowState.totalTime, showQuizPackDisplay, showKeypadInterface, externalWindow, gameActionHandlers]);
+  }, [isQuizPackMode, flowState.totalTime, showQuizPackDisplay, showKeypadInterface, externalWindow, gameActionHandlers, quizzes]);
 
   /**
    * Hide question handler - prevents question from being sent to players and external display.

@@ -39,7 +39,8 @@ export type NetworkMessageType =
   | 'ADMIN_RESPONSE'  // sent to controller confirming command execution
   | 'FLOW_STATE'  // broadcast to controller with current flow state
   | 'PHOTO_APPROVAL_UPDATED'  // broadcast when a team photo is approved/updated
-  | 'SCRAMBLE_UPDATE';  // broadcast to players when keypad scramble state changes
+  | 'SCRAMBLE_UPDATE'  // broadcast to players when keypad scramble state changes
+  | 'PRECACHE';  // pre-cache images on player devices before reveal
 
 export interface NetworkPayload {
   type: NetworkMessageType;
@@ -234,6 +235,16 @@ class HostNetwork {
   }
 
   /**
+   * Helper to pre-cache images on player devices before reveal.
+   */
+  public sendPrecache(cacheKey: string, imageUrl: string) {
+    this.broadcast({
+      type: 'PRECACHE',
+      data: { cacheKey, imageUrl },
+    });
+  }
+
+  /**
    * Helper to broadcast keypad scramble state change to players.
    */
   public sendScrambleUpdate(teamScrambleStates: Record<string, boolean>) {
@@ -394,6 +405,26 @@ export function sendEndRound() {
 
 export function sendScoresToDisplay(scores: { teamId: string; teamName: string; score: number }[]) {
   hostNetwork.sendScores(scores);
+}
+
+export function sendPrecacheToPlayers(cacheKey: string, imageUrl: string) {
+  // Send local listeners first
+  hostNetwork.sendPrecache(cacheKey, imageUrl);
+
+  // Send via IPC to backend/WebSocket for remote players (Electron)
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.broadcastPrecache) {
+      console.log('[wsHost] Calling IPC broadcastPrecache:', cacheKey);
+      api.network.broadcastPrecache({ cacheKey, imageUrl }).catch((err: any) => {
+        console.error('[wsHost] IPC broadcastPrecache error:', err);
+      });
+    } else {
+      console.log('[wsHost] broadcastPrecache IPC not available (browser mode or dev)');
+    }
+  } catch (err) {
+    console.error('[wsHost] Error calling broadcastPrecache IPC:', err);
+  }
 }
 
 export function sendScrambleUpdateToPlayers(teamScrambleStates: Record<string, boolean>) {

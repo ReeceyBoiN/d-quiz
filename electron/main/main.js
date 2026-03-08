@@ -835,6 +835,31 @@ async function boot() {
     }
   });
 
+  // Broadcast precache to player devices (pre-load images before reveal)
+  router.mount('network/broadcast-precache', async (payload) => {
+    try {
+      log.info('[IPC] network/broadcast-precache called with:', { cacheKey: payload?.cacheKey, hasImageUrl: !!payload?.imageUrl });
+
+      if (!backend || !backend.broadcastPrecache) {
+        log.error('[IPC] Backend not initialized for broadcast-precache');
+        throw new Error('Backend not initialized');
+      }
+
+      try {
+        backend.broadcastPrecache(payload);
+        log.info('[IPC] backend.broadcastPrecache completed successfully');
+      } catch (broadcastErr) {
+        log.error('[IPC] backend.broadcastPrecache threw error:', broadcastErr.message);
+        throw broadcastErr;
+      }
+
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-precache error:', err.message);
+      throw err;
+    }
+  });
+
   // Broadcast buzzer folder change to player devices
   router.mount('network/broadcast-buzzer-folder-change', async (payload) => {
     try {

@@ -13,11 +13,9 @@ export function FastestTeamOverlay({ teamName, teamPhoto, guess, difference }: F
   const [photoError, setPhotoError] = useState(false);
 
   useEffect(() => {
-    // Reset photo loading state when overlay mounts
     setPhotoLoaded(false);
     setPhotoError(false);
 
-    // Trigger animation on mount with slight delay
     const animationTimer = setTimeout(() => {
       setIsVisible(true);
     }, 50);
@@ -37,73 +35,73 @@ export function FastestTeamOverlay({ teamName, teamPhoto, guess, difference }: F
 
   return (
     <div
-      className={`fixed inset-0 z-50 bg-black/50 transition-opacity duration-300 ease-out ${
+      className={`fixed inset-0 z-50 bg-black/80 transition-opacity duration-300 ease-out ${
         isVisible ? 'opacity-100' : 'opacity-0'
       }`}
     >
-      {/* Team Photo Section - Full Screen */}
-      {teamPhoto && !photoError ? (
-        <div className="relative w-screen h-screen flex items-center justify-center">
-          {!photoLoaded && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-700 z-10">
-              <div className="animate-spin h-12 w-12 border-4 border-yellow-400 border-t-transparent rounded-full"></div>
-            </div>
-          )}
-          <img
-            src={teamPhoto}
-            alt={teamName}
-            className={`w-full h-full object-contain transition-opacity duration-300 ${
-              photoLoaded ? 'opacity-100' : 'opacity-0'
-            }`}
-            onLoad={handlePhotoLoad}
-            onError={handlePhotoError}
-          />
+      <style>{`
+        @keyframes flashBorder {
+          0%, 100% { border-color: #f59e0b; box-shadow: 0 0 15px rgba(245, 158, 11, 0.6); }
+          50% { border-color: #fbbf24; box-shadow: 0 0 30px rgba(251, 191, 36, 0.9); }
+        }
+      `}</style>
 
-          {/* Team Name Overlay */}
+      <div className="w-full h-full flex flex-col items-center justify-center p-4">
+        {/* Team Name - Flashing Box Above Photo */}
+        <div
+          className={`transform transition-all duration-300 ease-out mb-4 ${
+            isVisible ? 'scale-100 opacity-100 translate-y-0' : 'scale-75 opacity-0 -translate-y-4'
+          }`}
+        >
           <div
-            className={`absolute inset-0 flex items-center justify-center z-20 transition-all duration-300 ease-out ${
-              isVisible
-                ? 'scale-100 opacity-100'
-                : 'scale-75 opacity-0'
-            }`}
+            className="bg-gray-900 border-4 rounded-xl px-6 py-3 max-w-[90vw]"
+            style={{ animation: 'flashBorder 1s ease-in-out infinite' }}
           >
-            <div className="text-center max-w-2xl px-4">
-              <div className="text-white text-4xl sm:text-5xl md:text-6xl font-bold drop-shadow-2xl break-words">
-                {teamName}
-              </div>
-              {guess !== undefined && difference !== undefined && (
-                <div className="mt-4">
-                  <div className="text-white text-2xl sm:text-3xl font-semibold drop-shadow-lg">Guessed: {guess}</div>
-                  <div className="text-white/80 text-xl sm:text-2xl drop-shadow-lg">Off by {difference}</div>
-                </div>
-              )}
+            <div className="text-white text-3xl sm:text-4xl md:text-5xl font-bold text-center break-words">
+              {teamName}
             </div>
+            {guess !== undefined && difference !== undefined && (
+              <div className="mt-2 text-center">
+                <div className="text-amber-300 text-xl sm:text-2xl font-semibold">Guessed: {guess}</div>
+                <div className="text-amber-200/80 text-lg sm:text-xl">Off by {difference}</div>
+              </div>
+            )}
           </div>
         </div>
-      ) : (
-        <div className="w-screen h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+
+        {/* Team Photo Below */}
+        {teamPhoto && !photoError ? (
+          <div
+            className={`relative flex items-center justify-center transition-all duration-500 ease-out ${
+              isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
+            }`}
+            style={{ maxWidth: '80vw', maxHeight: '55vh' }}
+          >
+            {!photoLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-700 rounded-xl z-10">
+                <div className="animate-spin h-12 w-12 border-4 border-yellow-400 border-t-transparent rounded-full"></div>
+              </div>
+            )}
+            <img
+              src={teamPhoto}
+              alt={teamName}
+              className={`max-w-full max-h-[55vh] object-contain rounded-xl transition-opacity duration-300 ${
+                photoLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              onLoad={handlePhotoLoad}
+              onError={handlePhotoError}
+            />
+          </div>
+        ) : (
           <div
             className={`transform transition-all duration-300 ease-out ${
-              isVisible
-                ? 'scale-100 opacity-100'
-                : 'scale-75 opacity-0'
+              isVisible ? 'scale-100 opacity-100' : 'scale-75 opacity-0'
             }`}
           >
-            <div className="flex flex-col items-center gap-6">
-              <span className="text-9xl">{guess !== undefined ? '🎯' : '🏆'}</span>
-              <div className="text-white text-4xl sm:text-5xl md:text-6xl font-bold drop-shadow-lg text-center break-words max-w-2xl px-4">
-                {teamName}
-              </div>
-              {guess !== undefined && difference !== undefined && (
-                <div className="text-center">
-                  <div className="text-white text-2xl sm:text-3xl font-semibold drop-shadow-lg">Guessed: {guess}</div>
-                  <div className="text-white/80 text-xl sm:text-2xl drop-shadow-lg">Off by {difference}</div>
-                </div>
-              )}
-            </div>
+            <span className="text-9xl">{guess !== undefined ? '🎯' : '🏆'}</span>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

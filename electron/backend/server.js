@@ -2716,7 +2716,48 @@ async function startBackend({ port = 4310 } = {}) {
     }
   };
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastFlowState, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos, sendToPlayer };
+  function broadcastPrecache(precacheData) {
+    try {
+      log.info(`[broadcastPrecache] Broadcasting precache to players, cacheKey: ${precacheData?.cacheKey}`);
+
+      // Convert file:// URLs to HTTP so player devices can actually fetch them
+      const resolvedUrl = convertPhotoUrlToHttp(precacheData.imageUrl) || precacheData.imageUrl;
+
+      const message = JSON.stringify({
+        type: 'PRECACHE',
+        data: {
+          cacheKey: precacheData.cacheKey,
+          imageUrl: resolvedUrl
+        },
+        timestamp: Date.now()
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+
+      networkPlayers.forEach((player, deviceId) => {
+        if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+          try {
+            player.ws.send(message, (err) => {
+              if (err) {
+                log.error(`❌ [broadcastPrecache] ws.send error for ${deviceId}:`, err.message);
+              }
+            });
+            successCount++;
+          } catch (error) {
+            log.error(`❌ Failed to send precache to ${deviceId}:`, error.message);
+            failCount++;
+          }
+        }
+      });
+
+      log.info(`📦 Broadcast PRECACHE to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed` : ''));
+    } catch (err) {
+      log.error(`❌ broadcastPrecache error:`, err.message);
+    }
+  }
+
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastFlowState, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, broadcastPrecache, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos, sendToPlayer };
 }
 
 export { startBackend };

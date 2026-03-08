@@ -16,6 +16,124 @@ interface LeaderboardRevealProps {
   onExternalDisplayUpdate: (content: string, data?: any) => void;
 }
 
+function exportLeaderboardImage(teams: Quiz[]) {
+  // Sort teams by score descending (best first) for the export
+  const ranked = [...teams].sort((a, b) => b.score - a.score);
+
+  const padding = 40;
+  const rowHeight = 52;
+  const headerHeight = 160;
+  const footerHeight = 50;
+  const width = 700;
+  const height = headerHeight + ranked.length * rowHeight + footerHeight + padding * 2;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d')!;
+
+  // Background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, width, height);
+
+  // Decorative top bar
+  const grad = ctx.createLinearGradient(0, 0, width, 0);
+  grad.addColorStop(0, '#f39c12');
+  grad.addColorStop(1, '#e67e22');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, width, 6);
+
+  // "POP QUIZ" logo text
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f39c12';
+  ctx.font = 'bold 48px Arial, sans-serif';
+  ctx.fillText('POP QUIZ', width / 2, padding + 50);
+
+  // Subtitle
+  ctx.fillStyle = '#ecf0f1';
+  ctx.font = 'bold 24px Arial, sans-serif';
+  ctx.fillText('LEADERBOARD', width / 2, padding + 90);
+
+  // Divider line
+  ctx.strokeStyle = '#f39c12';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(padding, padding + 110);
+  ctx.lineTo(width - padding, padding + 110);
+  ctx.stroke();
+
+  // Column headers
+  const tableTop = padding + headerHeight;
+  ctx.fillStyle = '#95a5a6';
+  ctx.font = 'bold 14px Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('RANK', padding + 10, tableTop - 10);
+  ctx.fillText('TEAM', padding + 90, tableTop - 10);
+  ctx.textAlign = 'right';
+  ctx.fillText('SCORE', width - padding - 10, tableTop - 10);
+
+  // Team rows
+  ranked.forEach((team, i) => {
+    const y = tableTop + i * rowHeight;
+    const pos = i + 1;
+
+    // Alternating row background
+    if (i % 2 === 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      ctx.fillRect(padding, y, width - padding * 2, rowHeight);
+    }
+
+    // Highlight top 3
+    const medal = pos === 1 ? '\u{1F947}' : pos === 2 ? '\u{1F948}' : pos === 3 ? '\u{1F949}' : null;
+    const nameColor = pos === 1 ? '#f1c40f' : pos === 2 ? '#bdc3c7' : pos === 3 ? '#e67e22' : '#ecf0f1';
+
+    // Position
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 22px Arial, sans-serif';
+    ctx.fillStyle = nameColor;
+    const posText = medal ? `${medal}` : `${pos}`;
+    ctx.fillText(posText, padding + 16, y + 34);
+
+    // Team name (truncate if too long to avoid overlapping score)
+    ctx.font = '20px Arial, sans-serif';
+    ctx.fillStyle = nameColor;
+    const maxNameWidth = width - padding * 2 - 90 - 80; // space between name start and score column
+    let displayName = team.name;
+    if (ctx.measureText(displayName).width > maxNameWidth) {
+      while (displayName.length > 0 && ctx.measureText(displayName + '…').width > maxNameWidth) {
+        displayName = displayName.slice(0, -1);
+      }
+      displayName += '…';
+    }
+    ctx.fillText(displayName, padding + 90, y + 34);
+
+    // Score
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 22px Arial, sans-serif';
+    ctx.fillStyle = '#3498db';
+    ctx.fillText(`${team.score}`, width - padding - 16, y + 34);
+  });
+
+  // Footer watermark
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(243, 156, 18, 0.4)';
+  ctx.font = '12px Arial, sans-serif';
+  ctx.fillText('popquiz', width / 2, height - 20);
+
+  // Trigger download
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'PopQuiz_Leaderboard.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 'image/png');
+}
+
 export function LeaderboardReveal({ quizzes, onExternalDisplayUpdate }: LeaderboardRevealProps) {
   const [currentRevealIndex, setCurrentRevealIndex] = useState(-1);
   const [isRevealing, setIsRevealing] = useState(false);
@@ -133,11 +251,8 @@ export function LeaderboardReveal({ quizzes, onExternalDisplayUpdate }: Leaderbo
               <ChevronRight className="w-5 h-5 mr-2" />
               Next Team
             </Button>
-            <Button 
-              onClick={() => {
-                // Placeholder for export functionality - to be implemented later
-                console.log('Export Image clicked - functionality to be added');
-              }}
+            <Button
+              onClick={() => exportLeaderboardImage(quizzes)}
               variant="outline"
               className="border-border text-foreground hover:bg-accent transform hover:scale-105 transition-all duration-200 text-base px-4 py-3"
             >

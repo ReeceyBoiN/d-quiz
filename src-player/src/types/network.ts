@@ -24,7 +24,8 @@ export type HostMessageType =
   | 'CONTROLLER_AUTH_FAILED'
   | 'PIN_REQUIRED'
   | 'PIN_RESULT'
-  | 'ADMIN_RESPONSE';
+  | 'ADMIN_RESPONSE'
+  | 'PRECACHE';
 
 export interface HostMessage {
   type: HostMessageType;
