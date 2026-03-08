@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Play, RotateCcw, FileText, ChevronUp, ChevronDown, X, Minus, Square, WifiOff, ShieldOff, Pause } from "lucide-react";
+import { Play, RotateCcw, FileText, ChevronUp, ChevronDown, X, Minus, Square, WifiOff, ShieldOff, Pause, Volume2 } from "lucide-react";
 import { useSettings } from "../utils/SettingsContext";
 
 interface Quiz {
@@ -13,6 +13,7 @@ interface Quiz {
   disconnected?: boolean; // Whether the team is disconnected from their device
   blocked?: boolean; // Whether the team is blocked from earning points
   scrambled?: boolean; // Whether the team's keypad is scrambled
+  buzzerSound?: string; // The buzzer sound selected by the team
 }
 
 interface LeftSidebarProps {
@@ -140,6 +141,15 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
 
   return (
     <div className="w-full h-full bg-sidebar border-r border-sidebar-border flex flex-col">
+      <style>{`
+        @keyframes buzzer-flash {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.15; }
+        }
+        .animate-buzzer-flash {
+          animation: buzzer-flash 1s ease-in-out infinite;
+        }
+      `}</style>
       {/* Teams header */}
       <div className="bg-sidebar-accent border-b border-sidebar-border px-2 py-2 flex-shrink-0" style={{ WebkitAppRegion: 'drag' }}>
         <div className="text-sm font-semibold text-sidebar-foreground flex items-center justify-between">
@@ -231,7 +241,9 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
                   {quiz.scrambled && (
                     <RotateCcw className="w-4 h-4 text-purple-600 bg-purple-100 dark:bg-purple-900 rounded p-0.5 flex-shrink-0" title="Team's keypad is scrambled" />
                   )}
-                  {/* Debug logging for scrambled state */}
+                  {!quiz.disconnected && !quiz.buzzerSound && (
+                    <Volume2 className="w-4 h-4 text-yellow-500 flex-shrink-0 animate-buzzer-flash" title="Team has not selected a buzzer sound" />
+                  )}
                   <div className="leading-[1.15] text-left break-words whitespace-normal max-h-full text-[17px] flex-1">
                     {quiz.name}
                   </div>

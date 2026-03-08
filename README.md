@@ -29,8 +29,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   picture questions and multiple choice need to reveal options together
 
-  --if a team doesnt have a buzzer chosen it needs to show a simble in the host app
-
   in settings, waiting room should have the ability to display waiting room images.
 
   Music round?
