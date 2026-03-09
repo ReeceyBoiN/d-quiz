@@ -40,11 +40,19 @@ export async function getResourcePaths(): Promise<ResourcePaths> {
     return cachedPaths;
   }
 
-  try {
-    if (!isElectron()) {
-      throw new Error('Not running in Electron context');
-    }
+  if (!isElectron()) {
+    // Return fallback relative paths for browser/dev context
+    const fallback: ResourcePaths = {
+      phoneSlideshow: '../../resources/Phone Slideshow',
+      displaySlideshow: '../../resources/Display Slideshow',
+      sounds: '../../resources/sounds',
+      root: '../../resources'
+    };
+    console.warn('[PathManager] Not in Electron context, using fallback paths');
+    return fallback;
+  }
 
+  try {
     const paths = await (window as any).api.ipc.invoke('get-resource-paths');
     cachedPaths = paths;
     return paths;
