@@ -21,6 +21,14 @@ declare global {
 
 const isElectron = Boolean(window.api);
 
+// Helper for ordinal suffixes in external display
+const getExtSuffix = (pos: number) => {
+  if (pos % 10 === 1 && pos !== 11) return "st";
+  if (pos % 10 === 2 && pos !== 12) return "nd";
+  if (pos % 10 === 3 && pos !== 13) return "rd";
+  return "th";
+};
+
 // Helper function to calculate optimal grid columns based on option count
 const getOptimalGridColumns = (optionCount: number): string => {
   if (optionCount === 1 || optionCount === 2) return '2';
@@ -1258,6 +1266,220 @@ export function ExternalDisplayWindow() {
             textSize={displayData.textSize}
           />
         );
+
+      case 'leaderboard-intro': {
+        return (
+          <div style={{
+            height: '100%', width: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: '24px',
+            backgroundColor: '#1a252f', position: 'relative', overflow: 'hidden'
+          }}>
+            <div style={{ fontSize: '120px', marginBottom: '16px' }}>🏆</div>
+            <h1 style={{ fontSize: 'clamp(3rem, 8vw, 6rem)', fontWeight: 'bold', color: '#f39c12', margin: 0, textAlign: 'center' }}>
+              AND THE SCORES ARE...
+            </h1>
+            <p style={{ fontSize: 'clamp(1.2rem, 3vw, 2rem)', color: '#ecf0f1', opacity: 0.8, margin: 0 }}>
+              Get ready for the results!
+            </p>
+            <p style={{ fontSize: 'clamp(0.9rem, 2vw, 1.2rem)', color: '#95a5a6', margin: '24px 0 0 0' }}>
+              Host will reveal teams from last place to first...
+            </p>
+          </div>
+        );
+      }
+
+      case 'leaderboard-reveal': {
+        const revealData = displayData.data;
+        const revealedTeams: any[] = revealData?.revealedTeamsWithPositions || [];
+        const currentTeam = revealData?.team;
+        const isLast = revealData?.isLast;
+
+        // Sort revealed teams by position ascending (1st at top)
+        const sortedRevealed = [...revealedTeams].sort((a: any, b: any) => a.position - b.position);
+
+        return (
+          <div style={{
+            height: '100%', width: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: '24px',
+            backgroundColor: '#1a252f', padding: '32px', overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              background: 'linear-gradient(to right, #f39c12, #e67e22)', color: 'white',
+              padding: '12px 32px', borderRadius: '12px', textAlign: 'center'
+            }}>
+              <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.5rem)', fontWeight: 'bold', margin: 0 }}>
+                LEADERBOARD
+              </h1>
+            </div>
+
+            {/* Current reveal highlight */}
+            {currentTeam && (
+              <div style={{
+                backgroundColor: '#e74c3c', color: 'white', padding: '8px 24px',
+                borderRadius: '8px', border: '2px solid white', textAlign: 'center'
+              }}>
+                <span style={{ fontSize: 'clamp(1rem, 2.5vw, 1.4rem)', fontWeight: 'bold' }}>
+                  NOW REVEALING: {currentTeam.name}
+                  {revealData?.isJoint ? ` — Joint ${revealData.position}${getExtSuffix(revealData.position)}` : ` — ${revealData.position}${getExtSuffix(revealData.position)} place`}
+                  !
+                </span>
+              </div>
+            )}
+
+            {/* Scores Table */}
+            {sortedRevealed.length > 0 && (
+              <div style={{
+                width: '100%', maxWidth: '900px', backgroundColor: '#1a252f',
+                borderRadius: '12px', border: '4px solid #f39c12', overflow: 'hidden',
+                boxShadow: '0 10px 40px rgba(0,0,0,0.5)'
+              }}>
+                {/* Table Header */}
+                <div style={{
+                  backgroundColor: '#f39c12', padding: '12px 24px',
+                  display: 'grid', gridTemplateColumns: '15% 55% 30%',
+                  color: 'white', fontWeight: 'bold', fontSize: 'clamp(1rem, 2vw, 1.4rem)'
+                }}>
+                  <div style={{ textAlign: 'center' }}>Pos</div>
+                  <div>Team</div>
+                  <div style={{ textAlign: 'center' }}>Score</div>
+                </div>
+
+                {/* Table Body */}
+                <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                  {sortedRevealed.map((team: any) => {
+                    const isCurrent = currentTeam && team.id === currentTeam.id;
+                    const posLabel = team.isJoint
+                      ? `Joint ${team.position}${getExtSuffix(team.position)}`
+                      : `${team.position}${getExtSuffix(team.position)}`;
+                    const medal = team.position === 1 ? '🥇' : team.position === 2 ? '🥈' : team.position === 3 ? '🥉' : null;
+
+                    return (
+                      <div key={team.id} style={{
+                        display: 'grid', gridTemplateColumns: '15% 55% 30%',
+                        padding: '16px 24px', borderBottom: '2px solid #34495e',
+                        backgroundColor: isCurrent ? '#f39c12' : '#1a252f',
+                        color: 'white', transition: 'background-color 0.3s',
+                        fontSize: 'clamp(1rem, 2.5vw, 1.6rem)'
+                      }}>
+                        <div style={{ textAlign: 'center', fontWeight: 'bold' }}>
+                          {medal || posLabel}
+                        </div>
+                        <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          {team.name}
+                          {isCurrent && <span style={{ fontSize: '0.8em', opacity: 0.9, animation: 'pulse 1.5s infinite' }}>NEW!</span>}
+                        </div>
+                        <div style={{ textAlign: 'center', fontWeight: 'bold', color: isCurrent ? 'white' : '#3498db' }}>
+                          {team.score}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Final results text */}
+            {isLast && (
+              <div style={{ fontSize: 'clamp(1.5rem, 4vw, 3rem)', textAlign: 'center', animation: 'pulse 2s infinite' }}>
+                🎉 FINAL RESULTS REVEALED! 🎉
+              </div>
+            )}
+
+            {/* Confetti for 1st place */}
+            {revealData?.position === 1 && (
+              <>
+                {[...Array(40)].map((_, i) => {
+                  const startX = Math.random() * 100;
+                  const shapes = ['🎊', '🎉', '⭐', '🌟', '💫', '✨'];
+                  const shape = shapes[Math.floor(Math.random() * shapes.length)];
+                  const delay = Math.random() * 2;
+                  const duration = 4 + Math.random() * 2;
+                  return (
+                    <div
+                      key={`lb-confetti-${i}`}
+                      style={{
+                        position: 'absolute', left: `${startX}%`, top: '-5%',
+                        fontSize: '24px', pointerEvents: 'none',
+                        animation: `fall ${duration}s linear ${delay}s infinite`,
+                        opacity: 0.7, zIndex: 0
+                      }}
+                    >
+                      {shape}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        );
+      }
+
+      case 'leaderboard-winner-photo': {
+        const winnerData = displayData.data;
+        const winnerPhotoUrl = winnerData?.photoUrl;
+        const winnerTeamName = winnerData?.team?.name || 'WINNER';
+        return (
+          <div style={{
+            height: '100%', width: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: '24px',
+            backgroundColor: '#1a252f', position: 'relative', overflow: 'hidden'
+          }}>
+            {/* Winner photo */}
+            {winnerPhotoUrl && (
+              <div style={{
+                borderRadius: '16px', overflow: 'hidden',
+                border: '8px solid #f39c12',
+                boxShadow: '0 0 80px rgba(243, 156, 18, 0.5)',
+                animation: 'scaleInAnimation 0.6s ease-out'
+              }}>
+                <img
+                  src={winnerPhotoUrl}
+                  alt={winnerTeamName}
+                  style={{ maxHeight: '50vh', maxWidth: '70vw', objectFit: 'contain', display: 'block' }}
+                />
+              </div>
+            )}
+
+            {/* Winner text */}
+            <div style={{ textAlign: 'center', animation: 'scaleInAnimation 0.8s ease-out' }}>
+              <div style={{ fontSize: '80px', marginBottom: '8px' }}>🏆</div>
+              <h1 style={{ fontSize: '72px', fontWeight: 'bold', color: '#f39c12', margin: '0 0 8px 0' }}>
+                {winnerTeamName}
+              </h1>
+              <div style={{ fontSize: '36px', fontWeight: 'bold', color: 'white' }}>
+                1ST PLACE!
+              </div>
+            </div>
+
+            {/* Confetti effect */}
+            {[...Array(60)].map((_, i) => {
+              const startX = Math.random() * 100;
+              const shapes = ['🎊', '🎉', '⭐', '🌟', '💫', '✨'];
+              const shape = shapes[Math.floor(Math.random() * shapes.length)];
+              const delay = Math.random() * 2;
+              const duration = 4 + Math.random() * 2;
+              return (
+                <div
+                  key={`winner-confetti-ext-${i}`}
+                  style={{
+                    position: 'absolute',
+                    left: `${startX}%`,
+                    top: '-5%',
+                    fontSize: '24px',
+                    pointerEvents: 'none',
+                    animation: `fall ${duration}s linear ${delay}s infinite`,
+                    opacity: 0.7,
+                    zIndex: 0
+                  }}
+                >
+                  {shape}
+                </div>
+              );
+            })}
+          </div>
+        );
+      }
 
       default:
         return (

@@ -1,19 +1,67 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "./ui/button";
-import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { Trophy, Medal, Award, ChevronRight, RotateCcw, Users, Download } from "lucide-react";
+import { Trophy, Medal, Award, ChevronRight, RotateCcw, Download } from "lucide-react";
+import { playApplauseSound } from "../utils/audioUtils";
 
 interface Quiz {
   id: string;
   name: string;
   score: number;
   scrambled?: boolean;
+  buzzerSound?: string;
+  photoUrl?: string;
+}
+
+export interface RevealedTeamWithPosition {
+  id: string;
+  name: string;
+  score: number;
+  position: number;
+  isJoint: boolean;
+  buzzerSound?: string;
+  photoUrl?: string;
 }
 
 interface LeaderboardRevealProps {
   quizzes: Quiz[];
   onExternalDisplayUpdate: (content: string, data?: any) => void;
+  onPlayTeamBuzzer?: (buzzerSound: string) => void;
+}
+
+/**
+ * Calculate positions accounting for ties.
+ * Teams are sorted ascending by score (worst first).
+ * Position = number of teams in the FULL list with a higher score + 1.
+ * isJoint = another team shares the same score.
+ */
+function calculatePositions(sortedTeamsAsc: Quiz[]): RevealedTeamWithPosition[] {
+  return sortedTeamsAsc.map((team) => {
+    const betterCount = sortedTeamsAsc.filter(t => t.score > team.score).length;
+    const position = betterCount + 1;
+    const isJoint = sortedTeamsAsc.filter(t => t.score === team.score).length > 1;
+    return {
+      id: team.id,
+      name: team.name,
+      score: team.score,
+      position,
+      isJoint,
+      buzzerSound: team.buzzerSound,
+      photoUrl: team.photoUrl,
+    };
+  });
+}
+
+function formatPosition(position: number, isJoint: boolean): string {
+  const suffix = getPositionSuffix(position);
+  return isJoint ? `Joint ${position}${suffix}` : `${position}${suffix}`;
+}
+
+function getPositionSuffix(position: number) {
+  if (position % 10 === 1 && position !== 11) return "st";
+  if (position % 10 === 2 && position !== 12) return "nd";
+  if (position % 10 === 3 && position !== 13) return "rd";
+  return "th";
 }
 
 function exportLeaderboardImage(teams: Quiz[]) {
@@ -22,7 +70,6 @@ function exportLeaderboardImage(teams: Quiz[]) {
 
   const logoUrl = 'https://cdn.builder.io/api/v1/image/assets%2Ffc9fa4b494f14138b58309dabb6bd450%2Fb0568b833d844f8db7ee325b5de9e5fb?format=webp&width=800&height=1200';
 
-  // Load logo first, then draw canvas
   const logo = new Image();
   logo.crossOrigin = 'anonymous';
   logo.onload = () => {
@@ -31,7 +78,7 @@ function exportLeaderboardImage(teams: Quiz[]) {
     const logoHeight = 120;
     const logoAspect = logo.naturalWidth / logo.naturalHeight;
     const logoWidth = logoHeight * logoAspect;
-    const headerHeight = logoHeight + 80; // logo + subtitle + divider spacing
+    const headerHeight = logoHeight + 80;
     const footerHeight = 50;
     const width = 700;
     const height = headerHeight + ranked.length * rowHeight + footerHeight + padding * 2;
@@ -41,30 +88,25 @@ function exportLeaderboardImage(teams: Quiz[]) {
     canvas.height = height;
     const ctx = canvas.getContext('2d')!;
 
-    // Background
     ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, width, height);
 
-    // Decorative top bar
     const grad = ctx.createLinearGradient(0, 0, width, 0);
     grad.addColorStop(0, '#f39c12');
     grad.addColorStop(1, '#e67e22');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, 6);
 
-    // Draw logo centered at top
     const logoX = (width - logoWidth) / 2;
     const logoY = padding + 10;
     ctx.drawImage(logo, logoX, logoY, logoWidth, logoHeight);
 
-    // Subtitle below logo
     const subtitleY = logoY + logoHeight + 28;
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ecf0f1';
     ctx.font = 'bold 24px Arial, sans-serif';
     ctx.fillText('LEADERBOARD', width / 2, subtitleY);
 
-    // Divider line
     const dividerY = subtitleY + 18;
     ctx.strokeStyle = '#f39c12';
     ctx.lineWidth = 2;
@@ -73,7 +115,6 @@ function exportLeaderboardImage(teams: Quiz[]) {
     ctx.lineTo(width - padding, dividerY);
     ctx.stroke();
 
-    // Column headers
     const tableTop = padding + headerHeight;
     ctx.fillStyle = '#95a5a6';
     ctx.font = 'bold 14px Arial, sans-serif';
@@ -83,32 +124,22 @@ function exportLeaderboardImage(teams: Quiz[]) {
     ctx.textAlign = 'right';
     ctx.fillText('SCORE', width - padding - 10, tableTop - 10);
 
-    // Team rows
     ranked.forEach((team, i) => {
       const y = tableTop + i * rowHeight;
       const pos = i + 1;
-
-      // Alternating row background
       if (i % 2 === 0) {
         ctx.fillStyle = 'rgba(255,255,255,0.04)';
         ctx.fillRect(padding, y, width - padding * 2, rowHeight);
       }
-
-      // Highlight top 3
       const medal = pos === 1 ? '\u{1F947}' : pos === 2 ? '\u{1F948}' : pos === 3 ? '\u{1F949}' : null;
       const nameColor = pos === 1 ? '#f1c40f' : pos === 2 ? '#bdc3c7' : pos === 3 ? '#e67e22' : '#ecf0f1';
-
-      // Position
       ctx.textAlign = 'left';
       ctx.font = 'bold 22px Arial, sans-serif';
       ctx.fillStyle = nameColor;
-      const posText = medal ? `${medal}` : `${pos}`;
-      ctx.fillText(posText, padding + 16, y + 34);
-
-      // Team name (truncate if too long to avoid overlapping score)
+      ctx.fillText(medal ? `${medal}` : `${pos}`, padding + 16, y + 34);
       ctx.font = '20px Arial, sans-serif';
       ctx.fillStyle = nameColor;
-      const maxNameWidth = width - padding * 2 - 90 - 80; // space between name start and score column
+      const maxNameWidth = width - padding * 2 - 90 - 80;
       let displayName = team.name;
       if (ctx.measureText(displayName).width > maxNameWidth) {
         while (displayName.length > 0 && ctx.measureText(displayName + '…').width > maxNameWidth) {
@@ -117,21 +148,17 @@ function exportLeaderboardImage(teams: Quiz[]) {
         displayName += '…';
       }
       ctx.fillText(displayName, padding + 90, y + 34);
-
-      // Score
       ctx.textAlign = 'right';
       ctx.font = 'bold 22px Arial, sans-serif';
       ctx.fillStyle = '#3498db';
       ctx.fillText(`${team.score}`, width - padding - 16, y + 34);
     });
 
-    // Footer watermark
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(243, 156, 18, 0.4)';
     ctx.font = '12px Arial, sans-serif';
     ctx.fillText('popquiz', width / 2, height - 20);
 
-    // Trigger download
     canvas.toBlob((blob) => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
@@ -145,7 +172,6 @@ function exportLeaderboardImage(teams: Quiz[]) {
     }, 'image/png');
   };
 
-  // Fallback if logo fails to load — export without logo
   logo.onerror = () => {
     console.warn('Failed to load logo, exporting without it');
     const padding = 40;
@@ -245,90 +271,87 @@ function exportLeaderboardImage(teams: Quiz[]) {
   logo.src = logoUrl;
 }
 
-export function LeaderboardReveal({ quizzes, onExternalDisplayUpdate }: LeaderboardRevealProps) {
+export function LeaderboardReveal({ quizzes, onExternalDisplayUpdate, onPlayTeamBuzzer }: LeaderboardRevealProps) {
   const [currentRevealIndex, setCurrentRevealIndex] = useState(-1);
-  const [isRevealing, setIsRevealing] = useState(false);
   const [sortedTeams, setSortedTeams] = useState<Quiz[]>([]);
+  const [teamsWithPositions, setTeamsWithPositions] = useState<RevealedTeamWithPosition[]>([]);
 
   // Sort teams by score (ascending - worst to best for dramatic reveal)
   useEffect(() => {
     const sorted = [...quizzes].sort((a, b) => a.score - b.score);
     setSortedTeams(sorted);
+    setTeamsWithPositions(calculatePositions(sorted));
   }, [quizzes]);
 
   // Auto-start reveal when component mounts
   useEffect(() => {
-    // Automatically start the reveal process when component mounts
-    setIsRevealing(true);
     setCurrentRevealIndex(-1);
     onExternalDisplayUpdate("leaderboard-intro");
-  }, []); // Empty dependency array - only run once on mount
-
-  const handleStartReveal = () => {
-    setIsRevealing(true);
-    setCurrentRevealIndex(-1);
-    onExternalDisplayUpdate("leaderboard-intro");
-  };
+  }, []);
 
   const handleNext = () => {
     if (currentRevealIndex < sortedTeams.length - 1) {
       const nextIndex = currentRevealIndex + 1;
       setCurrentRevealIndex(nextIndex);
-      
-      // Update external display with current team reveal
+      playApplauseSound();
+
       const currentTeam = sortedTeams[nextIndex];
-      const position = sortedTeams.length - nextIndex;
-      
-      // Create an enhanced revealed teams list with actual positions
-      const revealedTeamsWithPositions = sortedTeams.slice(0, nextIndex + 1).map((team, index) => ({
-        ...team,
-        actualPosition: sortedTeams.length - index // Actual position in the overall ranking
-      }));
-      
-      onExternalDisplayUpdate("leaderboard-reveal", {
-        team: currentTeam,
-        position: position,
-        totalTeams: sortedTeams.length,
-        isLast: nextIndex === sortedTeams.length - 1,
-        revealedTeamsWithPositions: revealedTeamsWithPositions
-      });
+      const teamPos = teamsWithPositions[nextIndex];
+      const isWinner = nextIndex === sortedTeams.length - 1;
+
+      // Build revealed teams list (all teams revealed so far, sorted by position asc)
+      const revealedTeamsWithPositions = teamsWithPositions
+        .slice(0, nextIndex + 1)
+        .sort((a, b) => a.position - b.position);
+
+      // If this is the winner (1st place), also play their buzzer sound
+      if (isWinner && currentTeam.buzzerSound && onPlayTeamBuzzer) {
+        onPlayTeamBuzzer(currentTeam.buzzerSound);
+      }
+
+      if (isWinner && currentTeam.photoUrl) {
+        // For the winner, first show their photo on the external display
+        onExternalDisplayUpdate("leaderboard-winner-photo", {
+          team: currentTeam,
+          position: teamPos.position,
+          totalTeams: sortedTeams.length,
+          photoUrl: currentTeam.photoUrl,
+        });
+
+        // After 5 seconds, transition back to the leaderboard with all teams revealed
+        setTimeout(() => {
+          onExternalDisplayUpdate("leaderboard-reveal", {
+            team: currentTeam,
+            position: teamPos.position,
+            isJoint: teamPos.isJoint,
+            totalTeams: sortedTeams.length,
+            isLast: true,
+            revealedTeamsWithPositions,
+          });
+        }, 5000);
+      } else {
+        onExternalDisplayUpdate("leaderboard-reveal", {
+          team: currentTeam,
+          position: teamPos.position,
+          isJoint: teamPos.isJoint,
+          totalTeams: sortedTeams.length,
+          isLast: isWinner,
+          revealedTeamsWithPositions,
+        });
+      }
     }
   };
 
   const handleReset = () => {
-    setIsRevealing(false);
     setCurrentRevealIndex(-1);
     onExternalDisplayUpdate("leaderboard-intro");
-  };
-
-  const getPositionIcon = (position: number) => {
-    switch (position) {
-      case 1:
-        return <Trophy className="w-12 h-12 text-yellow-500" />;
-      case 2:
-        return <Medal className="w-12 h-12 text-gray-400" />;
-      case 3:
-        return <Award className="w-12 h-12 text-amber-600" />;
-      default:
-        return <div className="w-12 h-12 flex items-center justify-center text-4xl font-bold text-primary bg-primary/20 rounded-full">{position}</div>;
-    }
-  };
-
-  const getPositionSuffix = (position: number) => {
-    if (position % 10 === 1 && position !== 11) return "st";
-    if (position % 10 === 2 && position !== 12) return "nd";
-    if (position % 10 === 3 && position !== 13) return "rd";
-    return "th";
   };
 
   // Spacebar shortcut for Next Team button
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      // Only trigger if spacebar is pressed and not in an input field
       if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
         e.preventDefault();
-        
-        // Next Team button
         if (currentRevealIndex < sortedTeams.length - 1) {
           handleNext();
         }
@@ -337,177 +360,128 @@ export function LeaderboardReveal({ quizzes, onExternalDisplayUpdate }: Leaderbo
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentRevealIndex, sortedTeams.length]);
+  }, [currentRevealIndex, sortedTeams.length, teamsWithPositions]);
 
-  const currentTeam = currentRevealIndex >= 0 ? sortedTeams[currentRevealIndex] : null;
-  const currentPosition = currentTeam ? sortedTeams.length - currentRevealIndex : null;
+  const allRevealed = currentRevealIndex >= sortedTeams.length - 1 && sortedTeams.length > 0;
 
-  // Get the NEXT team to be revealed (one step ahead for host preparation)
-  const nextTeamIndex = currentRevealIndex + 1;
-  const nextTeam = nextTeamIndex < sortedTeams.length ? sortedTeams[nextTeamIndex] : null;
-  const nextPosition = nextTeam ? sortedTeams.length - nextTeamIndex : null;
+  // Build the full list for display: revealed teams show data, unrevealed show placeholder
+  const displayRows = teamsWithPositions.map((team, index) => {
+    const isRevealed = index <= currentRevealIndex;
+    const isCurrentReveal = index === currentRevealIndex;
+    return { ...team, isRevealed, isCurrentReveal };
+  }).sort((a, b) => a.position - b.position); // Sort by position (1st at top)
 
   return (
-    <div className="flex flex-col h-full bg-background p-6">
-      {/* Header with Controls */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-foreground">Leaderboard Reveal</h1>
-          <div className="flex gap-3">
-            <Button 
-              onClick={handleNext}
-              disabled={currentRevealIndex >= sortedTeams.length - 1}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:transform-none text-lg px-6 py-3"
-            >
-              <ChevronRight className="w-5 h-5 mr-2" />
-              Next Team
-            </Button>
-            <Button
-              onClick={() => exportLeaderboardImage(quizzes)}
-              variant="outline"
-              className="border-border text-foreground hover:bg-accent transform hover:scale-105 transition-all duration-200 text-base px-4 py-3"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export Image
-            </Button>
-            <Button 
-              onClick={handleReset}
-              variant="outline"
-              className="border-border text-foreground hover:bg-accent transform hover:scale-105 transition-all duration-200 text-lg px-6 py-3"
-            >
-              <RotateCcw className="w-5 h-5 mr-2" />
-              Reset
-            </Button>
-          </div>
-        </div>
-
-        {/* Progress indicator */}
-        <div className="flex items-center gap-4 text-lg text-muted-foreground">
-          <span>Progress:</span>
-          <Badge variant="secondary" className="bg-secondary text-secondary-foreground text-lg px-4 py-2">
-            {Math.max(0, currentRevealIndex + 1)} / {sortedTeams.length}
-          </Badge>
-          {currentRevealIndex >= 0 && (
-            <span className="text-primary font-semibold">
-              {currentRevealIndex === sortedTeams.length - 1 ? "🏆 REVEALING WINNER!" : `Revealing ${currentPosition}${getPositionSuffix(currentPosition!)} place`}
-            </span>
+    <div className="flex flex-col h-full bg-background">
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+        <div className="flex items-center gap-3">
+          <Trophy className="w-5 h-5 text-orange-500" />
+          <h1 className="text-lg font-bold text-foreground">Leaderboard Reveal</h1>
+          <span className="text-sm text-muted-foreground">
+            {currentRevealIndex + 1} / {sortedTeams.length} revealed
+          </span>
+          {allRevealed && (
+            <Badge className="bg-green-600 text-white text-xs">Complete</Badge>
           )}
         </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleNext}
+            disabled={allRevealed}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-5"
+          >
+            <ChevronRight className="w-4 h-4 mr-1" />
+            Next Team
+          </Button>
+          <Button
+            onClick={() => exportLeaderboardImage(quizzes)}
+            variant="outline"
+            size="sm"
+          >
+            <Download className="w-4 h-4 mr-1" />
+            Export
+          </Button>
+          <Button onClick={handleReset} variant="outline" size="sm">
+            <RotateCcw className="w-4 h-4 mr-1" />
+            Reset
+          </Button>
+        </div>
       </div>
 
-      {/* Current Team Display */}
-      <div className="flex-1 flex items-center justify-center">
-        {currentRevealIndex === -1 ? (
-          <div className="text-center">
-            <div className="bg-orange-500/10 border border-orange-500 p-8 rounded-lg max-w-3xl">
-              <div className="text-4xl mb-4">🏆</div>
-              <h2 className="text-3xl font-bold text-orange-500 mb-3">GET READY TO ANNOUNCE</h2>
-              <p className="text-lg text-foreground opacity-80 mb-4">
-                External display shows: "AND THE SCORES ARE..."
-              </p>
-              {nextTeam && (
-                <div className="bg-card p-6 rounded-lg border-2 border-border mt-4">
-                  <p className="text-base text-muted-foreground mb-3">Say:</p>
-                  <div className="text-xl text-foreground mb-2">
-                    "In {nextPosition}{getPositionSuffix(nextPosition!)} place with {nextTeam.score} point{nextTeam.score !== 1 ? 's' : ''}, it's..."
-                  </div>
-                  <h3 className="text-4xl font-bold text-orange-500 mb-3">
-                    {nextTeam.name}
-                  </h3>
-                </div>
-              )}
-              <p className="text-base text-muted-foreground mt-4">
-                Say the above, then click "Next Team" to reveal them
-              </p>
-            </div>
+      {/* Main table area */}
+      <div className="flex-1 overflow-auto p-4">
+        <div className="max-w-2xl mx-auto">
+          {/* Table header */}
+          <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">
+            <div className="col-span-2">Pos</div>
+            <div className="col-span-7">Team</div>
+            <div className="col-span-3 text-right">Score</div>
           </div>
-        ) : nextTeam ? (
-          <div className="text-center">
-            <Card className="bg-card border-4 border-orange-500 p-8 max-w-5xl shadow-2xl">
-              <div className="space-y-4">
-                {/* Current Status */}
-                <div className="bg-background p-4 rounded-lg border-2 border-border">
-                  <div className="text-sm text-muted-foreground mb-1">Currently Showing on External Display:</div>
-                  <div className="text-xl font-bold text-primary">
-                    {currentTeam?.name} - {currentPosition}{getPositionSuffix(currentPosition!)} place
+
+          {/* Table rows */}
+          <div className="divide-y divide-border">
+            {displayRows.map((row) => {
+              const posIcon = row.position === 1 ? <Trophy className="w-5 h-5 text-yellow-500" /> :
+                              row.position === 2 ? <Medal className="w-5 h-5 text-gray-400" /> :
+                              row.position === 3 ? <Award className="w-5 h-5 text-amber-600" /> : null;
+
+              if (!row.isRevealed) {
+                // Unrevealed row — dimmed placeholder
+                return (
+                  <div key={row.id} className="grid grid-cols-12 gap-2 px-4 py-3 opacity-30">
+                    <div className="col-span-2 text-sm text-muted-foreground">???</div>
+                    <div className="col-span-7 text-sm text-muted-foreground">???</div>
+                    <div className="col-span-3 text-right text-sm text-muted-foreground">—</div>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={row.id}
+                  className={`grid grid-cols-12 gap-2 px-4 py-3 transition-colors ${
+                    row.isCurrentReveal
+                      ? 'bg-orange-500/15 border-l-4 border-l-orange-500'
+                      : ''
+                  }`}
+                >
+                  {/* Position */}
+                  <div className="col-span-2 flex items-center gap-1">
+                    {posIcon || (
+                      <span className="text-sm font-bold text-primary">{row.position}</span>
+                    )}
+                    {row.isJoint && (
+                      <span className="text-[10px] text-orange-400 font-medium">Joint</span>
+                    )}
+                  </div>
+
+                  {/* Team name */}
+                  <div className="col-span-7 flex items-center gap-2">
+                    <span className={`text-sm font-semibold ${
+                      row.isCurrentReveal ? 'text-orange-500' : 'text-foreground'
+                    }`}>
+                      {row.name}
+                    </span>
+                    {row.isCurrentReveal && (
+                      <span className="text-xs text-orange-400 animate-pulse">NEW</span>
+                    )}
+                  </div>
+
+                  {/* Score */}
+                  <div className="col-span-3 text-right">
+                    <span className="text-sm font-bold text-blue-400">{row.score}</span>
                   </div>
                 </div>
-
-                {/* Next Team to Announce */}
-                <div className="border-4 border-green-500 bg-green-500/10 p-6 rounded-lg">
-                  <div className="text-lg text-green-500 font-bold mb-3">🎯 NEXT TO ANNOUNCE</div>
-                  
-                  {/* Announcement text */}
-                  <div className="bg-background p-4 rounded-lg border-2 border-border mb-4">
-                    <div className="text-sm text-muted-foreground mb-2">Say:</div>
-                    <div className="text-2xl text-foreground mb-3">
-                      "In {nextPosition}{getPositionSuffix(nextPosition!)} place with {nextTeam.score} point{nextTeam.score !== 1 ? 's' : ''}, it's..."
-                    </div>
-                    <h1 className="text-5xl font-bold text-orange-500 leading-tight">
-                      {nextTeam.name}
-                    </h1>
-                  </div>
-
-                  {/* Winner indicator */}
-                  {nextPosition === 1 && (
-                    <div className="text-2xl animate-pulse text-orange-500">
-                      🏆 WINNER! 🏆
-                    </div>
-                  )}
-                </div>
-
-                <div className="text-sm text-muted-foreground">
-                  Say the above announcement, then click "Next Team" to reveal them on screen
-                </div>
-              </div>
-            </Card>
+              );
+            })}
           </div>
-        ) : currentTeam ? (
-          <div className="text-center">
-            <Card className="bg-[#34495e] border-4 border-[#27ae60] p-12 max-w-4xl shadow-2xl">
-              <div className="space-y-8">
-                {/* Final Team Revealed */}
-                <div className="text-3xl font-bold text-[#27ae60] mb-4">
-                  🎉 ALL TEAMS REVEALED! 🎉
-                </div>
-                
-                {/* Current Winner */}
-                <div className="flex items-center justify-center gap-4">
-                  {getPositionIcon(currentPosition!)}
-                  <div className="text-6xl font-bold text-[#f39c12]">
-                    WINNER: {currentTeam.name}
-                  </div>
-                </div>
-
-                {/* Score */}
-                <div className="bg-[#2c3e50] p-8 rounded-lg border-2 border-[#4a5568]">
-                  <div className="text-2xl text-[#95a5a6] mb-2">Winning Score</div>
-                  <div className="text-7xl font-bold text-[#3498db]">
-                    {currentTeam.score}
-                  </div>
-                  <div className="text-xl text-[#95a5a6] mt-2">
-                    point{currentTeam.score !== 1 ? 's' : ''}
-                  </div>
-                </div>
-
-                <div className="text-5xl animate-pulse">
-                  🏆 CONGRATULATIONS! 🏆
-                </div>
-              </div>
-            </Card>
-          </div>
-        ) : null}
+        </div>
       </div>
 
-      {/* Instructions */}
-      <div className="mt-6 p-4 bg-[#34495e] rounded-lg border border-[#4a5568]">
-        <h3 className="font-semibold text-[#ecf0f1] mb-2">How it works:</h3>
-        <ul className="text-sm text-[#95a5a6] space-y-1">
-          <li>• Click "Next Team" to reveal each team from last place to first place</li>
-          <li>��� Each team appears simultaneously on this screen and the external display</li>
-          <li>• Build suspense by revealing the winner last!</li>
-          <li>• Use "Reset" to start over if needed</li>
-        </ul>
+      {/* Bottom hint */}
+      <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground text-center">
+        Press <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">SPACE</kbd> or click "Next Team" to reveal
       </div>
     </div>
   );

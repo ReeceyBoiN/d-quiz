@@ -21,8 +21,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   leaderboard needs to show and reveal the scores with each new team and also needs simplifying the UI on the host app for leaderboard interface
 
-  leaderboard needs to play that teams buzzer or an applause with each reveal of a team on the socreboard - give the host a choice in the settings
-
   on player device when scores / leaderboard is shown, it needs to be scrolable so players can scroll up or down the leaderboard
 
   sequence question needs to be able to tap the correct sequence of answers, not just one answer 

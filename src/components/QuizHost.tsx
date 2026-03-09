@@ -6800,9 +6800,10 @@ export function QuizHost() {
       case "leaderboard-reveal":
         return (
           <div className="flex-1 overflow-hidden">
-            <LeaderboardReveal 
+            <LeaderboardReveal
               quizzes={quizzes}
               onExternalDisplayUpdate={handleExternalDisplayUpdate}
+              onPlayTeamBuzzer={(buzzerSound) => playFastestTeamBuzzer(buzzerSound)}
             />
           </div>
         );

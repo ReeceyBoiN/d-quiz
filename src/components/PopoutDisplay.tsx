@@ -46,7 +46,8 @@ export type QuizStage =
   | "correctAnswer" 
   | "fastestTeam"
   | "leaderboard-intro"
-  | "leaderboard-reveal";
+  | "leaderboard-reveal"
+  | "leaderboard-winner-photo";
 
 interface PopoutDisplayProps {
   stage: QuizStage;
@@ -66,14 +67,17 @@ interface PopoutDisplayProps {
       score: number;
     };
     position: number;
+    isJoint?: boolean;
     totalTeams: number;
     isLast: boolean;
     revealedTeamsWithPositions?: {
       id: string;
       name: string;
       score: number;
-      actualPosition: number;
+      position: number;
+      isJoint: boolean;
     }[];
+    photoUrl?: string;
   };
   revealedTeams?: {
     id: string;
@@ -309,7 +313,7 @@ export function PopoutDisplay({
           );
         }
         
-        const { team, position, totalTeams, isLast, revealedTeamsWithPositions } = leaderboardData;
+        const { team, position, totalTeams, isLast, revealedTeamsWithPositions, isJoint: currentIsJoint } = leaderboardData;
         
         const getPositionSuffix = (pos: number) => {
           if (pos % 10 === 1 && pos !== 11) return "st";
@@ -321,20 +325,16 @@ export function PopoutDisplay({
         // Use the enhanced revealed teams data with actual positions if available,
         // otherwise fall back to calculating from regular revealed teams
         const sortedRevealedTeams = revealedTeamsWithPositions && revealedTeamsWithPositions.length > 0
-          ? revealedTeamsWithPositions
-              .sort((a, b) => a.actualPosition - b.actualPosition) // Sort by actual position (1st, 2nd, 3rd, etc.)
-              .map(team => ({
-                ...team,
-                position: team.actualPosition // Use the actual position from the host
-              }))
+          ? [...revealedTeamsWithPositions].sort((a, b) => a.position - b.position)
           : [...revealedTeams]
               .sort((a, b) => b.score - a.score)
               .map((revealedTeam) => {
-                // Fallback: count teams with better scores to get position
                 const betterTeams = revealedTeams.filter(t => t.score > revealedTeam.score).length;
+                const sameScoreTeams = revealedTeams.filter(t => t.score === revealedTeam.score).length;
                 return {
                   ...revealedTeam,
-                  position: betterTeams + 1
+                  position: betterTeams + 1,
+                  isJoint: sameScoreTeams > 1
                 };
               });
 
@@ -364,7 +364,7 @@ export function PopoutDisplay({
                 className="bg-[#e74c3c] text-white px-6 py-3 rounded-lg border-2 border-white"
               >
                 <div className="text-lg font-bold emoji">
-                  🎯 NOW REVEALING: {team.name} in {position}{getPositionSuffix(position)} place!
+                  🎯 NOW REVEALING: {team.name} — {currentIsJoint ? `Joint ${position}${getPositionSuffix(position)}` : `${position}${getPositionSuffix(position)} place`}!
                 </div>
               </motion.div>
             )}
@@ -403,20 +403,20 @@ export function PopoutDisplay({
                         >
                           {/* Position */}
                           <div className="col-span-2 flex items-center justify-center">
-                            {revealedTeam.position === 1 && (
+                            {revealedTeam.position === 1 && !('isJoint' in revealedTeam && revealedTeam.isJoint) && (
                               <div className="text-4xl emoji">🥇</div>
                             )}
-                            {revealedTeam.position === 2 && (
+                            {revealedTeam.position === 2 && !('isJoint' in revealedTeam && revealedTeam.isJoint) && (
                               <div className="text-4xl emoji">🥈</div>
                             )}
-                            {revealedTeam.position === 3 && (
+                            {revealedTeam.position === 3 && !('isJoint' in revealedTeam && revealedTeam.isJoint) && (
                               <div className="text-4xl emoji">🥉</div>
                             )}
-                            {revealedTeam.position > 3 && (
-                              <div className={`text-3xl font-bold px-4 py-2 rounded-full border-2 ${
+                            {(revealedTeam.position > 3 || ('isJoint' in revealedTeam && revealedTeam.isJoint)) && (
+                              <div className={`text-2xl font-bold px-3 py-1 rounded-full border-2 text-center leading-tight ${
                                 isCurrentTeam ? 'text-white border-white' : 'text-[#3498db] border-[#3498db]'
                               }`}>
-                                {revealedTeam.position}
+                                {'isJoint' in revealedTeam && revealedTeam.isJoint ? `Joint\n${revealedTeam.position}${getPositionSuffix(revealedTeam.position)}` : revealedTeam.position}
                               </div>
                             )}
                           </div>
@@ -625,6 +625,96 @@ export function PopoutDisplay({
             )}
           </motion.div>
         );
+
+      case "leaderboard-winner-photo": {
+        const winnerPhotoUrl = leaderboardData?.photoUrl;
+        const winnerTeam = leaderboardData?.team;
+        return (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center gap-6 text-center h-full w-full relative"
+          >
+            {/* Winner photo */}
+            {winnerPhotoUrl && (
+              <motion.div
+                initial={{ scale: 0, rotate: -10 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 120, damping: 12 }}
+                className="relative"
+              >
+                <div className="rounded-2xl overflow-hidden border-8 border-[#f39c12] shadow-2xl" style={{ boxShadow: '0 0 80px rgba(243, 156, 18, 0.5)' }}>
+                  <img
+                    src={winnerPhotoUrl}
+                    alt={winnerTeam?.name || 'Winner'}
+                    className="max-h-[50vh] max-w-[70vw] object-contain"
+                  />
+                </div>
+              </motion.div>
+            )}
+
+            {/* Winner text */}
+            <motion.div
+              initial={{ y: 60, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.4 }}
+              className="flex flex-col items-center gap-3"
+            >
+              <motion.div
+                animate={{ scale: [1, 1.15, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="text-7xl emoji"
+              >
+                🏆
+              </motion.div>
+              <h1 className="text-6xl font-bold text-[#f39c12]">
+                {winnerTeam?.name || 'WINNER'}
+              </h1>
+              <div className="text-3xl font-bold text-white">
+                1ST PLACE!
+              </div>
+            </motion.div>
+
+            {/* Confetti */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="fixed inset-0 pointer-events-none"
+              style={{ zIndex: 0 }}
+            >
+              {[...Array(60)].map((_, i) => {
+                const startX = Math.random() * 100;
+                const shape = ['🎊', '🎉', '⭐', '🌟', '💫', '✨'][Math.floor(Math.random() * 6)];
+                return (
+                  <motion.div
+                    key={`winner-confetti-${i}`}
+                    className="absolute text-2xl emoji"
+                    style={{ left: `${startX}%`, top: '-5%' }}
+                    initial={{ y: 0, x: 0, scale: 0, rotate: 0, opacity: 1 }}
+                    animate={{
+                      y: window.innerHeight + 100,
+                      x: (Math.random() - 0.5) * 200,
+                      scale: [0, 1, 1, 0.8],
+                      rotate: Math.random() * 720,
+                      opacity: [0, 1, 1, 0]
+                    }}
+                    transition={{
+                      duration: 4 + Math.random() * 2,
+                      delay: Math.random() * 2,
+                      ease: "easeIn",
+                      repeat: Infinity,
+                      repeatDelay: Math.random() * 3
+                    }}
+                  >
+                    {shape}
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          </motion.div>
+        );
+      }
 
       default:
         return null;
