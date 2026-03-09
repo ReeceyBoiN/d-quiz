@@ -15,11 +15,9 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   Instructions graphics need making, how to play, how to connect, how to answer, how to edit team name, add a team pic, letters questions etc etc
 
-  sequence question is only allowing 1 answer to be selected on on the spot mode
+  --sequence question is only allowing 1 answer to be selected on on the spot mode
 
   Buzz in mode needs just making in general hahaha
-
-  leaderboard needs to show and reveal the scores with each new team and also needs simplifying the UI on the host app for leaderboard interface
 
   on player device when scores / leaderboard is shown, it needs to be scrolable so players can scroll up or down the leaderboard
 

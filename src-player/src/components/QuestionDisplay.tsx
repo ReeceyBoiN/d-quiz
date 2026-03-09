@@ -92,6 +92,10 @@ export function QuestionDisplay({
   const [shuffledNumbers, setShuffledNumbers] = useState<string[]>(['1', '2', '3', '4', '5', '6', '7', '8', '9']);
   const [shuffledOptions, setShuffledOptions] = useState<{originalIndex: number, option: string}[]>([]);
 
+  // Sequence ordering state
+  const [sequenceOrder, setSequenceOrder] = useState<number[]>([]);
+  const [sequenceLocked, setSequenceLocked] = useState(false);
+
   // VARIABLE DEFINITIONS - MUST BE BEFORE useEffect HOOKS
   // Display question text - handle both q and text properties
   const questionText = question?.q || question?.text || '';
@@ -132,6 +136,8 @@ export function QuestionDisplay({
     setNumberInput('0');
     setNumberSubmitted(false);
     setShowImageOverlay(true);
+    setSequenceOrder([]);
+    setSequenceLocked(false);
   }, [questionIdentity]);
 
   // Track a stable question round counter that increments only on genuine new questions
@@ -173,6 +179,11 @@ export function QuestionDisplay({
         setShuffledOptions(shuffledOpts);
       }
 
+      // Reset sequence selection when layout is reshuffled
+      if (questionType === 'sequence') {
+        setSequenceOrder([]);
+      }
+
       console.log('[QuestionDisplay] 🔀 Keypad shuffled for round', questionRound);
     } else {
       // Reset to unscrambled layouts
@@ -180,27 +191,44 @@ export function QuestionDisplay({
       setShuffledLetterGrid(LETTERS_GRID);
       setShuffledNumbers(['1', '2', '3', '4', '5', '6', '7', '8', '9']);
 
-      // Reset multiple choice to original order
+      // Reset multiple choice to original order — EXCEPT sequence questions
+      // Sequence questions must always be shuffled so players can't just tap in order
       if (options.length > 0) {
-        const optionsWithIndices = options.map((option, index) => ({
-          originalIndex: index,
-          option
-        }));
-        setShuffledOptions(optionsWithIndices);
+        if (questionType === 'sequence') {
+          const optionsWithIndices = options.map((option, index) => ({
+            originalIndex: index,
+            option
+          }));
+          const shuffledOpts = shuffleArray(optionsWithIndices);
+          setShuffledOptions(shuffledOpts);
+        } else {
+          const optionsWithIndices = options.map((option, index) => ({
+            originalIndex: index,
+            option
+          }));
+          setShuffledOptions(optionsWithIndices);
+        }
+      }
+
+      // Reset sequence selection when layout changes
+      if (questionType === 'sequence') {
+        setSequenceOrder([]);
       }
 
       console.log('[QuestionDisplay] 🔓 Keypad unscrambled (answer preserved)');
     }
-  }, [scrambled, questionRound])
+  }, [scrambled, questionRound, questionType])
 
   // Update option texts in shuffledOptions when real options arrive (placeholder -> revealed),
   // while preserving the shuffled order established above
   useEffect(() => {
     if (options.length > 0) {
       setShuffledOptions(prev => {
-        // If no existing shuffle order or length mismatch, build fresh (unscrambled) order
+        // If no existing shuffle order or length mismatch, build fresh order
+        // Sequence questions always get shuffled so correct order isn't obvious
         if (prev.length !== options.length) {
-          return options.map((option, index) => ({ originalIndex: index, option }));
+          const fresh = options.map((option, index) => ({ originalIndex: index, option }));
+          return questionType === 'sequence' ? shuffleArray(fresh) : fresh;
         }
         // Update option text while preserving the existing display order
         return prev.map(item => ({
@@ -209,7 +237,7 @@ export function QuestionDisplay({
         }));
       });
     }
-  }, [options]);
+  }, [options, questionType]);
 
   // Track when timer ends (from both prop and local timer)
   useEffect(() => {
@@ -796,32 +824,106 @@ export function QuestionDisplay({
           </div>
         )}
 
-        {/* Sequence Options - Ordered selection */}
+        {/* Sequence Options - Ordered selection (tap options in correct order) */}
         {isSequence && (
-          <div className={`grid grid-cols-2 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg ${hideAnswers ? 'opacity-0 pointer-events-none' : ''}`}>
-            {shuffledOptions.map((optionData, displayIndex) => {
-              const originalIndex = optionData.originalIndex;
-              const optionText = optionData.option;
-              // Show letter placeholder (A, B, C, D) if waiting for real question
-              const displayText = isShowingPlaceholder ? String.fromCharCode(65 + originalIndex) : optionText;
-              return (
-                <button
-                  key={displayIndex}
-                  onClick={() => handleAnswerSelect(originalIndex)}
-                  disabled={
-                    timerEnded ||
-                    (!goWideEnabled && submitted && !selectedAnswers.includes(originalIndex))
-                  }
-                  className={`aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform active:scale-95 ${getButtonStateClasses(
-                    originalIndex,
-                    originalIndex
-                  )} ${getAnimationClass(originalIndex, originalIndex)}`}
-                >
-                  {displayText}
-                  {getRevealIcon(originalIndex, originalIndex)}
-                </button>
-              );
-            })}
+          <div className={`flex flex-col items-center gap-3 w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg ${hideAnswers ? 'opacity-0 pointer-events-none' : ''}`}>
+            {/* Selected order preview */}
+            {sequenceOrder.length > 0 && !isShowingPlaceholder && (
+              <div className="w-full bg-slate-700/60 rounded-lg p-2 sm:p-3 border border-slate-600">
+                <p className="text-slate-400 text-xs sm:text-sm mb-1">Your order:</p>
+                <div className="flex flex-wrap gap-1 sm:gap-1.5">
+                  {sequenceOrder.map((origIdx, pos) => {
+                    const opt = shuffledOptions.find(o => o.originalIndex === origIdx);
+                    return (
+                      <span key={pos} className="inline-flex items-center gap-1 bg-cyan-600 text-white text-xs sm:text-sm font-semibold px-2 py-1 rounded">
+                        <span className="bg-white/20 rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs">{pos + 1}</span>
+                        {opt?.option || '?'}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Option buttons grid */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 w-full">
+              {shuffledOptions.map((optionData, displayIndex) => {
+                const originalIndex = optionData.originalIndex;
+                const optionText = optionData.option;
+                const displayText = isShowingPlaceholder ? String.fromCharCode(65 + originalIndex) : optionText;
+                const seqPosition = sequenceOrder.indexOf(originalIndex);
+                const isInSequence = seqPosition !== -1;
+                const isLastInSequence = isInSequence && seqPosition === sequenceOrder.length - 1;
+
+                return (
+                  <button
+                    key={displayIndex}
+                    onClick={() => {
+                      if (sequenceLocked || timerEnded) return;
+                      if (isInSequence) {
+                        // Allow undo only for the last selected item
+                        if (isLastInSequence) {
+                          setSequenceOrder(prev => prev.slice(0, -1));
+                        }
+                      } else {
+                        // Add to sequence
+                        const newOrder = [...sequenceOrder, originalIndex];
+                        setSequenceOrder(newOrder);
+                        // Auto-submit when all options are selected
+                        if (newOrder.length === shuffledOptions.length) {
+                          setSequenceLocked(true);
+                          setSubmitted(true);
+                          const orderedTexts = newOrder.map(idx => {
+                            const o = shuffledOptions.find(s => s.originalIndex === idx);
+                            return o?.option || '';
+                          });
+                          const answerStr = orderedTexts.join(',');
+                          setSubmittedAnswer(answerStr);
+                          onAnswerSubmit({
+                            questionType: question?.type,
+                            answer: answerStr,
+                            answerIndex: 0,
+                            answerCount: 1
+                          });
+                        }
+                      }
+                    }}
+                    disabled={sequenceLocked || timerEnded}
+                    className={`relative aspect-square p-2 sm:p-3 md:p-4 lg:p-5 rounded-lg sm:rounded-xl md:rounded-xl font-bold text-base sm:text-lg md:text-2xl lg:text-3xl transition-all transform ${
+                      sequenceLocked || timerEnded ? 'cursor-not-allowed' : 'active:scale-95 cursor-pointer'
+                    } ${
+                      sequenceLocked
+                        ? 'bg-slate-600 text-slate-400 opacity-60'
+                        : isInSequence
+                          ? 'bg-cyan-600 text-white ring-2 ring-cyan-400'
+                          : `${KEYPAD_COLOR_CLASSES[settings.keypadColor]}`
+                    }`}
+                  >
+                    {isInSequence && (
+                      <span className="absolute top-1 left-1 sm:top-2 sm:left-2 bg-white/25 rounded-full w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 flex items-center justify-center text-xs sm:text-sm font-bold text-white">
+                        {seqPosition + 1}
+                      </span>
+                    )}
+                    {displayText}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Reset button */}
+            {sequenceOrder.length > 0 && !sequenceLocked && !timerEnded && (
+              <button
+                onClick={() => setSequenceOrder([])}
+                className="mt-1 px-4 py-2 bg-red-500/80 hover:bg-red-600 text-white text-sm font-semibold rounded-lg transition-all"
+              >
+                Reset Order
+              </button>
+            )}
+
+            {/* Locked confirmation */}
+            {sequenceLocked && (
+              <p className="text-green-400 font-semibold text-sm sm:text-base mt-1">Sequence submitted!</p>
+            )}
           </div>
         )}
 

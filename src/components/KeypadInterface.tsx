@@ -309,11 +309,11 @@ export function KeypadInterface({
           currentLoadedQuestion.correctIndex !== undefined) {
         return String.fromCharCode(65 + currentLoadedQuestion.correctIndex);
       }
-      // For sequence: return the sequence item at correctIndex
+      // For sequence: return the correct order of all options as comma-separated string
+      // The options in the quiz file are already in correct order (they concatenate to form long_answer)
       if (currentLoadedQuestion.type?.toLowerCase() === 'sequence' &&
-          currentLoadedQuestion.options &&
-          currentLoadedQuestion.correctIndex !== undefined) {
-        return currentLoadedQuestion.options[currentLoadedQuestion.correctIndex] || '';
+          currentLoadedQuestion.options) {
+        return currentLoadedQuestion.options.join(',');
       }
       // For other types: use answerText if available
       if (currentLoadedQuestion.answerText) {
@@ -2374,15 +2374,7 @@ export function KeypadInterface({
               <div className="text-sm opacity-90">Answer with numbers 0-9</div>
             </Button>
 
-            {/* Sequence Question */}
-            <Button
-              onClick={() => handleQuestionTypeSelect('sequence')}
-              className="flex-1 h-48 bg-[#8e44ad] hover:bg-[#7d3c98] text-white flex flex-col items-center justify-center gap-4 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg"
-            >
-              <RotateCcw className="h-16 w-16" />
-              <div className="text-2xl font-bold">Sequence Question</div>
-              <div className="text-sm opacity-90">Order items in sequence</div>
-            </Button>
+            {/* Sequence Question - only available in quiz pack mode, not on-the-spot */}
           </div>
         </div>
       </div>

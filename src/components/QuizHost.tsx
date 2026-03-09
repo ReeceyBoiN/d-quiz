@@ -5054,6 +5054,11 @@ export function QuizHost() {
             const teamAnswer = teamAnswers[team.id];
             if (!teamAnswer || String(teamAnswer).trim() === '') return false;
 
+            // For sequence type, compare the full comma-separated string directly
+            if (questionType === 'sequence') {
+              return isAnswerCorrect(String(teamAnswer), correctAnswer);
+            }
+
             // For go-wide mode (comma-separated answers), check if ANY answer matches
             const answers = String(teamAnswer).split(',').map(a => a.trim());
 
