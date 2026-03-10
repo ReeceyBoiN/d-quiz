@@ -25,7 +25,8 @@ const FOLDERS_TO_CREATE = [
   'PopQuiz/Resources/Sounds/Countdown',
   'PopQuiz/Resources/Sounds/Applause',
   'PopQuiz/Resources/Sounds/Fail Sounds',
-  'PopQuiz/Resources/Sounds/Buzzers' // User's custom buzzers are safe here - never deleted
+  'PopQuiz/Resources/Sounds/Buzzers', // User's custom buzzers are safe here - never deleted
+  'PopQuiz/Music Rounds' // User's music round folders
 ];
 
 /**
@@ -232,12 +233,20 @@ function initializePaths() {
   log.info('[PathInitializer] Path initialization complete');
 }
 
+/**
+ * Get the Music Rounds directory path
+ */
+function getMusicRoundsPath() {
+  return path.join(getPopQuizRootPath(), 'Music Rounds');
+}
+
 export {
   initializePaths,
   getDocumentsPath,
   getPopQuizRootPath,
   getResourcePaths,
   getTeamPicturesPath,
+  getMusicRoundsPath,
   createFolderStructure,
   migrateSoundsIfNeeded
 };

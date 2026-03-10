@@ -14,6 +14,7 @@ import { UserStatusTab } from "./UserStatusTab";
 import { TeamWindow } from "./TeamWindow";
 import { FastestTeamDisplay } from "./FastestTeamDisplay";
 import { BuzzersManagement } from "./BuzzersManagement";
+import { MusicRoundInterface } from "./MusicRoundInterface";
 
 import { ImageSlideshow } from "./ImageSlideshow";
 import { DisplaySettings } from "./DisplaySettings";
@@ -657,6 +658,9 @@ export function QuizHost() {
   
   // Wheel spinner interface state
   const [showWheelSpinnerInterface, setShowWheelSpinnerInterface] = useState(false);
+
+  // Music round interface state
+  const [showMusicRoundInterface, setShowMusicRoundInterface] = useState(false);
   
   // Emoji debug screen state
   const [showEmojiDebug, setShowEmojiDebug] = useState(false);
@@ -1885,6 +1889,7 @@ export function QuizHost() {
     setShowBuzzInMode(false);
     setShowNearestWinsInterface(false);
     setShowWheelSpinnerInterface(false);
+    setShowMusicRoundInterface(false);
     setShowFastestTeamDisplay(false);
     setShowQuizPackDisplay(false);
     setIsQuizPackMode(false);
@@ -3160,6 +3165,46 @@ export function QuizHost() {
     setActiveTab("home"); // Return to home when buzz-in ends
   };
 
+  // Handle music round click
+  const handleMusicRoundClick = () => {
+    closeAllGameModes();
+
+    // Reset flow state to idle so players/host remote know no game is active
+    setFlowState(prev => ({
+      ...prev,
+      isQuestionMode: false,
+      flow: 'idle',
+      answerSubmitted: undefined,
+      pictureSent: false,
+      questionSent: false,
+    }));
+
+    sendFlowStateToPlayers({
+      flow: 'idle',
+      isQuestionMode: false,
+      totalTime: flowState.totalTime,
+      currentQuestion: undefined,
+      currentLoadedQuestionIndex: 0,
+      loadedQuizQuestions: [],
+      isQuizPackMode: false,
+      selectedQuestionType: undefined,
+      answerSubmitted: undefined,
+      keypadCurrentScreen: undefined,
+    });
+
+    // Reset external display to default view
+    handleExternalDisplayUpdate('basic');
+
+    setShowMusicRoundInterface(true);
+    setActiveTab("teams");
+  };
+
+  // Handle music round close
+  const handleMusicRoundClose = () => {
+    setShowMusicRoundInterface(false);
+    setActiveTab("home");
+  };
+
   // Handle wheel spinner click
   const handleWheelSpinnerClick = () => {
     closeAllGameModes(); // Close any other active modes first
@@ -3245,6 +3290,7 @@ export function QuizHost() {
       setShowBuzzInMode(false);
       setShowNearestWinsInterface(false);
       setShowWheelSpinnerInterface(false);
+      setShowMusicRoundInterface(false);
       setShowFastestTeamDisplay(false);
       setShowBuzzersManagement(false);
 
@@ -3279,6 +3325,7 @@ export function QuizHost() {
     if (showBuzzInInterface || showBuzzInMode) return "buzzin";
     if (showNearestWinsInterface) return "nearestwins";
     if (showWheelSpinnerInterface) return "wheelspinner";
+    if (showMusicRoundInterface) return null; // Music round doesn't use game mode config
     return null;
   };
 
@@ -6736,6 +6783,17 @@ export function QuizHost() {
       );
     }
 
+    // Show music round interface when active
+    if (showMusicRoundInterface) {
+      return (
+        <div className="flex-1 overflow-hidden">
+          <MusicRoundInterface
+            onClose={handleMusicRoundClose}
+          />
+        </div>
+      );
+    }
+
     // Show wheel spinner interface in center when active
     if (showWheelSpinnerInterface) {
       return (
@@ -6980,7 +7038,7 @@ export function QuizHost() {
             </div>
 
             {/* Right panel - fixed width - only show when no game modes are active and team window is closed and not in question mode */}
-            {!showKeypadInterface && !showBuzzInInterface && !showNearestWinsInterface && !showWheelSpinnerInterface && !showBuzzInMode && !showFastestTeamDisplay && !selectedTeamForWindow && !showBuzzersManagement && !(showQuizPackDisplay && flowState.isQuestionMode) && (
+            {!showKeypadInterface && !showBuzzInInterface && !showNearestWinsInterface && !showWheelSpinnerInterface && !showMusicRoundInterface && !showBuzzInMode && !showFastestTeamDisplay && !selectedTeamForWindow && !showBuzzersManagement && !(showQuizPackDisplay && flowState.isQuestionMode) && (
               <div className="w-80 bg-background border-l border-border">
                 <RightPanel
                   quizzes={quizzes}
@@ -6989,6 +7047,7 @@ export function QuizHost() {
                   onBuzzInStart={handleBuzzInStart}
                   onWheelSpinnerClick={handleWheelSpinnerClick}
                   onNearestWinsClick={handleNearestWinsClick}
+                  onMusicRoundClick={handleMusicRoundClick}
                 />
               </div>
             )}
@@ -7147,6 +7206,7 @@ export function QuizHost() {
             showBuzzInInterface={showBuzzInInterface}
             showNearestWinsInterface={showNearestWinsInterface}
             showWheelSpinnerInterface={showWheelSpinnerInterface}
+            showMusicRoundInterface={showMusicRoundInterface}
             showBuzzInMode={showBuzzInMode}
             showQuizPackDisplay={showQuizPackDisplay}
             onEndRound={handleEndRound}

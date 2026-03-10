@@ -58,6 +58,18 @@ async function ensureVfsRoot(): Promise<string> {
   }
 }
 
+export async function getMusicRoundsPath(): Promise<string> {
+  const w = getWindow();
+  // Electron path
+  if (w?.api?.files?.musicRoundsPath) {
+    const res = await w.api.files.musicRoundsPath();
+    if (!res?.ok) throw new Error(res?.error || 'Failed to resolve Music Rounds path');
+    return res.data.path as string;
+  }
+  // Browser fallback – ask user to pick a folder and use it as root
+  return await ensureVfsRoot();
+}
+
 export async function getQuestionPacksPath(): Promise<string> {
   const w = getWindow();
   // Electron path

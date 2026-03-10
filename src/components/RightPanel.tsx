@@ -20,9 +20,10 @@ interface RightPanelProps {
   onBuzzInClick?: () => void;
   onWheelSpinnerClick?: () => void;
   onNearestWinsClick?: () => void;
+  onMusicRoundClick?: () => void;
 }
 
-export function RightPanel({ quizzes, onKeypadClick, onBuzzInStart, onBuzzInClick, onWheelSpinnerClick, onNearestWinsClick }: RightPanelProps) {
+export function RightPanel({ quizzes, onKeypadClick, onBuzzInStart, onBuzzInClick, onWheelSpinnerClick, onNearestWinsClick, onMusicRoundClick }: RightPanelProps) {
 
   const [showBuzzInModal, setShowBuzzInModal] = useState(false);
   
@@ -67,7 +68,7 @@ export function RightPanel({ quizzes, onKeypadClick, onBuzzInStart, onBuzzInClic
           <CardTitle className="text-card-foreground text-center text-base font-semibold text-[24px]">GAME MODES</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 pt-0 -mt-5">
-          <Button 
+          <Button
             onClick={onWheelSpinnerClick}
             className="w-full bg-[rgba(217,204,0,1)] hover:bg-[#1e8449] text-white text-sm py-3 font-semibold transition-all duration-200 hover:scale-105 shadow-md flex items-center justify-between px-4"
           >
@@ -75,10 +76,18 @@ export function RightPanel({ quizzes, onKeypadClick, onBuzzInStart, onBuzzInClic
             <span>WHEEL SPIN</span>
             <ArrowDown className="h-4 w-4" />
           </Button>
+          <Button
+            onClick={onMusicRoundClick}
+            className="w-full bg-[rgba(255,127,39,1)] hover:bg-[rgba(204,85,0,1)] text-white text-sm py-3 font-semibold transition-all duration-200 hover:scale-105 shadow-md flex items-center justify-between px-4"
+          >
+            <Music className="h-4 w-4" />
+            <span>MUSIC ROUND</span>
+            <Music className="h-4 w-4" />
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Game Modes Section - Duplicate */}
+      {/* Coming Soon Section */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-1 pt-2">
           <CardTitle className="text-card-foreground text-center text-base font-semibold text-[24px]">Coming Soon!</CardTitle>
@@ -92,11 +101,6 @@ export function RightPanel({ quizzes, onKeypadClick, onBuzzInStart, onBuzzInClic
           <Button className="w-full bg-[rgba(255,0,251,1)] hover:bg-[rgba(192,0,189,1)] text-white text-sm py-3 font-semibold transition-all duration-200 hover:scale-105 shadow-md flex items-center justify-between px-4">
             <Music className="h-4 w-4" />
             <span>MUSIC BINGO</span>
-            <Music className="h-4 w-4" />
-          </Button>
-          <Button className="w-full bg-[rgba(255,127,39,1)] hover:bg-[rgba(204,85,0,1)] text-white text-sm py-3 font-semibold transition-all duration-200 hover:scale-105 shadow-md flex items-center justify-between px-4">
-            <Music className="h-4 w-4" />
-            <span>MUSIC ROUND</span>
             <Music className="h-4 w-4" />
           </Button>
         </CardContent>

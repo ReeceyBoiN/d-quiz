@@ -6,7 +6,7 @@ import { createMainWindow, createExternalWindow, toggleExternalWindowState, setE
 import { applySecurity } from './security.js';
 import { createIpcRouter } from '../ipc/ipcRouter.js';
 import { startBackend } from '../backend/server.js';
-import { initializePaths, getResourcePaths } from '../backend/pathInitializer.js';
+import { initializePaths, getResourcePaths, getMusicRoundsPath } from '../backend/pathInitializer.js';
 import { handleGetBuzzerPath } from '../ipc/handlers/audioHandler.js';
 import { handleSelectBuzzerFolder } from '../ipc/handlers/buzzerHandler.js';
 import { GetBuzzerPathSchema } from '../ipc/validators.js';
@@ -555,6 +555,13 @@ async function boot() {
     const qpDir = path.join(baseDir, 'Question Packs');
     fs.mkdirSync(qpDir, { recursive: true });
     return { path: qpDir };
+  });
+
+  // Return the Music Rounds directory (Documents/PopQuiz/Music Rounds), creating it if needed
+  router.mount('files/music-rounds-path', async () => {
+    const mrDir = getMusicRoundsPath();
+    fs.mkdirSync(mrDir, { recursive: true });
+    return { path: mrDir };
   });
 
   // List the contents of a directory

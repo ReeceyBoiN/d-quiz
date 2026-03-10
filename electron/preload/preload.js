@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('api', {
   files: {
     openFromFile: () => invoke('app/open-from-file'),
     questionPacksPath: () => invoke('files/question-packs-path'),
+    musicRoundsPath: () => invoke('files/music-rounds-path'),
     listDirectory: (path) => invoke('files/list-directory', { path }),
     getDefaultBuzzerPath: async () => {
       try {

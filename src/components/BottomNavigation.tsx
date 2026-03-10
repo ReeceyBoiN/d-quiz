@@ -57,6 +57,7 @@ interface StatusBarProps {
   showBuzzInInterface?: boolean;
   showNearestWinsInterface?: boolean;
   showWheelSpinnerInterface?: boolean;
+  showMusicRoundInterface?: boolean;
   showBuzzInMode?: boolean;
   showQuizPackDisplay?: boolean;
   onEndRound?: () => void;
@@ -489,6 +490,7 @@ export function StatusBar({
   showBuzzInInterface = false,
   showNearestWinsInterface = false,
   showWheelSpinnerInterface = false,
+  showMusicRoundInterface = false,
   showBuzzInMode = false,
   showQuizPackDisplay = false,
   onEndRound,
