@@ -38,6 +38,7 @@ interface PlaybackState {
   onPlaybackEnd?: () => void;
   onTargetClipFinished?: () => void;
   gapTimeoutId?: ReturnType<typeof setTimeout>;
+  skipTimeoutId?: ReturnType<typeof setTimeout>;
   progressIntervalId?: ReturnType<typeof setInterval>;
 }
 
@@ -318,7 +319,12 @@ function skipToNextClip() {
   if (!playbackState || !playbackState.isPlaying) return;
 
   const state = playbackState;
-  const now = state.audioContext.currentTime;
+
+  // Clear any pending skip timeout from a previous rapid click
+  if (state.skipTimeoutId) {
+    clearTimeout(state.skipTimeoutId);
+    state.skipTimeoutId = undefined;
+  }
 
   // Clear any pending gap timeout
   if (state.gapTimeoutId) {
@@ -326,16 +332,24 @@ function skipToNextClip() {
     state.gapTimeoutId = undefined;
   }
 
+  // Immediately null out onended to prevent double-fire
+  if (state.sourceNode) {
+    state.sourceNode.onended = null;
+  }
+
+  const now = state.audioContext.currentTime;
+
   // Fade out current clip over 1 second
   state.gainNode.gain.cancelScheduledValues(now);
   state.gainNode.gain.setValueAtTime(state.gainNode.gain.value, now);
   state.gainNode.gain.linearRampToValueAtTime(0, now + 1);
 
-  // Stop current source after fade
-  setTimeout(() => {
+  // Track the skip timeout so rapid clicks cancel previous ones
+  state.skipTimeoutId = setTimeout(() => {
+    state.skipTimeoutId = undefined;
+
     if (state.sourceNode) {
       try {
-        state.sourceNode.onended = null;
         state.sourceNode.stop();
       } catch (e) {
         // Already stopped
@@ -371,6 +385,12 @@ function stopPlayback() {
     state.gapTimeoutId = undefined;
   }
 
+  // Clear any pending skip timeout
+  if (state.skipTimeoutId) {
+    clearTimeout(state.skipTimeoutId);
+    state.skipTimeoutId = undefined;
+  }
+
   const now = state.audioContext.currentTime;
 
   // Quick fade out
@@ -396,6 +416,9 @@ function cleanupPlayback() {
   // Clear any pending timeouts
   if (playbackState.gapTimeoutId) {
     clearTimeout(playbackState.gapTimeoutId);
+  }
+  if (playbackState.skipTimeoutId) {
+    clearTimeout(playbackState.skipTimeoutId);
   }
   try {
     playbackState.audioContext.close();

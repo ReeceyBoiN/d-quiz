@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Play, RotateCcw, FileText, ChevronUp, ChevronDown, X, Minus, Square, WifiOff, ShieldOff, Pause, Volume2 } from "lucide-react";
+import { Play, RotateCcw, FileText, ChevronUp, ChevronDown, X, Minus, Square, WifiOff, ShieldOff, Pause, Volume2, Check } from "lucide-react";
 import { useSettings } from "../utils/SettingsContext";
 
 interface Quiz {
@@ -36,9 +36,10 @@ interface LeftSidebarProps {
   pendingTeams?: Array<{deviceId: string, playerId: string, teamName: string, timestamp: number}>;
   onApprovePendingTeam?: (deviceId: string, teamName: string) => void;
   onDeclinePendingTeam?: (deviceId: string, teamName: string) => void;
+  musicRoundBuzzes?: { teamId: string; valid: boolean; responseTime?: number }[];
 }
 
-export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange, onScoreSet, onNameChange, onDeleteTeam, onTeamDoubleClick, teamAnswers = {}, teamResponseTimes = {}, lastResponseTimes = {}, showAnswers = false, scoresPaused = false, scoresHidden = false, teamAnswerStatuses = {}, teamCorrectRankings = {}, pendingTeams = [], onApprovePendingTeam, onDeclinePendingTeam }: LeftSidebarProps) {
+export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange, onScoreSet, onNameChange, onDeleteTeam, onTeamDoubleClick, teamAnswers = {}, teamResponseTimes = {}, lastResponseTimes = {}, showAnswers = false, scoresPaused = false, scoresHidden = false, teamAnswerStatuses = {}, teamCorrectRankings = {}, pendingTeams = [], onApprovePendingTeam, onDeclinePendingTeam, musicRoundBuzzes = [] }: LeftSidebarProps) {
   const { responseTimesEnabled } = useSettings();
   
   // Debug logging - disabled for performance
@@ -247,6 +248,13 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
                   <div className="leading-[1.15] text-left break-words whitespace-normal max-h-full text-[17px] flex-1">
                     {quiz.name}
                   </div>
+                  {/* Music round buzz indicators */}
+                  {musicRoundBuzzes.length > 0 && (() => {
+                    const buzz = musicRoundBuzzes.find(b => b.teamId === quiz.id);
+                    if (buzz?.valid) return <Check className="w-4 h-4 text-green-500 flex-shrink-0" title="Correct buzz" />;
+                    if (buzz && !buzz.valid) return <X className="w-4 h-4 text-red-500 flex-shrink-0" title="Wrong buzz" />;
+                    return null;
+                  })()}
                 </div>
               </Button>
               

@@ -83,6 +83,7 @@ interface MusicRoundInterfaceProps {
   onEndRound: () => void;
   onShowFastestTeam?: (team: Team, responseTime: number) => void;
   onExternalDisplayUpdate?: (content: string, data?: any) => void;
+  onBuzzUpdate?: (buzzes: { teamId: string; valid: boolean; responseTime?: number }[]) => void;
 }
 
 type Phase = "setup" | "gameplay";
@@ -113,6 +114,7 @@ export function MusicRoundInterface({
   onEndRound,
   onShowFastestTeam,
   onExternalDisplayUpdate,
+  onBuzzUpdate,
 }: MusicRoundInterfaceProps) {
   const settings = useSettings();
 
@@ -723,6 +725,13 @@ export function MusicRoundInterface({
     setMasterVolume(vol);
   };
 
+  // --- Notify parent of buzz changes ---
+  useEffect(() => {
+    if (onBuzzUpdate) {
+      onBuzzUpdate(buzzes.map(b => ({ teamId: b.teamId, valid: b.valid, responseTime: b.responseTime })));
+    }
+  }, [buzzes, onBuzzUpdate]);
+
   // --- Cleanup on unmount ---
   useEffect(() => {
     return () => {
@@ -950,8 +959,8 @@ export function MusicRoundInterface({
   const validBuzzes = buzzes.filter((b) => b.valid).sort((a, b) => (a.responseTime ?? 0) - (b.responseTime ?? 0));
   const invalidBuzzes = buzzes.filter((b) => !b.valid);
 
-  // --- Render center panel based on gameplay step ---
-  const renderCenterPanel = () => {
+  // --- Render playback panel (right card) based on gameplay step ---
+  const renderPlaybackPanel = () => {
     switch (gameplayStep) {
       case "target-selection":
         return (
@@ -962,15 +971,15 @@ export function MusicRoundInterface({
 
       case "playlist-ready":
         return (
-          <div className="space-y-3">
+          <div className="space-y-3 flex flex-col flex-1 min-h-0">
             {/* Playback sequence - draggable */}
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center justify-between mb-1 flex-shrink-0">
               <span className="text-xs text-muted-foreground font-medium">Playlist Order</span>
               <Button onClick={shufflePlaybackSequence} variant="ghost" size="sm" className="h-6 px-2 text-xs">
                 <Shuffle className="h-3 w-3 mr-1" /> Shuffle
               </Button>
             </div>
-            <div className="border border-border rounded bg-background max-h-[180px] overflow-y-auto">
+            <div className="border border-border rounded bg-background flex-1 min-h-0 overflow-y-auto">
               {playbackSequence.map((clip, idx) => {
                 const isTarget = clip.id === targetClip?.id;
                 return (
@@ -994,26 +1003,14 @@ export function MusicRoundInterface({
                 );
               })}
             </div>
-
-            {/* Controls */}
-            <Button onClick={startPlayback} className="w-full bg-green-600 hover:bg-green-700 text-white" size="sm">
-              <Play className="h-4 w-4 mr-1" /> Play Music
-            </Button>
-
-            {/* Volume */}
-            <div className="flex items-center gap-2">
-              <Volume2 className="h-3 w-3 text-muted-foreground" />
-              <Slider value={[masterVolume]} onValueChange={(v) => handleVolumeChange(v[0])} min={0} max={100} step={1} className="flex-1" />
-              <span className="text-xs text-muted-foreground w-8">{masterVolume}%</span>
-            </div>
           </div>
         );
 
       case "playing":
         return (
-          <div className="space-y-3">
+          <div className="space-y-3 flex flex-col flex-1 min-h-0">
             {/* Playback sequence */}
-            <div className="border border-border rounded bg-background max-h-[180px] overflow-y-auto">
+            <div className="border border-border rounded bg-background flex-1 min-h-0 overflow-y-auto">
               {playbackSequence.map((clip, idx) => {
                 const isPlaying = currentPlayingIndex === idx;
                 const isTarget = clip.id === targetClip?.id;
@@ -1037,7 +1034,7 @@ export function MusicRoundInterface({
 
             {/* Progress bar */}
             {isPlaybackActive && (
-              <div className="space-y-1">
+              <div className="space-y-1 flex-shrink-0">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Clip {currentPlayingIndex + 1} of {playbackSequence.length}</span>
                   <span>{currentPlayingClipId === targetClip?.id ? "TARGET PLAYING" : ""}</span>
@@ -1047,20 +1044,13 @@ export function MusicRoundInterface({
             )}
 
             {/* Controls */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <Button onClick={skipClip} variant="outline" size="sm" className="flex-1">
                 <SkipForward className="h-4 w-4 mr-1" /> Skip
               </Button>
               <Button onClick={() => { stopPlayback(); setGameplayStep("reveal-answer"); }} variant="destructive" size="sm">
                 <Square className="h-4 w-4 mr-1" /> Stop
               </Button>
-            </div>
-
-            {/* Volume */}
-            <div className="flex items-center gap-2">
-              <Volume2 className="h-3 w-3 text-muted-foreground" />
-              <Slider value={[masterVolume]} onValueChange={(v) => handleVolumeChange(v[0])} min={0} max={100} step={1} className="flex-1" />
-              <span className="text-xs text-muted-foreground w-8">{masterVolume}%</span>
             </div>
           </div>
         );
@@ -1161,8 +1151,8 @@ export function MusicRoundInterface({
       </div>
 
       <div className="flex-1 min-h-0 p-4 flex flex-col">
-        <div className="grid grid-cols-3 gap-4 flex-1 min-h-0">
-          {/* Left: Target selection / Remaining clips */}
+        <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
+          {/* Left: Target selection + Play Music + Volume */}
           <Card className="bg-card border-border flex flex-col min-h-0 max-h-full overflow-hidden">
             <CardHeader className="pb-2 pt-3 px-4 flex-shrink-0">
               <div className="flex items-center justify-between">
@@ -1204,6 +1194,22 @@ export function MusicRoundInterface({
                       Change Target
                     </Button>
                   )}
+
+                  {/* Play Music button + Volume (in left card) */}
+                  <div className="border-t border-border pt-3 mt-3 space-y-3">
+                    {gameplayStep === "playlist-ready" && (
+                      <Button onClick={startPlayback} className="w-full bg-green-600 hover:bg-green-700 text-white" size="sm">
+                        <Play className="h-4 w-4 mr-1" /> Play Music
+                      </Button>
+                    )}
+
+                    {/* Volume slider - always visible when target is selected */}
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="h-3 w-3 text-muted-foreground" />
+                      <Slider value={[masterVolume]} onValueChange={(v) => handleVolumeChange(v[0])} min={0} max={100} step={1} className="flex-1" />
+                      <span className="text-xs text-muted-foreground w-8">{masterVolume}%</span>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="border border-border rounded bg-background max-h-[300px] overflow-y-auto">
@@ -1228,53 +1234,15 @@ export function MusicRoundInterface({
             </CardContent>
           </Card>
 
-          {/* Center: Playback control */}
+          {/* Right: Playback panel (playlist, progress, skip/stop, reveal, etc.) */}
           <Card className="bg-card border-border flex flex-col min-h-0 max-h-full overflow-hidden">
             <CardHeader className="pb-2 pt-3 px-4 flex-shrink-0">
-              <CardTitle className="text-sm font-semibold text-card-foreground">Playback</CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 flex-1 min-h-0 overflow-y-auto">
-              {renderCenterPanel()}
-            </CardContent>
-          </Card>
-
-          {/* Right: Buzz tracking */}
-          <Card className="bg-card border-border flex flex-col min-h-0 max-h-full overflow-hidden">
-            <CardHeader className="pb-2 pt-3 px-4 flex-shrink-0">
-              <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
-                <Zap className="h-4 w-4" /> Buzzes
+              <CardTitle className="text-sm font-semibold text-card-foreground">
+                Playback
               </CardTitle>
             </CardHeader>
-            <CardContent className="px-4 pb-4 flex-1 min-h-0 overflow-y-auto">
-              {buzzes.length === 0 ? (
-                <div className="flex items-center justify-center h-[200px] text-muted-foreground text-sm">
-                  {isPlaybackActive ? "Waiting for buzzes..." : "No buzzes yet"}
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {/* Valid buzzes first */}
-                  {validBuzzes.map((buzz, idx) => (
-                    <div key={`valid-${buzz.teamId}`} className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/20 rounded text-xs">
-                      <Badge variant="secondary" className="bg-green-600 text-white text-[10px] px-1.5">
-                        #{idx + 1}
-                      </Badge>
-                      <Check className="h-3 w-3 text-green-500" />
-                      <span className="font-semibold text-card-foreground">{buzz.teamName}</span>
-                      <span className="text-muted-foreground ml-auto">
-                        {buzz.responseTime ? `${(buzz.responseTime / 1000).toFixed(2)}s` : ""}
-                      </span>
-                    </div>
-                  ))}
-                  {/* Invalid buzzes */}
-                  {invalidBuzzes.map((buzz) => (
-                    <div key={`invalid-${buzz.teamId}`} className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded text-xs">
-                      <X className="h-3 w-3 text-red-500" />
-                      <span className="font-semibold text-card-foreground">{buzz.teamName}</span>
-                      <span className="text-red-400 ml-auto">Wrong clip</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <CardContent className="px-4 pb-4 flex-1 min-h-0 flex flex-col">
+              {renderPlaybackPanel()}
             </CardContent>
           </Card>
         </div>

@@ -661,7 +661,8 @@ export function QuizHost() {
 
   // Music round interface state
   const [showMusicRoundInterface, setShowMusicRoundInterface] = useState(false);
-  
+  const [musicRoundBuzzes, setMusicRoundBuzzes] = useState<{ teamId: string; valid: boolean; responseTime?: number }[]>([]);
+
   // Emoji debug screen state
   const [showEmojiDebug, setShowEmojiDebug] = useState(false);
   
@@ -3202,6 +3203,7 @@ export function QuizHost() {
   // Handle music round close
   const handleMusicRoundClose = () => {
     setShowMusicRoundInterface(false);
+    setMusicRoundBuzzes([]);
     setActiveTab("home");
   };
 
@@ -6802,6 +6804,7 @@ export function QuizHost() {
                 handleFastestTeamReveal({ team: team as any, responseTime, displayMode: 'fastest' });
               }}
               onExternalDisplayUpdate={handleExternalDisplayUpdate}
+              onBuzzUpdate={setMusicRoundBuzzes}
             />
           </div>
           {showFastestTeamDisplay && (
@@ -7006,6 +7009,7 @@ export function QuizHost() {
             pendingTeams={pendingTeams}
             onApprovePendingTeam={handleApproveTeam}
             onDeclinePendingTeam={handleDeclineTeam}
+            musicRoundBuzzes={musicRoundBuzzes}
           />
         </Resizable>
 
