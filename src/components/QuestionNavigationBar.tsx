@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Timer, Eye, Volume2, Send, Zap, ChevronRight, ChevronLeft } from "lucide-react";
 import type { HostFlow } from "../state/flowState";
-import { hasQuestionImage } from "../state/flowState";
 import { TimerProgressBar } from "./TimerProgressBar";
 
 interface QuestionNavigationBarProps {
@@ -214,12 +213,10 @@ export function QuestionNavigationBar({
 
   // Determine button content based on flow state
   const getFlowButton = () => {
-    const hasPicture = hasQuestionImage(currentQuestion);
-
     switch (flowState.flow) {
       case 'ready':
         return {
-          label: hasPicture ? 'Send Picture' : 'Send Question',
+          label: 'Send Question',
           icon: <Send className="h-4 w-4" />,
           color: 'bg-blue-600 hover:bg-blue-700',
         };

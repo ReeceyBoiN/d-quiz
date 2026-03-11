@@ -2342,22 +2342,56 @@ export function QuizHost() {
             pictureSent: false,
           }));
         } else if (hasQuestionImage(currentQuestion)) {
-          // Send picture (if available) or go straight to question
+          // Send picture AND question together so players see options immediately when they tap the image
           sendPictureToPlayers(currentQuestion.imageDataUrl);
 
           // Broadcast picture to player devices via backend
           broadcastPictureToPlayers(currentQuestion.imageDataUrl);
 
-          // Also send to external display using proper message format
+          // Also send question data alongside picture
+          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          const teamScrambleStates: Record<string, boolean> = {};
+          quizzes.forEach(quiz => { teamScrambleStates[quiz.name] = quiz.scrambled ?? false; });
+          sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType, teamScrambleStates);
+
+          // Broadcast question to player devices via backend
+          broadcastQuestionToPlayers({
+            text: currentQuestion.q,
+            q: currentQuestion.q,
+            options: currentQuestion.options || [],
+            type: normalizedType,
+            goWideEnabled: goWideEnabled,
+            teamScrambleStates,
+          });
+
+          // Send to external display with question + image together
           if (externalWindow) {
+            const shouldIncludeOptions = normalizedType === 'sequence' || normalizedType === 'multiple-choice';
             sendToExternalDisplay(
-              { type: 'DISPLAY_UPDATE', mode: 'picture', data: { imageDataUrl: currentQuestion.imageDataUrl } }
+              {
+                type: 'DISPLAY_UPDATE',
+                mode: 'question-with-timer',
+                data: {
+                  text: currentQuestion.q,
+                  options: shouldIncludeOptions ? currentQuestion.options : [],
+                  type: currentQuestion.type,
+                  questionNumber: currentLoadedQuestionIndex + 1,
+                  totalQuestions: loadedQuizQuestions.length,
+                  hidden: false,
+                  timerValue: flowState.totalTime,
+                  totalTime: flowState.totalTime,
+                  showProgressBar: false,
+                  imageDataUrl: currentQuestion.imageDataUrl || null
+                },
+                totalTime: flowState.totalTime
+              }
             );
           }
           setFlowState(prev => ({
             ...prev,
-            flow: 'sent-picture',
+            flow: 'sent-question',
             pictureSent: true,
+            questionSent: true,
           }));
         } else {
           // No picture, send question directly
