@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Trophy, Crown, Medal } from 'lucide-react';
 
 interface LeaderboardEntry {
@@ -16,34 +16,10 @@ export function ScoresPlayerDisplay({
   scores
 }: ScoresPlayerDisplayProps) {
   const [displayScores, setDisplayScores] = useState<LeaderboardEntry[]>(scores);
-  const [shouldScroll, setShouldScroll] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setDisplayScores(scores);
   }, [scores]);
-
-  // Check if content needs to scroll
-  useEffect(() => {
-    const checkIfScrollNeeded = () => {
-      if (containerRef.current && contentRef.current) {
-        const containerHeight = containerRef.current.offsetHeight;
-        const contentHeight = contentRef.current.offsetHeight;
-        setShouldScroll(contentHeight > containerHeight);
-      }
-    };
-
-    // Check immediately and after a small delay to ensure DOM is ready
-    checkIfScrollNeeded();
-    const timer = setTimeout(checkIfScrollNeeded, 100);
-
-    window.addEventListener('resize', checkIfScrollNeeded);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', checkIfScrollNeeded);
-    };
-  }, [displayScores]);
 
   const getPositionIcon = (position: number) => {
     if (position === 1) return <Crown className="w-8 h-8 text-[#f1c40f]" />;
@@ -125,16 +101,16 @@ export function ScoresPlayerDisplay({
         }}></div>
       </div>
 
-      {/* Scrolling scores container */}
+      {/* Scrollable scores container */}
       <div
-        ref={containerRef}
         style={{
           position: 'relative',
           width: '100%',
           flex: 1,
-          overflow: 'hidden',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
           display: 'flex',
-          alignItems: 'center',
           justifyContent: 'center',
         }}
       >
@@ -148,18 +124,16 @@ export function ScoresPlayerDisplay({
           </div>
         ) : (
           <div
-            ref={contentRef}
             style={{
               width: '90%',
               maxWidth: '600px',
-              animation: shouldScroll ? 'scrollScores 30s linear infinite' : 'none',
               display: 'flex',
               flexDirection: 'column',
               gap: '0.75rem',
+              paddingBottom: '2rem',
             }}
           >
-            {/* Only render scores once if not scrolling, twice if scrolling for continuous animation */}
-            {(shouldScroll ? [...displayScores, ...displayScores] : displayScores).map((entry, index) => (
+            {displayScores.map((entry, index) => (
               <div
                 key={`${entry.id}-${index}`}
                 style={{
@@ -253,19 +227,7 @@ export function ScoresPlayerDisplay({
         </div>
       </div>
 
-      <style>{`
-        @keyframes scrollScores {
-          0% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-50%);
-          }
-          100% {
-            transform: translateY(-100%);
-          }
-        }
-      `}</style>
+
     </div>
   );
 }

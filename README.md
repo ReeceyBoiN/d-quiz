@@ -19,11 +19,11 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   Buzz in mode needs just making in general hahaha
 
-  on player device when scores / leaderboard is shown, it needs to be scrolable so players can scroll up or down the leaderboard
+  -?-on player device when scores / leaderboard is shown, it needs to be scrolable so players can scroll up or down the leaderboard
 
   sequence question needs to be able to tap the correct sequence of answers, not just one answer 
 
-  picture questions and multiple choice need to reveal options together
+  --picture questions and multiple choice need to reveal options together
 
   in settings, waiting room should have the ability to display waiting room images.
 
