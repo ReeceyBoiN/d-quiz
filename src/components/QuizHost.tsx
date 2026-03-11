@@ -6787,7 +6787,7 @@ export function QuizHost() {
     if (showMusicRoundInterface) {
       return (
         <div className="flex-1 relative min-h-0 flex flex-col">
-          <div className="flex-1 overflow-hidden min-h-0">
+          <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
             <MusicRoundInterface
               onClose={handleMusicRoundClose}
               teams={quizzes}
@@ -7034,7 +7034,7 @@ export function QuizHost() {
             {/* Main content - theme-aware background */}
             <div className="flex-1 bg-background min-w-0 flex flex-col relative">
               {/* Always render tab content to keep game mode components mounted */}
-              <div className={selectedTeamForWindow ? "flex-1 flex flex-col invisible" : "flex-1 flex flex-col"}>
+              <div className={selectedTeamForWindow ? "flex-1 flex flex-col min-h-0 invisible" : "flex-1 flex flex-col min-h-0"}>
                 {renderTabContent()}
               </div>
 

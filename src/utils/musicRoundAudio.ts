@@ -73,20 +73,22 @@ export function reverseAudioBuffer(buffer: AudioBuffer): AudioBuffer {
 /**
  * Load and decode an audio file into an AudioBuffer
  */
-export async function loadAudioFile(filePath: string): Promise<{ buffer: AudioBuffer; duration: number }> {
-  const ctx = new AudioContext();
+export async function loadAudioFile(
+  filePath: string,
+  sharedCtx?: AudioContext
+): Promise<{ buffer: AudioBuffer; duration: number }> {
+  const ctx = sharedCtx || new AudioContext();
   try {
     const fileUrl = pathToFileUrl(filePath);
     const response = await fetch(fileUrl);
     if (!response.ok) throw new Error(`Failed to fetch audio: ${response.statusText}`);
     const arrayBuffer = await response.arrayBuffer();
     const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-    const duration = audioBuffer.duration;
-    ctx.close();
-    return { buffer: audioBuffer, duration };
+    return { buffer: audioBuffer, duration: audioBuffer.duration };
   } catch (err) {
-    ctx.close();
     throw err;
+  } finally {
+    if (!sharedCtx) ctx.close();
   }
 }
 
@@ -131,30 +133,54 @@ export async function loadClips(
   onProgress?: (loaded: number, total: number) => void,
   reversed?: boolean
 ): Promise<MusicClip[]> {
-  const clips: MusicClip[] = [];
-  for (let i = 0; i < filePaths.length; i++) {
-    const file = filePaths[i];
+  const CONCURRENCY = 4;
+  const sharedCtx = new AudioContext();
+  let completed = 0;
+
+  // Create a task for each file that returns a MusicClip or null on failure
+  const tasks: (() => Promise<MusicClip | null>)[] = filePaths.map((file, i) => async () => {
     try {
-      const { buffer, duration } = await loadAudioFile(file.path);
+      const { buffer, duration } = await loadAudioFile(file.path, sharedCtx);
       const region = autoSelectRegion(duration, clipLength);
       const finalBuffer = reversed ? reverseAudioBuffer(buffer) : buffer;
-      // When reversed, the region maps to the reversed buffer:
-      // original region [start, end] in reversed buffer plays the same segment backwards
-      clips.push({
+      const clip: MusicClip = {
         id: `clip-${i}`,
-        name: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
+        name: file.name.replace(/\.[^/.]+$/, ''),
         filePath: file.path,
         duration,
         regionStart: reversed ? (duration - region.end) : region.start,
         regionEnd: reversed ? (duration - region.start) : region.end,
         buffer: finalBuffer,
-      });
-      onProgress?.(i + 1, filePaths.length);
+      };
+      completed++;
+      onProgress?.(completed, filePaths.length);
+      return clip;
     } catch (err) {
       console.error(`[MusicRoundAudio] Failed to load ${file.name}:`, err);
+      completed++;
+      onProgress?.(completed, filePaths.length);
+      return null;
+    }
+  });
+
+  // Run tasks with concurrency limit
+  const results: (MusicClip | null)[] = new Array(tasks.length);
+  let taskIndex = 0;
+
+  async function worker() {
+    while (taskIndex < tasks.length) {
+      const idx = taskIndex++;
+      results[idx] = await tasks[idx]();
     }
   }
-  return clips;
+
+  const workers = Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, () => worker());
+  await Promise.all(workers);
+
+  try { sharedCtx.close(); } catch (e) { /* already closed */ }
+
+  // Filter out nulls and preserve original order
+  return results.filter((clip): clip is MusicClip => clip !== null);
 }
 
 /**
@@ -315,7 +341,17 @@ function skipToNextClip() {
         // Already stopped
       }
     }
-    // 0.2s silence gap after fade out
+
+    // If the current clip is the target clip, stop playback entirely
+    if (state.targetClipId && state.currentClipId === state.targetClipId) {
+      state.isPlaying = false;
+      state.isStopping = true;
+      state.onTargetClipFinished?.();
+      cleanupPlayback();
+      return;
+    }
+
+    // 0.2s silence gap after fade out, then play next clip
     state.gapTimeoutId = setTimeout(() => {
       playNextClip();
     }, 200);

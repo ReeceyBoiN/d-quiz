@@ -757,7 +757,10 @@ export function ExternalDisplayWindow() {
               {/* Question Header */}
               <div style={{ marginBottom: '20px', textAlign: 'center', width: '100%', backgroundColor: 'rgba(31, 41, 55, 0.95)', border: `3px solid ${displayData.borderColor}`, borderRadius: '28px', padding: '40px', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)' }}>
                 <h1 style={{ fontSize: scaleFontSize('56px', textSizeMultiplier), fontWeight: 'bold', color: '#f97316', margin: '0 0 20px 0' }}>
-                  Question {displayData.data?.questionNumber || 1} of {displayData.data?.totalQuestions || 1}
+                  {displayData.data?.type === 'music-buzz'
+                    ? 'Music Round - Buzz in when you hear:'
+                    : `Question ${displayData.data?.questionNumber || 1} of ${displayData.data?.totalQuestions || 1}`
+                  }
                 </h1>
                 {displayData.data?.hidden ? (
                   <div style={{ fontSize: scaleFontSize('120px', textSizeMultiplier), fontWeight: 'bold', color: '#9ca3af' }}>?</div>

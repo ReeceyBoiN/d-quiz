@@ -3,7 +3,6 @@ import type { KeypadColor } from '../hooks/usePlayerSettings';
 
 interface MusicBuzzScreenProps {
   targetClipName: string;
-  nowPlayingClipName?: string;
   keypadColor: KeypadColor;
   onBuzz: () => void;
   buzzState: 'waiting' | 'active' | 'buzzed' | 'correct' | 'wrong' | 'too-late' | 'revealed';
@@ -52,7 +51,6 @@ const colorMap: Record<KeypadColor, { bg: string; active: string; pressed: strin
 
 export function MusicBuzzScreen({
   targetClipName,
-  nowPlayingClipName,
   keypadColor,
   onBuzz,
   buzzState,
@@ -155,12 +153,6 @@ export function MusicBuzzScreen({
         <h1 className="text-2xl font-bold text-white leading-tight break-words">
           {targetClipName || 'Waiting...'}
         </h1>
-        {nowPlayingClipName && (
-          <div className="mt-3 px-3 py-1.5 bg-white/10 rounded-lg">
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Now Playing</p>
-            <p className="text-sm font-semibold text-orange-400 truncate">{nowPlayingClipName}</p>
-          </div>
-        )}
       </div>
 
       {/* Center: BUZZ button */}

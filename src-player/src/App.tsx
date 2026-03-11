@@ -51,7 +51,6 @@ export default function App() {
   const [musicTargetClip, setMusicTargetClip] = useState<string>('');
   const [musicBuzzPoints, setMusicBuzzPoints] = useState<number | undefined>(undefined);
   const [musicRevealedAnswer, setMusicRevealedAnswer] = useState<string>('');
-  const [musicNowPlayingClip, setMusicNowPlayingClip] = useState<string>('');
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [pinError, setPinError] = useState('');
   const [pinAccepted, setPinAccepted] = useState(false);
@@ -1184,14 +1183,6 @@ export default function App() {
         }
         break;
 
-      case 'MUSIC_ROUND_NOW_PLAYING' as any:
-        try {
-          console.log('[Player] MUSIC_ROUND_NOW_PLAYING received:', message.data?.clipName);
-          setMusicNowPlayingClip(message.data?.clipName || '');
-        } catch (err) {
-          console.error('[Player] Error in MUSIC_ROUND_NOW_PLAYING handler:', err);
-        }
-        break;
 
       case 'MUSIC_ROUND_FASTEST' as any:
         try {
@@ -1216,7 +1207,6 @@ export default function App() {
           setMusicTargetClip('');
           setMusicBuzzPoints(undefined);
           setMusicRevealedAnswer('');
-          setMusicNowPlayingClip('');
         } catch (err) {
           console.error('[Player] Error in MUSIC_ROUND_RESET handler:', err);
         }
@@ -1229,7 +1219,6 @@ export default function App() {
           setMusicTargetClip('');
           setMusicBuzzPoints(undefined);
           setMusicRevealedAnswer('');
-          setMusicNowPlayingClip('');
           resetQuestionState();
           if (!applyPendingDisplayMode('MUSIC_ROUND_END')) {
             transitionToIdleDisplay('MUSIC_ROUND_END');
@@ -1870,7 +1859,6 @@ export default function App() {
             <>
               <MusicBuzzScreen
                 targetClipName={musicTargetClip}
-                nowPlayingClipName={musicNowPlayingClip}
                 keypadColor={settings.keypadColor}
                 buzzState={musicBuzzState}
                 points={musicBuzzPoints}

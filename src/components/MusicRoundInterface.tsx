@@ -451,7 +451,7 @@ export function MusicRoundInterface({
     // Update external display
     if (onExternalDisplayUpdate) {
       onExternalDisplayUpdate('question', {
-        text: `Buzz when you hear: ${clip.name}`,
+        text: clip.name,
         type: 'music-buzz',
       });
     }
@@ -488,17 +488,10 @@ export function MusicRoundInterface({
         const playingClip = playbackSequence.find(c => c.id === clipId);
         currentPlayingClipNameRef.current = playingClip?.name || '';
 
-        // Broadcast now-playing to player devices
-        broadcastToPlayers('MUSIC_ROUND_NOW_PLAYING' as any, {
-          clipName: playingClip?.name || 'Unknown',
-          clipIndex: clipIndex,
-          totalClips: playbackSequence.length,
-        });
-
-        // Update external display with now playing
+        // Update external display with target song only
         if (onExternalDisplayUpdate) {
           onExternalDisplayUpdate('question', {
-            text: `Now Playing: ${playingClip?.name || 'Unknown'}\n\nBuzz when you hear: ${targetClip?.name}`,
+            text: targetClip?.name || '',
             type: 'music-buzz',
           });
         }
@@ -788,7 +781,7 @@ export function MusicRoundInterface({
         </div>
 
         {/* Round Configuration */}
-        <div className="px-4 pt-3 pb-2">
+        <div className="px-4 pt-3 pb-2 flex-shrink-0">
           <Card className="bg-card border-border">
             <CardHeader className="pb-2 pt-3 px-4">
               <CardTitle className="text-sm font-semibold text-card-foreground">Round Configuration</CardTitle>
@@ -848,7 +841,7 @@ export function MusicRoundInterface({
         </div>
 
         {/* Two-column grid: Folder browser + Tracks (fills remaining space) */}
-        <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4 grid grid-cols-2 grid-rows-[1fr] gap-4">
+        <div className="flex-1 min-h-0 overflow-hidden px-4 pb-4 grid grid-cols-2 grid-rows-[minmax(0,1fr)] gap-4">
           {/* Left: Folder browser */}
           <Card className="bg-card border-border flex flex-col min-h-0 overflow-hidden">
             <CardHeader className="pb-2 pt-3 px-4 flex-shrink-0">
@@ -1167,11 +1160,11 @@ export function MusicRoundInterface({
         </Button>
       </div>
 
-      <div className="flex-1 overflow-auto p-4">
-        <div className="grid grid-cols-3 gap-4">
+      <div className="flex-1 min-h-0 p-4 flex flex-col">
+        <div className="grid grid-cols-3 gap-4 flex-1 min-h-0">
           {/* Left: Target selection / Remaining clips */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-2 pt-3 px-4">
+          <Card className="bg-card border-border flex flex-col min-h-0 max-h-full overflow-hidden">
+            <CardHeader className="pb-2 pt-3 px-4 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-semibold text-card-foreground">
                   {gameplayStep === "target-selection" ? "Select Target Clip" : "Target Selected"}
@@ -1183,7 +1176,7 @@ export function MusicRoundInterface({
                 )}
               </div>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
+            <CardContent className="px-4 pb-4 flex-1 min-h-0 overflow-y-auto">
               {gameplayStep !== "target-selection" && targetClip ? (
                 <div className="space-y-3">
                   <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
@@ -1236,23 +1229,23 @@ export function MusicRoundInterface({
           </Card>
 
           {/* Center: Playback control */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-2 pt-3 px-4">
+          <Card className="bg-card border-border flex flex-col min-h-0 max-h-full overflow-hidden">
+            <CardHeader className="pb-2 pt-3 px-4 flex-shrink-0">
               <CardTitle className="text-sm font-semibold text-card-foreground">Playback</CardTitle>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
+            <CardContent className="px-4 pb-4 flex-1 min-h-0 overflow-y-auto">
               {renderCenterPanel()}
             </CardContent>
           </Card>
 
           {/* Right: Buzz tracking */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-2 pt-3 px-4">
+          <Card className="bg-card border-border flex flex-col min-h-0 max-h-full overflow-hidden">
+            <CardHeader className="pb-2 pt-3 px-4 flex-shrink-0">
               <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
                 <Zap className="h-4 w-4" /> Buzzes
               </CardTitle>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
+            <CardContent className="px-4 pb-4 flex-1 min-h-0 overflow-y-auto">
               {buzzes.length === 0 ? (
                 <div className="flex items-center justify-center h-[200px] text-muted-foreground text-sm">
                   {isPlaybackActive ? "Waiting for buzzes..." : "No buzzes yet"}
