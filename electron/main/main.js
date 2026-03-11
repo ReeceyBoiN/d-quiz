@@ -899,6 +899,27 @@ async function boot() {
     }
   });
 
+  // Broadcast music round messages to player devices
+  router.mount('network/broadcast-music-round', async (payload) => {
+    try {
+      const { messageType, data } = payload;
+      log.info('[IPC] network/broadcast-music-round called with:', { messageType });
+
+      if (!backend || !backend.broadcastMusicRound) {
+        log.error('[IPC] Backend not initialized for broadcast-music-round');
+        throw new Error('Backend not initialized');
+      }
+
+      backend.broadcastMusicRound(messageType, data);
+      log.info('[IPC] backend.broadcastMusicRound completed successfully');
+
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-music-round error:', err.message);
+      throw err;
+    }
+  });
+
   // Send message to a specific player (controller or player)
   router.mount('network/send-to-player', async (payload) => {
     try {

@@ -89,7 +89,7 @@ export function TopNavigation({
       }} />
       <div className="flex items-center justify-between gap-1.5 lg:gap-2">
         {/* Left side - Navigation tabs */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 min-w-0 flex-shrink">
           {/* Navigation tabs */}
           {tabs.filter(tab => tab.id !== "user-status").map((tab, index) => (
             <div key={tab.id} className="flex">
@@ -180,7 +180,7 @@ export function TopNavigation({
         <div className="flex-1"></div>
 
         {/* Right side - Controls */}
-        <div className="flex items-center gap-1.5 lg:gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 lg:gap-2 flex-none">
           {/* Title and version - moved to right side */}
           <div className="text-center -mt-1 mr-1 md:mr-0 min-w-0">
             <h1 className="text-sidebar-foreground text-2xl lg:text-[26px] font-medium tracking-wide">POP QUIZ</h1>
@@ -192,7 +192,7 @@ export function TopNavigation({
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowNetworkModal(true)}
-                className={`text-white text-sm md:text-xs px-2 md:px-1.5 py-1.5 md:py-1 h-auto hover:scale-105 transition-all duration-200 shrink min-w-0 whitespace-normal ${
+                className={`text-white text-sm md:text-xs px-2 md:px-1.5 py-1.5 md:py-1 h-auto hover:scale-105 transition-all duration-200 shrink-0 whitespace-nowrap ${
                   networkAvailable
                     ? "bg-green-600 hover:bg-green-700"
                     : "flash-warning"
@@ -201,18 +201,18 @@ export function TopNavigation({
               >
                 {networkAvailable ? (
                   <>
-                    <Wifi className="w-4 h-4 mr-2" />
-                    <div className="text-left min-w-0 max-w-[120px] lg:max-w-none">
-                      <div className="font-medium leading-tight break-words">Network</div>
-                      <div className="text-xs md:text-[10px] opacity-90 leading-tight break-words">Connected</div>
+                    <Wifi className="w-4 h-4 mr-1 shrink-0" />
+                    <div className="text-left">
+                      <div className="font-medium leading-tight">Network</div>
+                      <div className="text-xs md:text-[10px] opacity-90 leading-tight">Connected</div>
                     </div>
                   </>
                 ) : (
                   <>
-                    <AlertTriangle className="w-4 h-4 mr-2" />
-                    <div className="text-left min-w-0 max-w-[120px] lg:max-w-none">
-                      <div className="font-medium leading-tight break-words">No Network</div>
-                      <div className="text-xs md:text-[10px] opacity-90 leading-tight break-words">Detected</div>
+                    <AlertTriangle className="w-4 h-4 mr-1 shrink-0" />
+                    <div className="text-left">
+                      <div className="font-medium leading-tight">No Network</div>
+                      <div className="text-xs md:text-[10px] opacity-90 leading-tight">Detected</div>
                     </div>
                   </>
                 )}

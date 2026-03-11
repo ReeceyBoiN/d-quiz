@@ -32,6 +32,12 @@ interface SettingsContextType {
   voiceCountdown: boolean;
   hideQuizPackAnswers: boolean;
   buzzerFolderPath: string | null;
+  musicRoundDefaultClipLength: number;
+  musicRoundDefaultPoints: number;
+  musicRoundDefaultSpeedBonus: number;
+  musicRoundDefaultVolume: number;
+  musicRoundElimination: boolean;
+  musicRoundReversed: boolean;
   updateDefaultScores: (points: number, speedBonus: number) => void;
   updateGameModePoints: (gameMode: keyof GameModePoints, points: number) => void;
   updateGameModeTimer: (gameMode: keyof GameModeTimers, timer: number) => void;
@@ -46,6 +52,12 @@ interface SettingsContextType {
   updateVoiceCountdown: (enabled: boolean) => void;
   updateHideQuizPackAnswers: (enabled: boolean) => void;
   updateBuzzerFolderPath: (path: string | null) => void;
+  updateMusicRoundDefaultClipLength: (length: number) => void;
+  updateMusicRoundDefaultPoints: (points: number) => void;
+  updateMusicRoundDefaultSpeedBonus: (bonus: number) => void;
+  updateMusicRoundDefaultVolume: (volume: number) => void;
+  updateMusicRoundElimination: (enabled: boolean) => void;
+  updateMusicRoundReversed: (enabled: boolean) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -105,6 +117,12 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   const [voiceCountdown, setVoiceCountdown] = useState(initialSettings.voiceCountdown !== undefined ? initialSettings.voiceCountdown : true);
   const [hideQuizPackAnswers, setHideQuizPackAnswers] = useState(initialSettings.hideQuizPackAnswers || false);
   const [buzzerFolderPath, setBuzzerFolderPath] = useState<string | null>(initialSettings.buzzerFolderPath || null);
+  const [musicRoundDefaultClipLength, setMusicRoundDefaultClipLength] = useState(initialSettings.musicRoundDefaultClipLength !== undefined ? initialSettings.musicRoundDefaultClipLength : 10);
+  const [musicRoundDefaultPoints, setMusicRoundDefaultPoints] = useState(initialSettings.musicRoundDefaultPoints !== undefined ? initialSettings.musicRoundDefaultPoints : 4);
+  const [musicRoundDefaultSpeedBonus, setMusicRoundDefaultSpeedBonus] = useState(initialSettings.musicRoundDefaultSpeedBonus !== undefined ? initialSettings.musicRoundDefaultSpeedBonus : 4);
+  const [musicRoundDefaultVolume, setMusicRoundDefaultVolume] = useState(initialSettings.musicRoundDefaultVolume !== undefined ? initialSettings.musicRoundDefaultVolume : 80);
+  const [musicRoundElimination, setMusicRoundElimination] = useState(initialSettings.musicRoundElimination !== undefined ? initialSettings.musicRoundElimination : true);
+  const [musicRoundReversed, setMusicRoundReversed] = useState(initialSettings.musicRoundReversed !== undefined ? initialSettings.musicRoundReversed : false);
 
   // Remove the useEffect that loads settings on mount as it is now done synchronously
   // Listen for storage changes (when settings are updated in Settings component)
@@ -153,6 +171,12 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
           setVoiceCountdown(parsed.voiceCountdown !== undefined ? parsed.voiceCountdown : true);
           setHideQuizPackAnswers(parsed.hideQuizPackAnswers || false);
           setBuzzerFolderPath(parsed.buzzerFolderPath || null);
+          if (parsed.musicRoundDefaultClipLength !== undefined) setMusicRoundDefaultClipLength(parsed.musicRoundDefaultClipLength);
+          if (parsed.musicRoundDefaultPoints !== undefined) setMusicRoundDefaultPoints(parsed.musicRoundDefaultPoints);
+          if (parsed.musicRoundDefaultSpeedBonus !== undefined) setMusicRoundDefaultSpeedBonus(parsed.musicRoundDefaultSpeedBonus);
+          if (parsed.musicRoundDefaultVolume !== undefined) setMusicRoundDefaultVolume(parsed.musicRoundDefaultVolume);
+          if (parsed.musicRoundElimination !== undefined) setMusicRoundElimination(parsed.musicRoundElimination);
+          if (parsed.musicRoundReversed !== undefined) setMusicRoundReversed(parsed.musicRoundReversed);
         } catch (error) {
           console.error('Failed to parse saved settings:', error);
         }
@@ -388,12 +412,26 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
   const updateBuzzerFolderPath = (path: string | null) => {
     setBuzzerFolderPath(path);
-    // Save to localStorage and trigger event
     const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
     const updatedSettings = { ...currentSettings, buzzerFolderPath: path };
     localStorage.setItem('quizHostSettings', JSON.stringify(updatedSettings));
     window.dispatchEvent(new Event('settingsUpdated'));
   };
+
+  const updateMusicRoundSetting = (key: string, value: any, setter: (v: any) => void) => {
+    setter(value);
+    const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
+    const updatedSettings = { ...currentSettings, [key]: value };
+    localStorage.setItem('quizHostSettings', JSON.stringify(updatedSettings));
+    window.dispatchEvent(new Event('settingsUpdated'));
+  };
+
+  const updateMusicRoundDefaultClipLength = (length: number) => updateMusicRoundSetting('musicRoundDefaultClipLength', length, setMusicRoundDefaultClipLength);
+  const updateMusicRoundDefaultPoints = (points: number) => updateMusicRoundSetting('musicRoundDefaultPoints', points, setMusicRoundDefaultPoints);
+  const updateMusicRoundDefaultSpeedBonus = (bonus: number) => updateMusicRoundSetting('musicRoundDefaultSpeedBonus', bonus, setMusicRoundDefaultSpeedBonus);
+  const updateMusicRoundDefaultVolume = (volume: number) => updateMusicRoundSetting('musicRoundDefaultVolume', volume, setMusicRoundDefaultVolume);
+  const updateMusicRoundElimination = (enabled: boolean) => updateMusicRoundSetting('musicRoundElimination', enabled, setMusicRoundElimination);
+  const updateMusicRoundReversed = (enabled: boolean) => updateMusicRoundSetting('musicRoundReversed', enabled, setMusicRoundReversed);
 
   return (
     <SettingsContext.Provider
@@ -414,6 +452,12 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         voiceCountdown,
         hideQuizPackAnswers,
         buzzerFolderPath,
+        musicRoundDefaultClipLength,
+        musicRoundDefaultPoints,
+        musicRoundDefaultSpeedBonus,
+        musicRoundDefaultVolume,
+        musicRoundElimination,
+        musicRoundReversed,
         updateDefaultScores,
         updateGameModePoints,
         updateGameModeTimer,
@@ -428,6 +472,12 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         updateVoiceCountdown,
         updateHideQuizPackAnswers,
         updateBuzzerFolderPath,
+        updateMusicRoundDefaultClipLength,
+        updateMusicRoundDefaultPoints,
+        updateMusicRoundDefaultSpeedBonus,
+        updateMusicRoundDefaultVolume,
+        updateMusicRoundElimination,
+        updateMusicRoundReversed,
       }}
     >
       {children}

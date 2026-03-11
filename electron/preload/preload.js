@@ -116,6 +116,7 @@ contextBridge.exposeInMainWorld('api', {
     broadcastFlowState: (data) => invoke('network/broadcast-flow-state', data),
     broadcastPrecache: (data) => invoke('network/broadcast-precache', data),
     broadcastBuzzerFolderChange: (data) => invoke('network/broadcast-buzzer-folder-change', data),
+    broadcastMusicRound: (data) => invoke('network/broadcast-music-round', data),
     sendToPlayer: (data) => invoke('network/send-to-player', data),
   },
 

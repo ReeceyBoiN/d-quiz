@@ -1437,6 +1437,31 @@ async function startBackend({ port = 4310 } = {}) {
           } catch (pinErr) {
             log.error(`[WS-${connectionId}] Error handling PIN_SUBMIT:`, pinErr.message);
           }
+        } else if (data.type === 'MUSIC_BUZZ') {
+          // Forward MUSIC_BUZZ from player to host (other clients)
+          try {
+            const buzzDeviceId = (data.deviceId || deviceId || '').trim();
+            log.info(`[WS-${connectionId}] 🎵 MUSIC_BUZZ received from ${data.teamName} (${buzzDeviceId})`);
+
+            const buzzMessage = JSON.stringify({
+              type: 'MUSIC_BUZZ',
+              playerId: data.playerId,
+              deviceId: buzzDeviceId,
+              teamName: data.teamName,
+              timestamp: data.timestamp || Date.now()
+            });
+
+            const otherClients = Array.from(wss.clients).filter(c => c.readyState === 1 && c !== ws);
+            otherClients.forEach((client) => {
+              try {
+                client.send(buzzMessage);
+              } catch (sendErr) {
+                log.error(`[WS-${connectionId}] Error forwarding MUSIC_BUZZ:`, sendErr.message);
+              }
+            });
+          } catch (buzzErr) {
+            log.error(`[WS-${connectionId}] Error handling MUSIC_BUZZ:`, buzzErr.message);
+          }
         } else {
           log.warn(`[WS-${connectionId}] ⚠️  Unknown message type: ${data.type}`);
         }
@@ -2716,6 +2741,41 @@ async function startBackend({ port = 4310 } = {}) {
     }
   };
 
+  function broadcastMusicRound(messageType, messageData) {
+    try {
+      log.info(`[broadcastMusicRound] Broadcasting ${messageType} to players`);
+
+      const message = JSON.stringify({
+        type: messageType,
+        data: messageData,
+        timestamp: Date.now()
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+
+      networkPlayers.forEach((player, deviceId) => {
+        if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+          try {
+            player.ws.send(message, (err) => {
+              if (err) {
+                log.error(`❌ [broadcastMusicRound] ws.send error for ${deviceId}:`, err.message);
+              }
+            });
+            successCount++;
+          } catch (error) {
+            log.error(`❌ Failed to send ${messageType} to ${deviceId}:`, error.message);
+            failCount++;
+          }
+        }
+      });
+
+      log.info(`🎵 Broadcast ${messageType} to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed` : ''));
+    } catch (err) {
+      log.error(`❌ broadcastMusicRound error:`, err.message);
+    }
+  }
+
   function broadcastPrecache(precacheData) {
     try {
       log.info(`[broadcastPrecache] Broadcasting precache to players, cacheKey: ${precacheData?.cacheKey}`);
@@ -2757,7 +2817,7 @@ async function startBackend({ port = 4310 } = {}) {
     }
   }
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastFlowState, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, broadcastPrecache, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos, sendToPlayer };
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastFlowState, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, broadcastPrecache, broadcastMusicRound, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos, sendToPlayer };
 }
 
 export { startBackend };

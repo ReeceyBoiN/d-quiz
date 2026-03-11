@@ -40,7 +40,14 @@ export type NetworkMessageType =
   | 'FLOW_STATE'  // broadcast to controller with current flow state
   | 'PHOTO_APPROVAL_UPDATED'  // broadcast when a team photo is approved/updated
   | 'SCRAMBLE_UPDATE'  // broadcast to players when keypad scramble state changes
-  | 'PRECACHE';  // pre-cache images on player devices before reveal
+  | 'PRECACHE'  // pre-cache images on player devices before reveal
+  | 'MUSIC_ROUND_START'  // tells players a music round is starting
+  | 'MUSIC_ROUND_TARGET'  // announces the target clip name to players
+  | 'MUSIC_ROUND_BUZZ_RESULT'  // tells a player if their buzz was correct/wrong/too-late
+  | 'MUSIC_ROUND_NOW_PLAYING'  // broadcasts which clip is currently playing to players
+  | 'MUSIC_ROUND_RESET'  // resets player buzzer for next target clip selection
+  | 'MUSIC_ROUND_END'  // round is over, return to normal display
+  | 'MUSIC_BUZZ';  // incoming from player buzz during music round
 
 export interface NetworkPayload {
   type: NetworkMessageType;

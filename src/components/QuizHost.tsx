@@ -6786,10 +6786,41 @@ export function QuizHost() {
     // Show music round interface when active
     if (showMusicRoundInterface) {
       return (
-        <div className="flex-1 overflow-hidden">
-          <MusicRoundInterface
-            onClose={handleMusicRoundClose}
-          />
+        <div className="flex-1 relative min-h-0 flex flex-col">
+          <div className="flex-1 overflow-hidden min-h-0">
+            <MusicRoundInterface
+              onClose={handleMusicRoundClose}
+              teams={quizzes}
+              onScoreChange={handleScoreChange}
+              onEndRound={() => {
+                closeAllGameModes();
+                sendEndRound();
+                handleExternalDisplayUpdate('basic');
+                setActiveTab("home");
+              }}
+              onShowFastestTeam={(team, responseTime) => {
+                handleFastestTeamReveal({ team: team as any, responseTime, displayMode: 'fastest' });
+              }}
+              onExternalDisplayUpdate={handleExternalDisplayUpdate}
+            />
+          </div>
+          {showFastestTeamDisplay && (
+            <div className="absolute inset-0 overflow-hidden z-50">
+              <FastestTeamDisplay
+                fastestTeam={fastestTeamData}
+                teams={quizzes}
+                hostLocation={hostLocation}
+                onClose={handleFastestTeamClose}
+                onFastestTeamLocationChange={handleTeamLocationChange}
+                onHostLocationChange={handleHostLocationChange}
+                onScrambleKeypad={handleScrambleKeypad}
+                onBlockTeam={handleBlockTeam}
+                buzzerVolumes={buzzerVolumes}
+                onBuzzerVolumeChange={handleBuzzerVolumeChange}
+                displayMode={fastestTeamDisplayMode}
+              />
+            </div>
+          )}
         </div>
       );
     }

@@ -7,6 +7,7 @@ import { PinEntryScreen } from './components/PinEntryScreen';
 import { PlayerDisplayManager } from './components/PlayerDisplayManager';
 import { SettingsBar } from './components/SettingsBar';
 import { FastestTeamOverlay } from './components/FastestTeamOverlay';
+import { MusicBuzzScreen } from './components/MusicBuzzScreen';
 import { HostTerminal } from './components/HostTerminal';
 import { NetworkContext } from './context/NetworkContext';
 import { useNetworkConnection } from './hooks/useNetworkConnection';
@@ -45,7 +46,12 @@ interface PendingMessage {
 
 export default function App() {
   useWakeLock();
-  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'buzzer-selection' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display' | 'host-terminal' | 'pin-entry'>('team-entry');
+  const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'buzzer-selection' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display' | 'host-terminal' | 'pin-entry' | 'music-buzz'>('team-entry');
+  const [musicBuzzState, setMusicBuzzState] = useState<'waiting' | 'active' | 'buzzed' | 'correct' | 'wrong' | 'too-late' | 'revealed'>('waiting');
+  const [musicTargetClip, setMusicTargetClip] = useState<string>('');
+  const [musicBuzzPoints, setMusicBuzzPoints] = useState<number | undefined>(undefined);
+  const [musicRevealedAnswer, setMusicRevealedAnswer] = useState<string>('');
+  const [musicNowPlayingClip, setMusicNowPlayingClip] = useState<string>('');
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [pinError, setPinError] = useState('');
   const [pinAccepted, setPinAccepted] = useState(false);
@@ -1121,6 +1127,118 @@ export default function App() {
         }
         break;
 
+      case 'MUSIC_ROUND_START' as any:
+        try {
+          console.log('[Player] MUSIC_ROUND_START received');
+          if (shouldIgnoreScreenTransition('MUSIC_ROUND_START', currentScreen)) {
+            setPendingMessage({ type: 'MUSIC_ROUND_START', data: message.data });
+            return;
+          }
+          setMusicBuzzState('waiting');
+          setMusicTargetClip('');
+          setMusicBuzzPoints(undefined);
+          setCurrentScreen('music-buzz');
+        } catch (err) {
+          console.error('[Player] Error in MUSIC_ROUND_START handler:', err);
+        }
+        break;
+
+      case 'MUSIC_ROUND_TARGET' as any:
+        try {
+          console.log('[Player] MUSIC_ROUND_TARGET received:', message.data?.clipName);
+          setMusicTargetClip(message.data?.clipName || '');
+          setMusicBuzzState('active');
+          setMusicBuzzPoints(undefined);
+          if (currentScreen !== 'music-buzz') {
+            setCurrentScreen('music-buzz');
+          }
+        } catch (err) {
+          console.error('[Player] Error in MUSIC_ROUND_TARGET handler:', err);
+        }
+        break;
+
+      case 'MUSIC_ROUND_BUZZ_RESULT' as any:
+        try {
+          console.log('[Player] MUSIC_ROUND_BUZZ_RESULT received:', message.data);
+          const buzzData = message.data;
+          if (buzzData?.teamName === teamName || buzzData?.deviceId === deviceId) {
+            if (buzzData?.valid) {
+              setMusicBuzzState('correct');
+              setMusicBuzzPoints(buzzData?.points);
+            } else {
+              setMusicBuzzState('wrong');
+            }
+          }
+        } catch (err) {
+          console.error('[Player] Error in MUSIC_ROUND_BUZZ_RESULT handler:', err);
+        }
+        break;
+
+      case 'MUSIC_ROUND_REVEAL' as any:
+        try {
+          console.log('[Player] MUSIC_ROUND_REVEAL received:', message.data?.clipName);
+          setMusicRevealedAnswer(message.data?.clipName || '');
+          setMusicBuzzState('revealed');
+        } catch (err) {
+          console.error('[Player] Error in MUSIC_ROUND_REVEAL handler:', err);
+        }
+        break;
+
+      case 'MUSIC_ROUND_NOW_PLAYING' as any:
+        try {
+          console.log('[Player] MUSIC_ROUND_NOW_PLAYING received:', message.data?.clipName);
+          setMusicNowPlayingClip(message.data?.clipName || '');
+        } catch (err) {
+          console.error('[Player] Error in MUSIC_ROUND_NOW_PLAYING handler:', err);
+        }
+        break;
+
+      case 'MUSIC_ROUND_FASTEST' as any:
+        try {
+          console.log('[Player] MUSIC_ROUND_FASTEST received:', message.data?.teamName);
+          const fastMusicTeam = message.data?.teamName;
+          if (fastMusicTeam) {
+            setFastestTeamName(fastMusicTeam);
+            setFastestTeamPhoto(message.data?.teamPhoto || null);
+            setFastestTeamGuess(undefined);
+            setFastestTeamDifference(undefined);
+            setShowFastestTeam(true);
+          }
+        } catch (err) {
+          console.error('[Player] Error in MUSIC_ROUND_FASTEST handler:', err);
+        }
+        break;
+
+      case 'MUSIC_ROUND_RESET' as any:
+        try {
+          console.log('[Player] MUSIC_ROUND_RESET received - re-enabling buzzer');
+          setMusicBuzzState('waiting');
+          setMusicTargetClip('');
+          setMusicBuzzPoints(undefined);
+          setMusicRevealedAnswer('');
+          setMusicNowPlayingClip('');
+        } catch (err) {
+          console.error('[Player] Error in MUSIC_ROUND_RESET handler:', err);
+        }
+        break;
+
+      case 'MUSIC_ROUND_END' as any:
+        try {
+          console.log('[Player] MUSIC_ROUND_END received - returning to display');
+          setMusicBuzzState('waiting');
+          setMusicTargetClip('');
+          setMusicBuzzPoints(undefined);
+          setMusicRevealedAnswer('');
+          setMusicNowPlayingClip('');
+          resetQuestionState();
+          if (!applyPendingDisplayMode('MUSIC_ROUND_END')) {
+            transitionToIdleDisplay('MUSIC_ROUND_END');
+          }
+        } catch (err) {
+          console.error('[Player] Error in MUSIC_ROUND_END handler:', err);
+        }
+        break;
+
       case 'FLOW_STATE':
         console.log('[Player] 📥 FLOW_STATE message received!', {
           flow: message.data?.flow,
@@ -1746,6 +1864,41 @@ export default function App() {
               onAnswerSubmit={handleAnswerSubmit}
               scrambled={isKeypadScrambled}
             />
+          )}
+
+          {isConnected && currentScreen === 'music-buzz' && (
+            <>
+              <MusicBuzzScreen
+                targetClipName={musicTargetClip}
+                nowPlayingClipName={musicNowPlayingClip}
+                keypadColor={settings.keypadColor}
+                buzzState={musicBuzzState}
+                points={musicBuzzPoints}
+                revealedAnswer={musicRevealedAnswer}
+                onBuzz={() => {
+                  if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                    const buzzPayload = {
+                      type: 'MUSIC_BUZZ',
+                      playerId,
+                      deviceId,
+                      teamName,
+                      timestamp: Date.now(),
+                    };
+                    console.log('[Player] Sending MUSIC_BUZZ:', buzzPayload);
+                    wsRef.current.send(JSON.stringify(buzzPayload));
+                    setMusicBuzzState('buzzed');
+                  }
+                }}
+              />
+              {showFastestTeam && (
+                <FastestTeamOverlay
+                  teamName={fastestTeamName}
+                  teamPhoto={fastestTeamPhoto}
+                  guess={fastestTeamGuess}
+                  difference={fastestTeamDifference}
+                />
+              )}
+            </>
           )}
 
           {isConnected && currentScreen === 'question' && currentQuestion && (

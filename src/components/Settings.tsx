@@ -179,7 +179,7 @@ function KeypadPreview({ design }: KeypadPreviewProps) {
 }
 
 export function Settings({ isOpen, onClose }: SettingsProps) {
-  const { version, updateResponseTimesEnabled, updateTeamPhotosAutoApprove, updateGameModePoints, updateGameModeTimer, updateCountdownStyle, updateVoiceCountdown, updateKeypadDesign, updateEvilModeEnabled, updatePunishmentEnabled, buzzerFolderPath, updateBuzzerFolderPath } = useSettings();
+  const { version, updateResponseTimesEnabled, updateTeamPhotosAutoApprove, updateGameModePoints, updateGameModeTimer, updateCountdownStyle, updateVoiceCountdown, updateKeypadDesign, updateEvilModeEnabled, updatePunishmentEnabled, buzzerFolderPath, updateBuzzerFolderPath, updateMusicRoundDefaultClipLength, updateMusicRoundDefaultPoints, updateMusicRoundDefaultSpeedBonus, updateMusicRoundDefaultVolume, updateMusicRoundElimination, updateMusicRoundReversed } = useSettings();
   const { hostInfo, isLoading: loadingHostInfo } = useHostInfo();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -857,6 +857,136 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                   className="w-full"
                 />
               </div>
+            </div>
+          </div>
+
+          <Separator className="bg-border" />
+
+          {/* Music Round Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-border">
+              <Music className="w-4 h-4 text-[rgba(255,127,39,1)]" />
+              <h4 className="font-semibold text-foreground">Music Round</h4>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <Label className="text-foreground flex items-center justify-between mb-3">
+                  Default Clip Length
+                  <span className="text-muted-foreground">{settings.musicRoundDefaultClipLength || 10}s</span>
+                </Label>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Default duration of each audio clip snippet
+                </p>
+                <Slider
+                  value={[settings.musicRoundDefaultClipLength || 10]}
+                  onValueChange={(value) => {
+                    updateSetting("musicRoundDefaultClipLength", value[0]);
+                    updateMusicRoundDefaultClipLength(value[0]);
+                  }}
+                  max={25}
+                  min={2}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <Label className="text-foreground flex items-center justify-between mb-3">
+                  Base Points
+                  <span className="text-muted-foreground">{settings.musicRoundDefaultPoints || 4}</span>
+                </Label>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Default points for correct identification
+                </p>
+                <Slider
+                  value={[settings.musicRoundDefaultPoints || 4]}
+                  onValueChange={(value) => {
+                    updateSetting("musicRoundDefaultPoints", value[0]);
+                    updateMusicRoundDefaultPoints(value[0]);
+                  }}
+                  max={10}
+                  min={1}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <Label className="text-foreground flex items-center justify-between mb-3">
+                  Speed Bonus
+                  <span className="text-muted-foreground">{settings.musicRoundDefaultSpeedBonus || 4}</span>
+                </Label>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Bonus points for fastest correct buzz
+                </p>
+                <Slider
+                  value={[settings.musicRoundDefaultSpeedBonus || 4]}
+                  onValueChange={(value) => {
+                    updateSetting("musicRoundDefaultSpeedBonus", value[0]);
+                    updateMusicRoundDefaultSpeedBonus(value[0]);
+                  }}
+                  max={10}
+                  min={0}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <Label className="text-foreground flex items-center justify-between mb-3">
+                  Master Volume
+                  <span className="text-muted-foreground">{settings.musicRoundDefaultVolume || 80}%</span>
+                </Label>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Default volume for music round playback
+                </p>
+                <Slider
+                  value={[settings.musicRoundDefaultVolume || 80]}
+                  onValueChange={(value) => {
+                    updateSetting("musicRoundDefaultVolume", value[0]);
+                    updateMusicRoundDefaultVolume(value[0]);
+                  }}
+                  max={100}
+                  min={0}
+                  step={1}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div>
+                <Label className="text-foreground font-medium">Elimination Mode</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Remove clips from the playlist after correct identification
+                </p>
+              </div>
+              <Switch
+                checked={settings.musicRoundElimination !== undefined ? settings.musicRoundElimination : true}
+                onCheckedChange={(checked) => {
+                  updateSetting("musicRoundElimination", checked);
+                  updateMusicRoundElimination(checked);
+                }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div>
+                <Label className="text-foreground font-medium">Play Backwards</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Reverse audio clips so they play backwards (harder difficulty)
+                </p>
+              </div>
+              <Switch
+                checked={settings.musicRoundReversed || false}
+                onCheckedChange={(checked) => {
+                  updateSetting("musicRoundReversed", checked);
+                  updateMusicRoundReversed(checked);
+                }}
+              />
             </div>
           </div>
         </CardContent>

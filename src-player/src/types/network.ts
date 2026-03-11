@@ -25,7 +25,15 @@ export type HostMessageType =
   | 'PIN_REQUIRED'
   | 'PIN_RESULT'
   | 'ADMIN_RESPONSE'
-  | 'PRECACHE';
+  | 'PRECACHE'
+  | 'MUSIC_ROUND_START'
+  | 'MUSIC_ROUND_TARGET'
+  | 'MUSIC_ROUND_BUZZ_RESULT'
+  | 'MUSIC_ROUND_RESET'
+  | 'MUSIC_ROUND_REVEAL'
+  | 'MUSIC_ROUND_FASTEST'
+  | 'MUSIC_ROUND_NOW_PLAYING'
+  | 'MUSIC_ROUND_END';
 
 export interface HostMessage {
   type: HostMessageType;
@@ -254,4 +262,12 @@ export interface PinSubmitMessage {
   timestamp: number;
 }
 
-export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage | PlayerAwayMessage | PlayerActiveMessage | PlayerBuzzerSelectMessage | AdminCommandMessage | PinSubmitMessage;
+export interface MusicBuzzMessage {
+  type: 'MUSIC_BUZZ';
+  playerId: string;
+  deviceId: string;
+  teamName: string;
+  timestamp: number;
+}
+
+export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage | PlayerAwayMessage | PlayerActiveMessage | PlayerBuzzerSelectMessage | AdminCommandMessage | PinSubmitMessage | MusicBuzzMessage;
