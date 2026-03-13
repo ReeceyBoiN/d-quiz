@@ -143,23 +143,15 @@ function GameModeConfigPanel({
     updateEvilModeEnabled,
   } = useSettings();
   
-  const localPoints: number = gameMode === "buzzin" 
-    ? (gameModePoints.buzzin ?? 0)
-    : (currentRoundPoints ?? defaultPoints ?? 0);
+  const localPoints: number = currentRoundPoints ?? defaultPoints ?? 0;
   const localSpeedBonus: number = currentRoundSpeedBonus ?? defaultSpeedBonus ?? 0;
   const localWinnerPoints: number = currentRoundWinnerPoints ?? (gameModePoints.nearestwins ?? 0);
 
   const handlePointsChange = (value: string | number) => {
     const num = typeof value === 'string' ? (isNaN(parseInt(value)) ? 0 : parseInt(value)) : value;
     
-    if (gameMode === "buzzin") {
-      if (num !== localPoints) {
-        updateGameModePoints('buzzin', num);
-      }
-    } else {
-      if (num !== localPoints && onCurrentRoundPointsChange) {
-        onCurrentRoundPointsChange(num);
-      }
+    if (num !== localPoints && onCurrentRoundPointsChange) {
+      onCurrentRoundPointsChange(num);
     }
   };
 

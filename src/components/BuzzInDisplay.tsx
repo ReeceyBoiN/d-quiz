@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Zap, Trophy, Users, Timer, CheckCircle } from "lucide-react";
@@ -26,10 +26,21 @@ interface BuzzInDisplayProps {
   onExternalDisplayUpdate?: (data: any) => void;
   onGetActionHandlers?: (handlers: { startTimer: (customDuration?: number) => void; silentTimer: (customDuration?: number) => void }) => void;
   onGameTimerStateChange?: (isTimerRunning: boolean, duration?: number) => void;
+  onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void;
+  onGameTimerFinished?: (finished: boolean) => void;
 }
 
-export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onExternalDisplayUpdate, onGetActionHandlers, onGameTimerStateChange }: BuzzInDisplayProps) {
+export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onExternalDisplayUpdate, onGetActionHandlers, onGameTimerStateChange, onGameTimerUpdate, onGameTimerFinished }: BuzzInDisplayProps) {
   const { gameModeTimers, oneGuessPerTeam, evilModeEnabled } = useSettings();
+
+  // Use ref for onGameTimerStateChange to avoid infinite re-render loops
+  // (inline arrow in parent creates new reference every render)
+  const onGameTimerStateChangeRef = useRef(onGameTimerStateChange);
+  useEffect(() => { onGameTimerStateChangeRef.current = onGameTimerStateChange; });
+  const onGameTimerUpdateRef = useRef(onGameTimerUpdate);
+  useEffect(() => { onGameTimerUpdateRef.current = onGameTimerUpdate; });
+  const onGameTimerFinishedRef = useRef(onGameTimerFinished);
+  useEffect(() => { onGameTimerFinishedRef.current = onGameTimerFinished; });
   const [buzzedTeam, setBuzzedTeam] = useState<Team | null>(null);
   const [state, setState] = useState<BuzzInState>("waiting");
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
@@ -38,6 +49,7 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onE
   const [correctAnswers, setCorrectAnswers] = useState<Set<string>>(new Set());
   const [teamScores, setTeamScores] = useState<Record<string, number>>({});
   const [lockedOutTeams, setLockedOutTeams] = useState<Set<string>>(new Set());
+  const timerTotalTimeRef = useRef<number>(0);
 
   // Mock teams if none provided
   const displayTeams = teams.length > 0 ? teams : [
@@ -51,23 +63,29 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onE
   const handleStartTimer = useCallback((customDuration?: number) => {
     const duration = customDuration || gameModeTimers.buzzin;
     console.log(`[BuzzInDisplay] handleStartTimer called with duration: ${duration}`);
+    timerTotalTimeRef.current = duration;
     setTimeRemaining(duration);
     setTimerStarted(true);
     setTimerPaused(false);
     sendTimerToPlayers(duration, false);
-    if (onGameTimerStateChange) onGameTimerStateChange(true, duration);
-  }, [gameModeTimers.buzzin, onGameTimerStateChange]);
+    onGameTimerStateChangeRef.current?.(true, duration);
+    onGameTimerUpdateRef.current?.(duration, duration);
+    onGameTimerFinishedRef.current?.(false);
+  }, [gameModeTimers.buzzin]);
 
   // Silent timer handler - called from NavBar via gameActionHandlers
   const handleSilentTimer = useCallback((customDuration?: number) => {
     const duration = customDuration || gameModeTimers.buzzin;
     console.log(`[BuzzInDisplay] handleSilentTimer called with duration: ${duration}`);
+    timerTotalTimeRef.current = duration;
     setTimeRemaining(duration);
     setTimerStarted(true);
     setTimerPaused(false);
     sendTimerToPlayers(duration, true);
-    if (onGameTimerStateChange) onGameTimerStateChange(true, duration);
-  }, [gameModeTimers.buzzin, onGameTimerStateChange]);
+    onGameTimerStateChangeRef.current?.(true, duration);
+    onGameTimerUpdateRef.current?.(duration, duration);
+    onGameTimerFinishedRef.current?.(false);
+  }, [gameModeTimers.buzzin]);
 
   // Register action handlers with parent (QuizHost) for NavBar integration
   useEffect(() => {
@@ -141,7 +159,7 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onE
       setTimerPaused(false);
       setTimeRemaining(null);
       setTimerStarted(false);
-      if (onGameTimerStateChange) onGameTimerStateChange(false);
+      onGameTimerStateChangeRef.current?.(false);
 
       // Clear lockouts for next question
       setLockedOutTeams(new Set());
@@ -189,7 +207,7 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onE
       setTimeRemaining(null);
       setTimerPaused(false);
       setTimerStarted(false);
-      if (onGameTimerStateChange) onGameTimerStateChange(false);
+      onGameTimerStateChangeRef.current?.(false);
       console.log('[BuzzInDisplay] All teams locked out');
     } else {
       // Send wrong answer to external display
@@ -231,7 +249,9 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onE
   useEffect(() => {
     if (timeRemaining !== null && timeRemaining > 0 && !timerPaused) {
       const timer = setTimeout(() => {
-        setTimeRemaining(timeRemaining - 1);
+        const newRemaining = timeRemaining - 1;
+        setTimeRemaining(newRemaining);
+        onGameTimerUpdateRef.current?.(newRemaining, timerTotalTimeRef.current);
       }, 1000);
       return () => clearTimeout(timer);
     } else if (timeRemaining === 0 && timerStarted) {
@@ -241,7 +261,8 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onE
       setBuzzedTeam(null);
       setTimerStarted(false);
       setTimerPaused(false);
-      if (onGameTimerStateChange) onGameTimerStateChange(false);
+      onGameTimerStateChangeRef.current?.(false);
+      onGameTimerFinishedRef.current?.(true);
     }
   }, [timeRemaining, timerPaused, timerStarted]);
 

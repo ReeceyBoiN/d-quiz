@@ -895,9 +895,11 @@ export function ExternalDisplayWindow() {
                 <div style={{ fontSize: scaleFontSize('48px', textSizeMultiplier), fontWeight: 'bold', color: '#f39c12', marginBottom: '10px' }}>
                   {displayData.data.fastestTeam.teamName}
                 </div>
+                {Number.isFinite(displayData.data.fastestTeam.responseTime) && (
                 <div style={{ fontSize: scaleFontSize('28px', textSizeMultiplier), fontWeight: '600', color: '#ecf0f1' }}>
                   {(displayData.data.fastestTeam.responseTime / 1000).toFixed(2)}s
                 </div>
+                )}
               </div>
             )}
             </>
@@ -1548,7 +1550,7 @@ export function ExternalDisplayWindow() {
                 textTransform: 'uppercase', letterSpacing: '0.2em',
                 textShadow: `0 0 20px ${teamColor}88`
               }}>BUZZED IN!</p>
-              {responseTime && (
+              {responseTime && Number.isFinite(responseTime) && (
                 <p style={{ fontSize: 'clamp(1rem, 2.5vw, 2rem)', color: 'rgba(255,255,255,0.5)', marginTop: '15px' }}>
                   {(responseTime / 1000).toFixed(2)}s
                 </p>

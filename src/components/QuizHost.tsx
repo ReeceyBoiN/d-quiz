@@ -1293,7 +1293,10 @@ export function QuizHost() {
   }, [gameModeTimers, flowState.isQuestionMode, flowState.flow, flowState.currentQuestion, flowState.selectedQuestionType, flowState.totalTime, timer]);
 
   // Handle timer when flow state changes to 'running'
+  // Skip buzz-in on-the-spot mode (showBuzzInMode) - BuzzInDisplay manages its own timer
   useEffect(() => {
+    if (showBuzzInMode) return; // BuzzInDisplay has its own timer
+
     if ((flowState.flow as any) === 'running' && !showNearestWinsInterface) {
       console.log('[QuizHost] Timer starting');
 
@@ -1305,7 +1308,7 @@ export function QuizHost() {
     } else if (flowState.flow !== 'running' && flowState.flow !== 'timeup') {
       timer.stop();
     }
-  }, [flowState.flow, flowState.totalTime, timer, voiceCountdown, isQuizPackMode]);
+  }, [flowState.flow, flowState.totalTime, timer, voiceCountdown, isQuizPackMode, showBuzzInMode]);
 
   // Auto-show answer and results summary in app when timer ends (flow transitions to 'timeup')
   useEffect(() => {
@@ -1440,13 +1443,14 @@ export function QuizHost() {
     }
 
     // Update external display with animated buzz-in view
+    const rawTime = validBuzzes[0].time;
     sendToExternalDisplay({
       type: 'DISPLAY_UPDATE',
       mode: 'buzzin-team',
       data: {
         teamName: team?.name || `Team ${firstTeamId}`,
         teamColor: team?.backgroundColor,
-        responseTime: validBuzzes[0].time,
+        responseTime: Number.isFinite(rawTime) ? rawTime : undefined,
       },
     });
 
@@ -3300,6 +3304,9 @@ export function QuizHost() {
     setBuzzInConfig({ mode, points, soundCheck });
     setShowBuzzInMode(true);
     setActiveTab("teams"); // Switch to teams tab when buzz-in starts
+
+    // Sync currentRoundPoints so BottomNavigation stays in sync with the modal slider
+    setCurrentRoundPoints(points);
 
     // Update flowState so periodic sync broadcasts 'ready' instead of 'idle'
     // This prevents players from being kicked back to the waiting screen
@@ -6841,7 +6848,7 @@ export function QuizHost() {
         <div className="flex-1 overflow-hidden">
           <BuzzInDisplay
             mode={buzzInConfig.mode}
-            points={buzzInConfig.points}
+            points={currentRoundPoints ?? buzzInConfig.points}
             soundCheck={buzzInConfig.soundCheck}
             teams={teamData}
             onEndRound={handleBuzzInEnd}
@@ -6850,14 +6857,15 @@ export function QuizHost() {
             onGameTimerStateChange={(isRunning, duration) => {
               setGameTimerRunning(isRunning);
               if (isRunning) setGameTimerFinished(false);
-              if (isRunning) {
-                setFlowState(prev => ({
-                  ...prev,
-                  flow: 'running',
-                  ...(duration !== undefined ? { totalTime: duration } : {})
-                }));
-              }
+              // BuzzInDisplay manages its own timer internally - don't set flowState
+              // to 'running' here, as that triggers QuizHost's timer.start() useEffect
+              // and causes an infinite loop of "Timer starting" logs
             }}
+            onGameTimerUpdate={(remaining, total) => {
+              setGameTimerTimeRemaining(remaining);
+              setGameTimerTotalTime(total);
+            }}
+            onGameTimerFinished={setGameTimerFinished}
           />
         </div>
       );

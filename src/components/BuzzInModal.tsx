@@ -3,6 +3,7 @@ import { Check, X, Award, Users } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Slider } from "./ui/slider";
+import { useSettings } from "../utils/SettingsContext";
 
 type BuzzInMode = "points" | "classic";
 
@@ -12,8 +13,9 @@ interface BuzzInModalProps {
 }
 
 export function BuzzInModal({ onClose, onStartRound }: BuzzInModalProps) {
+  const { defaultPoints } = useSettings();
   const [selectedMode, setSelectedMode] = useState<BuzzInMode>("classic");
-  const [points, setPoints] = useState([4]);
+  const [points, setPoints] = useState([defaultPoints]);
   const [soundCheckEnabled, setSoundCheckEnabled] = useState(true);
 
   const modes = [

@@ -262,7 +262,7 @@ export function LeftSidebar({ quizzes, selectedQuiz, onQuizSelect, onScoreChange
               {showAnswers && ((responseTimesEnabled && teamResponseTimes[quiz.id] !== undefined) || teamAnswers[quiz.id]) && (
                 <div className="flex flex-col items-center mr-2 flex-shrink-0">
                   {/* Response Time Display - shown when enabled and team has a response time for current question */}
-                  {responseTimesEnabled && teamResponseTimes[quiz.id] !== undefined && (
+                  {responseTimesEnabled && teamResponseTimes[quiz.id] !== undefined && Number.isFinite(teamResponseTimes[quiz.id]) && (
                     <div className="bg-gray-400 rounded flex items-center justify-center flex-shrink-0 mb-1 px-1 py-0.5">
                       <span className="text-white text-xs font-bold leading-none">
                         {(teamResponseTimes[quiz.id] / 1000).toFixed(2)}s

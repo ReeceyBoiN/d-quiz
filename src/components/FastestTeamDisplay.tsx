@@ -89,8 +89,8 @@ export function FastestTeamDisplay({
   };
 
   const formatResponseTime = (timeMs: number) => {
-    const result = `${(timeMs / 1000).toFixed(2)}s`;
-    return result;
+    if (!Number.isFinite(timeMs)) return '—';
+    return `${(timeMs / 1000).toFixed(2)}s`;
   };
 
   // Mouse event handlers for drag and drop - memoized to prevent memory leaks
