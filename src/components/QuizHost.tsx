@@ -221,6 +221,7 @@ export function QuizHost() {
     updateGoWideEnabled,
     updateEvilModeEnabled,
     gameModePoints,
+    updateGameModePoints,
     defaultSpeedBonus,
     staggeredEnabled,
     defaultPoints,
@@ -3569,7 +3570,17 @@ export function QuizHost() {
   // Handlers for changing current round scores
   const handleCurrentRoundPointsChange = useCallback((points: number) => {
     setCurrentRoundPoints(points);
-  }, []);
+    if (showBuzzInInterface || showBuzzInMode) {
+      updateGameModePoints('buzzin', points);
+    }
+  }, [showBuzzInInterface, showBuzzInMode, updateGameModePoints]);
+
+  // Sync slider → bottom nav: when gameModePoints.buzzin changes (via slider), update currentRoundPoints
+  useEffect(() => {
+    if (showBuzzInInterface || showBuzzInMode) {
+      setCurrentRoundPoints(gameModePoints.buzzin);
+    }
+  }, [gameModePoints.buzzin, showBuzzInInterface, showBuzzInMode]);
 
   const handleCurrentRoundSpeedBonusChange = useCallback((speedBonus: number) => {
     setCurrentRoundSpeedBonus(speedBonus);
