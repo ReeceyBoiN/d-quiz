@@ -151,8 +151,10 @@ export default function App() {
   const imageCacheRef = useRef<Map<string, string>>(new Map()); // Pre-cached images keyed by cacheKey
   const timerStartTimeRef = useRef<number | null>(null); // Store timer start time from host for accurate response time calculation
   const idleExitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Grace-period exit when host is idle
+  const lastQuestionReceivedRef = useRef<number>(0); // Track when last QUESTION was received for grace period
 
   const IDLE_EXIT_GRACE_MS = 7000;
+  const QUESTION_GRACE_MS = 3000; // Ignore idle flow states within 3s of receiving a question
 
   // Visibility and focus detection refs (declared at top level to comply with React hooks rules)
   const visibilityStateRef = useRef<{ isVisible: boolean; isFocused: boolean }>({
@@ -532,6 +534,13 @@ export default function App() {
 
         const isInGameScreen = currentScreen === 'question' || currentScreen === 'ready-for-question';
         if (flow === 'idle') {
+          // Grace period: ignore idle flow states received shortly after a QUESTION message
+          // This prevents stale periodic syncs from kicking the player out of the question screen
+          const timeSinceQuestion = Date.now() - lastQuestionReceivedRef.current;
+          if (timeSinceQuestion < QUESTION_GRACE_MS && (currentScreen === 'question' || currentScreen === 'ready-for-question')) {
+            console.log(`[Player] ⏳ Ignoring idle FLOW_STATE - question received ${timeSinceQuestion}ms ago (grace: ${QUESTION_GRACE_MS}ms)`);
+            return;
+          }
           clearIdleExitTimeout(source);
           resetQuestionState();
           if (!applyPendingDisplayMode(`${source}_IDLE`)) {
@@ -805,6 +814,7 @@ export default function App() {
         }
 
         clearIdleExitTimeout('QUESTION');
+        lastQuestionReceivedRef.current = Date.now();
 
         // Clear fastest team overlay immediately when new question arrives
         if (fastestTeamTimerRef.current) {

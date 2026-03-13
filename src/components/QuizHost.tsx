@@ -665,6 +665,10 @@ export function QuizHost() {
     soundCheck: boolean;
   } | null>(null);
 
+  // Track which team buzzed in via network in on-the-spot mode (to forward to BuzzInDisplay)
+  const [buzzInModeNetworkBuzzTeamId, setBuzzInModeNetworkBuzzTeamId] = useState<string | null>(null);
+  const buzzInModeHandledBuzzesRef = useRef<Set<string>>(new Set());
+
   // Buzz-in interface state
   const [showBuzzInInterface, setShowBuzzInInterface] = useState(false);
 
@@ -1457,6 +1461,47 @@ export function QuizHost() {
     console.log(`[QuizHost] Buzz detected: ${team?.name} (${firstTeamId}) at ${validBuzzes[0].time}ms`);
   }, [teamAnswers, teamResponseTimes, isBuzzinPackMode, flowState.isQuestionMode,
       buzzWinnerTeamId, buzzLockedOutTeams, quizzes, timer, buzzTimerExpired]);
+
+  // On-the-spot buzz-in detection - plays buzzer and forwards to BuzzInDisplay
+  useEffect(() => {
+    if (!showBuzzInMode) return;
+
+    const newBuzzes = Object.entries(teamAnswers)
+      .filter(([, answer]) => answer === 'buzzed')
+      .filter(([teamId]) => !buzzInModeHandledBuzzesRef.current.has(teamId));
+
+    if (newBuzzes.length === 0) return;
+
+    // Handle the first new buzz
+    const [teamId] = newBuzzes[0];
+    const team = quizzes.find(q => q.id === teamId);
+
+    buzzInModeHandledBuzzesRef.current.add(teamId);
+
+    // Play the team's buzzer sound
+    if (team?.buzzerSound) {
+      playFastestTeamBuzzer(team.buzzerSound);
+      console.log(`[QuizHost] On-the-spot buzz-in: playing buzzer for ${team.name} (${team.buzzerSound})`);
+    }
+
+    // Forward to BuzzInDisplay component
+    setBuzzInModeNetworkBuzzTeamId(teamId);
+    console.log(`[QuizHost] On-the-spot buzz-in detected from network: ${team?.name || teamId}`);
+  }, [teamAnswers, showBuzzInMode, quizzes, playFastestTeamBuzzer]);
+
+  // Clear handled buzzes when buzz-in mode ends or teamAnswers resets
+  useEffect(() => {
+    if (!showBuzzInMode) {
+      buzzInModeHandledBuzzesRef.current.clear();
+    }
+  }, [showBuzzInMode]);
+
+  useEffect(() => {
+    // If teamAnswers is empty (reset between questions), clear tracked buzzes
+    if (Object.keys(teamAnswers).length === 0) {
+      buzzInModeHandledBuzzesRef.current.clear();
+    }
+  }, [teamAnswers]);
 
   // Close external display when host window closes (browser popout scenario)
   useEffect(() => {
@@ -3310,11 +3355,15 @@ export function QuizHost() {
 
     // Update flowState so periodic sync broadcasts 'ready' instead of 'idle'
     // This prevents players from being kicked back to the waiting screen
-    setFlowState(prev => ({
-      ...prev,
-      flow: 'ready',
+    const newFlowState = {
+      ...flowState,
+      flow: 'ready' as const,
       isQuestionMode: true,
-    }));
+    };
+    setFlowState(newFlowState);
+    // Synchronously update the ref so any interval that fires before React re-renders
+    // sees the correct state instead of stale 'idle'
+    flowStateRef.current = newFlowState;
     console.log('[QuizHost] Buzz-in mode started - flowState set to ready/isQuestionMode');
   };
 
@@ -5693,7 +5742,7 @@ export function QuizHost() {
   // IMPORTANT: Paused during active games to prevent display modes from interrupting question screens
   useEffect(() => {
     // Check if any game mode is currently active
-    const isGameActive = showKeypadInterface || showBuzzInInterface || showNearestWinsInterface || showQuizPackDisplay || showWheelSpinnerInterface;
+    const isGameActive = showKeypadInterface || showBuzzInInterface || showBuzzInMode || showNearestWinsInterface || showQuizPackDisplay || showWheelSpinnerInterface;
 
     // Don't broadcast display mode while a game is actively running
     // This prevents the BASIC/SCORES/SLIDESHOW modes from interrupting the question screen on player devices
@@ -5708,10 +5757,18 @@ export function QuizHost() {
     }, 1000);
 
     return () => clearInterval(syncInterval);
-  }, [playerDevicesDisplayMode, broadcastPlayerDisplayMode, showKeypadInterface, showBuzzInInterface, showNearestWinsInterface, showQuizPackDisplay, showWheelSpinnerInterface]);
+  }, [playerDevicesDisplayMode, broadcastPlayerDisplayMode, showKeypadInterface, showBuzzInInterface, showBuzzInMode, showNearestWinsInterface, showQuizPackDisplay, showWheelSpinnerInterface]);
 
   // Periodic safety-net sync for player flow state
+  // IMPORTANT: Paused during active games to prevent stale idle broadcasts from interrupting question screens
   useEffect(() => {
+    const isGameActive = showKeypadInterface || showBuzzInInterface || showBuzzInMode || showNearestWinsInterface || showQuizPackDisplay || showWheelSpinnerInterface;
+
+    if (isGameActive) {
+      console.log('[QuizHost] Game is active - pausing periodic flow state sync to prevent interruption');
+      return;
+    }
+
     const syncInterval = setInterval(() => {
       const currentFlowState = flowStateRef.current;
       console.log('[QuizHost] Periodic flow state sync (1s) - broadcasting current flow state:', currentFlowState.flow);
@@ -5730,7 +5787,7 @@ export function QuizHost() {
     }, 1000);
 
     return () => clearInterval(syncInterval);
-  }, [keypadCurrentScreen]);
+  }, [keypadCurrentScreen, showKeypadInterface, showBuzzInInterface, showBuzzInMode, showNearestWinsInterface, showQuizPackDisplay, showWheelSpinnerInterface]);
 
   const handleSpeedChange = (speed: number) => {
     setSlideshowSpeed(speed);
@@ -5892,6 +5949,7 @@ export function QuizHost() {
       answerRevealed: mode === 'nearest-wins-results' ? data?.answerRevealed : undefined,
       gameInfo: mode.includes('nearest-wins') ? data?.gameInfo : undefined,
       textSize: externalDisplayTextSize,
+      joinUrl: hostInfo?.baseUrl || null,
     };
 
     if (isElectronWindow) {
@@ -5949,7 +6007,8 @@ export function QuizHost() {
         teamName: content === 'team-welcome' ? data?.teamName : undefined,
 
         isReset: content === 'basic',
-        textSize: externalDisplayTextSize
+        textSize: externalDisplayTextSize,
+        joinUrl: hostInfo?.baseUrl || null,
       };
 
       console.log('QuizHost: Sending message to external display', messageData);
@@ -6866,6 +6925,19 @@ export function QuizHost() {
               setGameTimerTotalTime(total);
             }}
             onGameTimerFinished={setGameTimerFinished}
+            networkBuzzTeamId={buzzInModeNetworkBuzzTeamId}
+            onNetworkBuzzHandled={() => setBuzzInModeNetworkBuzzTeamId(null)}
+            onTeamBuzzReset={(teamId) => {
+              // Clear from tracked handled buzzes so team can buzz again
+              buzzInModeHandledBuzzesRef.current.delete(teamId);
+              // Clear from teamAnswers so a new 'buzzed' entry triggers detection
+              setTeamAnswers(prev => {
+                const next = { ...prev };
+                delete next[teamId];
+                return next;
+              });
+              console.log(`[QuizHost] On-the-spot buzz reset for team: ${teamId}`);
+            }}
           />
         </div>
       );

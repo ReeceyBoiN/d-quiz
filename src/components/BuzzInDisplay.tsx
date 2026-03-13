@@ -28,9 +28,12 @@ interface BuzzInDisplayProps {
   onGameTimerStateChange?: (isTimerRunning: boolean, duration?: number) => void;
   onGameTimerUpdate?: (timeRemaining: number, totalTime: number) => void;
   onGameTimerFinished?: (finished: boolean) => void;
+  networkBuzzTeamId?: string | null;
+  onNetworkBuzzHandled?: () => void;
+  onTeamBuzzReset?: (teamId: string) => void;
 }
 
-export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onExternalDisplayUpdate, onGetActionHandlers, onGameTimerStateChange, onGameTimerUpdate, onGameTimerFinished }: BuzzInDisplayProps) {
+export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onExternalDisplayUpdate, onGetActionHandlers, onGameTimerStateChange, onGameTimerUpdate, onGameTimerFinished, networkBuzzTeamId, onNetworkBuzzHandled, onTeamBuzzReset }: BuzzInDisplayProps) {
   const { gameModeTimers, oneGuessPerTeam, evilModeEnabled } = useSettings();
 
   // Use ref for onGameTimerStateChange to avoid infinite re-render loops
@@ -116,6 +119,17 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onE
       console.log(`[BuzzInDisplay] ${team.name} buzzed in!`);
     }
   };
+
+  // React to network buzz-ins from player devices
+  useEffect(() => {
+    if (!networkBuzzTeamId) return;
+    const team = displayTeams.find(t => t.id === networkBuzzTeamId);
+    if (team && state === 'waiting') {
+      console.log(`[BuzzInDisplay] Network buzz-in received for team: ${team.name}`);
+      handleBuzzIn(team);
+    }
+    onNetworkBuzzHandled?.();
+  }, [networkBuzzTeamId]);
 
   // Handle answer
   const handleCorrectAnswer = useCallback(() => {
@@ -243,7 +257,10 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onE
       // Broadcast reset with locked out teams
       sendBuzzResetToPlayers(Array.from(newLockedOut));
     }
-  }, [buzzedTeam, evilModeEnabled, points, lockedOutTeams, oneGuessPerTeam, displayTeams, timerPaused, timeRemaining, gameModeTimers.buzzin, onExternalDisplayUpdate]);
+
+    // Notify QuizHost to clear this team's buzz from teamAnswers so they can re-buzz
+    onTeamBuzzReset?.(buzzedTeam.id);
+  }, [buzzedTeam, evilModeEnabled, points, lockedOutTeams, oneGuessPerTeam, displayTeams, timerPaused, timeRemaining, gameModeTimers.buzzin, onExternalDisplayUpdate, onTeamBuzzReset]);
 
   // Timer countdown
   useEffect(() => {
@@ -381,10 +398,27 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onE
                 </p>
               )}
               <Button
-                onClick={onEndRound}
+                onClick={() => {
+                  // Reset for next question instead of ending buzz-in mode
+                  const previousBuzzedTeam = buzzedTeam;
+                  setState("waiting");
+                  setBuzzedTeam(null);
+                  setLockedOutTeams(new Set());
+                  setTimeRemaining(null);
+                  setTimerPaused(false);
+                  setTimerStarted(false);
+                  onGameTimerStateChangeRef.current?.(false);
+                  // Unlock all player devices for next question
+                  sendBuzzResetToPlayers([]);
+                  // Clear QuizHost's teamAnswers for the buzzed team
+                  if (previousBuzzedTeam) {
+                    onTeamBuzzReset?.(previousBuzzedTeam.id);
+                  }
+                  console.log('[BuzzInDisplay] Next question - reset state for new buzz-in round');
+                }}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 text-2xl"
               >
-                END ROUND
+                NEXT QUESTION
               </Button>
             </div>
           )}

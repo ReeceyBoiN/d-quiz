@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useSettings } from "../utils/SettingsContext";
 import { FastestTeamOverlaySimplified } from "./FastestTeamOverlaySimplified";
+import QRCode from 'qrcode';
 
 declare global {
   interface Window {
@@ -66,8 +67,10 @@ export function ExternalDisplayWindow() {
     totalTime: 30,
     textSize: 'medium' as 'small' | 'medium' | 'large',
     borderColor: '#f97316' as string,
-    backgroundColor: '#e74c3c' as string
+    backgroundColor: '#e74c3c' as string,
+    joinUrl: null as string | null
   });
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [currentColorIndex, setCurrentColorIndex] = useState(0);
   const [dynamicBackgroundColor, setDynamicBackgroundColor] = useState('#f1c40f');
@@ -195,7 +198,8 @@ export function ExternalDisplayWindow() {
             totalTime: event.data.totalTime || (event.data.data && event.data.data.totalTime) || prevData.totalTime || 30,
             textSize: event.data.textSize || prevData.textSize || 'medium',
             borderColor: newBorderColor,
-            backgroundColor: newBackgroundColor
+            backgroundColor: newBackgroundColor,
+            joinUrl: event.data.joinUrl || prevData.joinUrl || null
           };
         });
       }
@@ -244,7 +248,8 @@ export function ExternalDisplayWindow() {
             totalTime: data.totalTime || (data.data && data.data.totalTime) || prevData.totalTime || 30,
             textSize: data.textSize || prevData.textSize || 'medium',
             borderColor: newBorderColor,
-            backgroundColor: newBackgroundColor
+            backgroundColor: newBackgroundColor,
+            joinUrl: data.joinUrl || prevData.joinUrl || null
           };
         });
       });
@@ -338,6 +343,21 @@ export function ExternalDisplayWindow() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isElectron]);
 
+
+  // Generate QR code when joinUrl changes
+  useEffect(() => {
+    if (displayData.joinUrl) {
+      QRCode.toDataURL(displayData.joinUrl, {
+        width: 200,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' }
+      })
+        .then((url: string) => setQrCodeDataUrl(url))
+        .catch((err: Error) => console.error('[ExternalDisplayWindow] QR code generation failed:', err));
+    } else {
+      setQrCodeDataUrl(null);
+    }
+  }, [displayData.joinUrl]);
 
   useEffect(() => {
     if (displayData.mode === 'basic') {
@@ -447,6 +467,19 @@ export function ExternalDisplayWindow() {
               <div style={{ position: 'absolute', bottom: '3rem', right: '-3rem', fontSize: scaleFontSize('2.5rem', textSizeMultiplier), filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.12))', animation: 'bounce 2s infinite' }}>🏆</div>
               <div style={{ position: 'absolute', bottom: '-2rem', left: '-2rem', fontSize: scaleFontSize('2rem', textSizeMultiplier), filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.12))', animation: 'bounce 2s infinite' }}>🎵</div>
             </div>
+            {/* QR Code overlay */}
+            {qrCodeDataUrl && displayData.joinUrl && (
+              <div style={{
+                position: 'absolute', bottom: '24px', right: '24px', zIndex: 20,
+                backgroundColor: 'rgba(0, 0, 0, 0.6)', borderRadius: '12px', padding: '12px',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
+                backdropFilter: 'blur(8px)'
+              }}>
+                <img src={qrCodeDataUrl} alt="Scan to join" style={{ width: '150px', height: '150px', borderRadius: '8px' }} />
+                <span style={{ color: 'white', fontSize: '14px', fontWeight: 700, letterSpacing: '0.05em' }}>SCAN TO JOIN</span>
+                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px', fontFamily: 'monospace' }}>{displayData.joinUrl}</span>
+              </div>
+            )}
           </div>
         );
       }
@@ -1657,6 +1690,58 @@ export function ExternalDisplayWindow() {
             <p style={{ fontSize: 'clamp(1rem, 3vw, 2rem)', color: 'rgba(255,255,255,0.5)', marginTop: '10px' }}>
               Agree or Disagree?
             </p>
+          </div>
+        );
+      }
+
+      case 'slideshow': {
+        const currentImage = displayData.images[currentImageIndex];
+        return (
+          <div style={{
+            height: '100%', width: '100%', position: 'relative', overflow: 'hidden',
+            backgroundColor: '#000'
+          }}>
+            {currentImage ? (
+              <>
+                <img
+                  src={currentImage.dataUrl || currentImage.url || currentImage}
+                  alt={currentImage.name || 'Slideshow image'}
+                  style={{
+                    width: '100%', height: '100%', objectFit: 'cover',
+                    transition: 'opacity 0.5s ease'
+                  }}
+                />
+                {/* QR Code overlay - positioned over the white square in the instructions image */}
+                {qrCodeDataUrl && displayData.joinUrl && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '26%',
+                    right: '3.5%',
+                    width: '31%',
+                    height: '64%',
+                    zIndex: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <img
+                      src={qrCodeDataUrl}
+                      alt="Scan to join"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain'
+                      }}
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                <h1 style={{ fontSize: '48px', fontWeight: 'bold' }}>Slideshow</h1>
+                <p style={{ fontSize: '24px', opacity: 0.6 }}>No images loaded</p>
+              </div>
+            )}
           </div>
         );
       }
