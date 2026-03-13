@@ -22,6 +22,10 @@ declare global {
 
 const isElectron = Boolean(window.api);
 
+// Hardcoded QR instructions image - always included in slideshow rotation
+const QR_INSTRUCTIONS_IMAGE_URL = 'https://cdn.builder.io/api/v1/image/assets%2Ffc9fa4b494f14138b58309dabb6bd450%2F364dace40d9a4b69b2cfd47d1ed2a9a3';
+const QR_INSTRUCTIONS_IMAGE = { url: QR_INSTRUCTIONS_IMAGE_URL, name: 'Join Instructions', isQrInstructions: true };
+
 // Helper for ordinal suffixes in external display
 const getExtSuffix = (pos: number) => {
   if (pos % 10 === 1 && pos !== 11) return "st";
@@ -413,18 +417,31 @@ export function ExternalDisplayWindow() {
     }
   }, [displayData.mode]);
 
+  // Build effective images array that always includes the QR instructions image
+  const effectiveImages = React.useMemo(() => {
+    const userImages = displayData.images || [];
+    // Always prepend the QR instructions image so index 0 reset shows it
+    return [QR_INSTRUCTIONS_IMAGE, ...userImages];
+  }, [displayData.images]);
+
   useEffect(() => {
-    if (displayData.mode === 'slideshow' && displayData.images.length > 0) {
+    if (displayData.mode === 'slideshow' && effectiveImages.length > 0) {
       const interval = setInterval(() => {
-        setCurrentImageIndex(prev => (prev + 1) % displayData.images.length);
+        setCurrentImageIndex(prev => (prev + 1) % effectiveImages.length);
       }, displayData.slideshowSpeed * 1000);
       return () => clearInterval(interval);
     }
-  }, [displayData.mode, displayData.images.length, displayData.slideshowSpeed]);
+  }, [displayData.mode, effectiveImages.length, displayData.slideshowSpeed]);
+
+  // Only reset index when actual image content changes, not on every DISPLAY_UPDATE
+  const imagesKey = React.useMemo(() => {
+    const imgs = displayData.images || [];
+    return imgs.length + ':' + imgs.map((img: any) => img.url || img.dataUrl || '').join(',');
+  }, [displayData.images]);
 
   useEffect(() => {
     setCurrentImageIndex(0);
-  }, [displayData.images]);
+  }, [imagesKey]);
 
   useEffect(() => {
     if (displayData.mode === 'team-welcome') {
@@ -1695,14 +1712,59 @@ export function ExternalDisplayWindow() {
       }
 
       case 'slideshow': {
-        const currentImage = displayData.images[currentImageIndex];
+        const safeIndex = currentImageIndex < effectiveImages.length ? currentImageIndex : 0;
+        const currentImage = effectiveImages[safeIndex];
+        const isQrInstructionsImage = currentImage && (currentImage as any).isQrInstructions === true;
         return (
           <div style={{
             height: '100%', width: '100%', position: 'relative', overflow: 'hidden',
-            backgroundColor: '#000'
+            backgroundColor: '#000',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}>
             {currentImage ? (
-              <>
+              isQrInstructionsImage ? (
+                // Aspect-ratio-locked container for QR instructions image
+                // Locks to 16:9 so the white square position is always consistent
+                <div style={{
+                  position: 'relative',
+                  aspectRatio: '16/9',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain'
+                }}>
+                  <img
+                    src={currentImage.url}
+                    alt="Join Instructions"
+                    style={{
+                      width: '100%', height: '100%', objectFit: 'contain',
+                      transition: 'opacity 0.5s ease'
+                    }}
+                  />
+                  {qrCodeDataUrl && displayData.joinUrl && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '23%',
+                      right: '3.5%',
+                      width: '29%',
+                      height: '64%',
+                      zIndex: 20,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '1.5%'
+                    }}>
+                      <img
+                        src={qrCodeDataUrl}
+                        alt="Scan to join"
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // Regular slideshow images - full bleed cover
                 <img
                   src={currentImage.dataUrl || currentImage.url || currentImage}
                   alt={currentImage.name || 'Slideshow image'}
@@ -1711,31 +1773,7 @@ export function ExternalDisplayWindow() {
                     transition: 'opacity 0.5s ease'
                   }}
                 />
-                {/* QR Code overlay - positioned over the white square in the instructions image */}
-                {qrCodeDataUrl && displayData.joinUrl && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '26%',
-                    right: '3.5%',
-                    width: '31%',
-                    height: '64%',
-                    zIndex: 20,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <img
-                      src={qrCodeDataUrl}
-                      alt="Scan to join"
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'contain'
-                      }}
-                    />
-                  </div>
-                )}
-              </>
+              )
             ) : (
               <div style={{ textAlign: 'center', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 <h1 style={{ fontSize: '48px', fontWeight: 'bold' }}>Slideshow</h1>
