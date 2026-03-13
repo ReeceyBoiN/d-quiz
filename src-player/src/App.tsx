@@ -1342,8 +1342,22 @@ export default function App() {
         try {
           const resultTeamName = message.data?.teamName || '';
           const resultCorrect = message.data?.correct ?? false;
+          const resultCorrectAnswer = message.data?.correctAnswer;
+          const resultTeamPhoto = message.data?.teamPhoto || null;
           console.log('[Player] BUZZ_RESULT received:', resultTeamName, resultCorrect ? 'CORRECT' : 'WRONG');
           setBuzzLockedBy(null);
+
+          if (resultCorrect) {
+            // Show fastest team overlay for the winning team
+            setFastestTeamName(resultTeamName);
+            setFastestTeamPhoto(resultTeamPhoto);
+            setFastestTeamGuess(undefined);
+            setFastestTeamDifference(undefined);
+            setShowFastestTeam(true);
+            // Block further buzzing
+            setBuzzLockedOut(true);
+            console.log('[Player] Buzz-in correct! Showing fastest team overlay for:', resultTeamName);
+          }
         } catch (err) {
           console.error('[Player] Error in BUZZ_RESULT handler:', err);
         }

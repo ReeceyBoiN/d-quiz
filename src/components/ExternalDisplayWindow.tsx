@@ -1562,6 +1562,7 @@ export function ExternalDisplayWindow() {
         const correctTeamName = displayData.data?.teamName || '';
         const correctTeamColor = displayData.data?.teamColor || '#27ae60';
         const correctTeamPhoto = displayData.data?.teamPhoto || null;
+        const buzzCorrectAnswer = displayData.data?.correctAnswer || '';
         return (
           <div style={{
             height: '100%', width: '100%', display: 'flex', flexDirection: 'column',
@@ -1588,6 +1589,14 @@ export function ExternalDisplayWindow() {
             {correctTeamName && (
               <p style={{ fontSize: 'clamp(1.5rem, 4vw, 3rem)', color: 'white', marginTop: '20px', fontWeight: 700 }}>
                 {correctTeamName}
+              </p>
+            )}
+            {buzzCorrectAnswer && (
+              <p style={{
+                fontSize: 'clamp(1.2rem, 3vw, 2.5rem)', color: 'rgba(255,255,255,0.8)',
+                marginTop: '15px', fontWeight: 600, fontStyle: 'italic'
+              }}>
+                Answer: {buzzCorrectAnswer}
               </p>
             )}
           </div>

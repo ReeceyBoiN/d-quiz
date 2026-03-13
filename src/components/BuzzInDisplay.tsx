@@ -4,7 +4,7 @@ import { Card, CardContent } from "./ui/card";
 import { Zap, Trophy, Users, Timer, CheckCircle } from "lucide-react";
 import { CountdownTimer } from "./CountdownTimer";
 import { useSettings } from "../utils/SettingsContext";
-import { sendTimeUpToPlayers, sendBuzzLockedToPlayers, sendBuzzResetToPlayers, sendBuzzResultToPlayers, sendTimerPauseToPlayers, sendTimerResumeToPlayers } from "../network/wsHost";
+import { sendTimeUpToPlayers, sendBuzzLockedToPlayers, sendBuzzResetToPlayers, sendBuzzResultToPlayers, sendTimerPauseToPlayers, sendTimerResumeToPlayers, sendFastestToDisplay, sendTimerToPlayers } from "../network/wsHost";
 import { playApplauseSound, playFailSound, playBuzzCorrectSound, playBuzzWrongSound } from "../utils/audioUtils";
 
 type BuzzInMode = "points" | "classic";
@@ -14,6 +14,7 @@ interface Team {
   id: string;
   name: string;
   color: string;
+  photoUrl?: string;
 }
 
 interface BuzzInDisplayProps {
@@ -22,9 +23,12 @@ interface BuzzInDisplayProps {
   soundCheck: boolean;
   teams: Team[];
   onEndRound: () => void;
+  onExternalDisplayUpdate?: (data: any) => void;
+  onGetActionHandlers?: (handlers: { startTimer: (customDuration?: number) => void; silentTimer: (customDuration?: number) => void }) => void;
+  onGameTimerStateChange?: (isTimerRunning: boolean, duration?: number) => void;
 }
 
-export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: BuzzInDisplayProps) {
+export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound, onExternalDisplayUpdate, onGetActionHandlers, onGameTimerStateChange }: BuzzInDisplayProps) {
   const { gameModeTimers, oneGuessPerTeam, evilModeEnabled } = useSettings();
   const [buzzedTeam, setBuzzedTeam] = useState<Team | null>(null);
   const [state, setState] = useState<BuzzInState>("waiting");
@@ -42,6 +46,38 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: B
     { id: "3", name: "Brain Storm", color: "#2ecc71" },
     { id: "4", name: "Smart Cookies", color: "#f39c12" },
   ];
+
+  // Timer start handler - called from NavBar via gameActionHandlers
+  const handleStartTimer = useCallback((customDuration?: number) => {
+    const duration = customDuration || gameModeTimers.buzzin;
+    console.log(`[BuzzInDisplay] handleStartTimer called with duration: ${duration}`);
+    setTimeRemaining(duration);
+    setTimerStarted(true);
+    setTimerPaused(false);
+    sendTimerToPlayers(duration, false);
+    if (onGameTimerStateChange) onGameTimerStateChange(true, duration);
+  }, [gameModeTimers.buzzin, onGameTimerStateChange]);
+
+  // Silent timer handler - called from NavBar via gameActionHandlers
+  const handleSilentTimer = useCallback((customDuration?: number) => {
+    const duration = customDuration || gameModeTimers.buzzin;
+    console.log(`[BuzzInDisplay] handleSilentTimer called with duration: ${duration}`);
+    setTimeRemaining(duration);
+    setTimerStarted(true);
+    setTimerPaused(false);
+    sendTimerToPlayers(duration, true);
+    if (onGameTimerStateChange) onGameTimerStateChange(true, duration);
+  }, [gameModeTimers.buzzin, onGameTimerStateChange]);
+
+  // Register action handlers with parent (QuizHost) for NavBar integration
+  useEffect(() => {
+    if (onGetActionHandlers) {
+      onGetActionHandlers({
+        startTimer: handleStartTimer,
+        silentTimer: handleSilentTimer,
+      });
+    }
+  }, [onGetActionHandlers, handleStartTimer, handleSilentTimer]);
 
   // Simulate buzz-in
   const handleBuzzIn = (team: Team) => {
@@ -74,19 +110,45 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: B
 
       playApplauseSound().catch(err => console.warn('Failed to play applause:', err));
       playBuzzCorrectSound().catch(err => console.warn('Failed to play buzz correct:', err));
-      sendBuzzResultToPlayers(buzzedTeam.name, true);
+
+      // Send BUZZ_RESULT with team photo so player devices can show overlay
+      sendBuzzResultToPlayers(buzzedTeam.name, true, undefined, buzzedTeam.photoUrl);
+
+      // Send FASTEST to player devices so FastestTeamOverlay shows
+      sendFastestToDisplay(buzzedTeam.name, 0, buzzedTeam.photoUrl);
+      if ((window as any).api?.network?.broadcastFastest) {
+        try {
+          (window as any).api.network.broadcastFastest({
+            teamName: buzzedTeam.name,
+            questionNumber: 0,
+            teamPhoto: buzzedTeam.photoUrl || null,
+          });
+        } catch (err) {
+          console.error('[BuzzInDisplay] Error broadcasting fastest team:', err);
+        }
+      }
+
+      // Send to external display
+      if (onExternalDisplayUpdate) {
+        onExternalDisplayUpdate({
+          type: 'DISPLAY_UPDATE',
+          mode: 'buzzin-correct',
+          data: { teamName: buzzedTeam.name, teamColor: buzzedTeam.color, teamPhoto: buzzedTeam.photoUrl },
+        });
+      }
 
       // Stop timer
       setTimerPaused(false);
       setTimeRemaining(null);
       setTimerStarted(false);
+      if (onGameTimerStateChange) onGameTimerStateChange(false);
 
       // Clear lockouts for next question
       setLockedOutTeams(new Set());
 
       setState("complete");
     }
-  }, [buzzedTeam, points]);
+  }, [buzzedTeam, points, onExternalDisplayUpdate]);
 
   const handleWrongAnswer = useCallback(() => {
     if (!buzzedTeam) return;
@@ -101,7 +163,7 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: B
       }));
     }
 
-    sendBuzzResultToPlayers(buzzedTeam.name, false);
+    sendBuzzResultToPlayers(buzzedTeam.name, false, undefined, undefined);
 
     // Lock out team if oneGuessPerTeam is enabled
     const newLockedOut = new Set(lockedOutTeams);
@@ -115,13 +177,38 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: B
 
     if (allLocked) {
       // All teams locked out, end this question
+      if (onExternalDisplayUpdate) {
+        onExternalDisplayUpdate({
+          type: 'DISPLAY_UPDATE',
+          mode: 'buzzin-wrong',
+          data: { teamName: buzzedTeam.name, allLockedOut: true },
+        });
+      }
       setState("waiting");
       setBuzzedTeam(null);
       setTimeRemaining(null);
       setTimerPaused(false);
       setTimerStarted(false);
+      if (onGameTimerStateChange) onGameTimerStateChange(false);
       console.log('[BuzzInDisplay] All teams locked out');
     } else {
+      // Send wrong answer to external display
+      if (onExternalDisplayUpdate) {
+        onExternalDisplayUpdate({
+          type: 'DISPLAY_UPDATE',
+          mode: 'buzzin-wrong',
+          data: { teamName: buzzedTeam.name },
+        });
+        // Return to waiting state on external display after brief delay
+        setTimeout(() => {
+          onExternalDisplayUpdate({
+            type: 'DISPLAY_UPDATE',
+            mode: 'buzzin-waiting',
+            data: { lockedOutCount: newLockedOut.size, totalTeams: displayTeams.length },
+          });
+        }, 1500);
+      }
+
       // Reset for next buzz
       setState("waiting");
       setBuzzedTeam(null);
@@ -138,7 +225,7 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: B
       // Broadcast reset with locked out teams
       sendBuzzResetToPlayers(Array.from(newLockedOut));
     }
-  }, [buzzedTeam, evilModeEnabled, points, lockedOutTeams, oneGuessPerTeam, displayTeams, timerPaused, timeRemaining, gameModeTimers.buzzin]);
+  }, [buzzedTeam, evilModeEnabled, points, lockedOutTeams, oneGuessPerTeam, displayTeams, timerPaused, timeRemaining, gameModeTimers.buzzin, onExternalDisplayUpdate]);
 
   // Timer countdown
   useEffect(() => {
@@ -154,6 +241,7 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: B
       setBuzzedTeam(null);
       setTimerStarted(false);
       setTimerPaused(false);
+      if (onGameTimerStateChange) onGameTimerStateChange(false);
     }
   }, [timeRemaining, timerPaused, timerStarted]);
 

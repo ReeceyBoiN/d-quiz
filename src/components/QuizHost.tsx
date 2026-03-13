@@ -2977,6 +2977,12 @@ export function QuizHost() {
             console.log('[QuizHost] ADVANCING QUESTION: Resetting gameTimerStartTime from', gameTimerStartTime, 'to null for next question');
             setGameTimerStartTime(null); // Reset timer start time for new question
 
+            // Clear buzzin pack state for next question
+            setBuzzLockedOutTeams(new Set());
+            setBuzzWinnerTeamId(null);
+            setBuzzTimerExpired(false);
+            buzzTimerWasRunningRef.current = false;
+
             setCurrentLoadedQuestionIndex(currentLoadedQuestionIndex + 1);
             setHideQuestionMode(false); // Reset hide question flag for next question
             setShowAnswer(false); // Reset answer visibility for next question
@@ -6157,21 +6163,58 @@ export function QuizHost() {
     handleScoreChange(teamId, pointsToAward);
     playApplauseSound().catch(err => console.warn('Failed to play applause:', err));
     playBuzzCorrectSound().catch(err => console.warn('Failed to play buzz correct:', err));
-    sendBuzzResultToPlayers(teamName, true);
+
+    // Get correct answer text for display
+    const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
+    const correctAnswer = currentQuestion ? getAnswerText(currentQuestion) : '';
+
+    // Send BUZZ_RESULT with correct answer so player devices can display it
+    sendBuzzResultToPlayers(teamName, true, correctAnswer, team?.photoUrl);
+
+    // Send FASTEST to player devices so FastestTeamOverlay shows
+    sendFastestToDisplay(teamName, currentLoadedQuestionIndex + 1, team?.photoUrl);
+    if ((window as any).api?.network?.broadcastFastest) {
+      try {
+        (window as any).api.network.broadcastFastest({
+          teamName,
+          questionNumber: currentLoadedQuestionIndex + 1,
+          teamPhoto: team?.photoUrl || null,
+        });
+      } catch (err) {
+        console.error('[QuizHost] Error broadcasting fastest team (buzz-in correct):', err);
+      }
+    }
+
+    // Send to external display
     sendToExternalDisplay({
       type: 'DISPLAY_UPDATE',
       mode: 'buzzin-correct',
-      data: { teamName, teamColor: team?.backgroundColor, teamPhoto: team?.photoUrl },
+      data: { teamName, teamColor: team?.backgroundColor, teamPhoto: team?.photoUrl, correctAnswer },
     });
 
-    // Clear buzz state for next question
+    // Show answer on host display
+    setShowAnswer(true);
+    setBuzzTimerExpired(false);
+
+    // Transition flow to 'fastest' so NavBar shows only "Next Question"
+    setFlowState(prev => ({
+      ...prev,
+      flow: 'fastest',
+    }));
+
+    // Show fastest team display on host
+    if (team) {
+      const responseTime = teamResponseTimes[teamId] || 0;
+      handleFastestTeamReveal({ team: team as any, responseTime });
+    }
+
+    // Clear buzz winner but keep locked out teams (will be fully cleared on next question)
     setBuzzWinnerTeamId(null);
-    setBuzzLockedOutTeams(new Set());
     // Clear team answers so the panel goes back to waiting
     setTeamAnswers({});
     setTeamResponseTimes({});
-    console.log(`[QuizHost] Buzzin pack: Awarded ${pointsToAward} points to team ${teamName}`);
-  }, [currentRoundPoints, defaultPoints, handleScoreChange, quizzes, timer]);
+    console.log(`[QuizHost] Buzzin pack: Awarded ${pointsToAward} points to team ${teamName}. Flow -> fastest`);
+  }, [currentRoundPoints, defaultPoints, handleScoreChange, quizzes, timer, loadedQuizQuestions, currentLoadedQuestionIndex, teamResponseTimes, handleFastestTeamReveal]);
 
   const handleBuzzWrong = useCallback((teamId: string) => {
     const team = quizzes.find(q => q.id === teamId);
@@ -6790,9 +6833,10 @@ export function QuizHost() {
       const teamData = quizzes.map(quiz => ({
         id: quiz.id,
         name: quiz.name,
-        color: getTeamColor(quiz.id)
+        color: getTeamColor(quiz.id),
+        photoUrl: quiz.photoUrl,
       }));
-      
+
       return (
         <div className="flex-1 overflow-hidden">
           <BuzzInDisplay
@@ -6801,6 +6845,19 @@ export function QuizHost() {
             soundCheck={buzzInConfig.soundCheck}
             teams={teamData}
             onEndRound={handleBuzzInEnd}
+            onExternalDisplayUpdate={sendToExternalDisplay}
+            onGetActionHandlers={setGameActionHandlers}
+            onGameTimerStateChange={(isRunning, duration) => {
+              setGameTimerRunning(isRunning);
+              if (isRunning) setGameTimerFinished(false);
+              if (isRunning) {
+                setFlowState(prev => ({
+                  ...prev,
+                  flow: 'running',
+                  ...(duration !== undefined ? { totalTime: duration } : {})
+                }));
+              }
+            }}
           />
         </div>
       );
@@ -6838,8 +6895,8 @@ export function QuizHost() {
                 answerText={currentQuestion?.answerText}
                 correctIndex={currentQuestion?.correctIndex}
               />
-              {/* Buzzed Team Panel for buzzin pack mode */}
-              {isBuzzinPackMode && (
+              {/* Buzzed Team Panel for buzzin pack mode - hidden when flow is 'fastest' (correct answer confirmed) */}
+              {isBuzzinPackMode && flowState.flow !== 'fastest' && (
                 <div className="bg-slate-800 border-t-2 border-slate-600 px-6 py-4">
                   {buzzTimerExpired && !buzzWinnerTeamId ? (
                     <div className="flex items-center justify-between">

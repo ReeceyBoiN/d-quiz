@@ -543,10 +543,14 @@ export function sendBuzzResetToPlayers(lockedOutTeamIds: string[]) {
   }
 }
 
-export function sendBuzzResultToPlayers(teamName: string, correct: boolean) {
+export function sendBuzzResultToPlayers(teamName: string, correct: boolean, correctAnswer?: string, teamPhoto?: string) {
+  const data: any = { teamName, correct };
+  if (correctAnswer !== undefined) data.correctAnswer = correctAnswer;
+  if (teamPhoto) data.teamPhoto = teamPhoto;
+
   hostNetwork.broadcast({
     type: 'BUZZ_RESULT',
-    data: { teamName, correct },
+    data,
   });
 
   try {
@@ -554,7 +558,7 @@ export function sendBuzzResultToPlayers(teamName: string, correct: boolean) {
     if (api?.network?.broadcastMessage) {
       api.network.broadcastMessage({
         type: 'BUZZ_RESULT',
-        data: { teamName, correct },
+        data,
       }).catch((err: any) => {
         console.error('[wsHost] IPC broadcastMessage error (BUZZ_RESULT):', err);
       });

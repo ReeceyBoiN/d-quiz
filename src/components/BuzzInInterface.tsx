@@ -93,7 +93,7 @@ export function BuzzInInterface({ quizzes: quizzesProp, teams, onClose, onStartM
   };
 
   // Convert quizzes to teams format for BuzzInDisplay
-  const teams = quizzes.map(quiz => ({
+  const displayTeams = quizzes.map(quiz => ({
     id: quiz.id,
     name: quiz.name,
     color: getTeamColor(quiz.id)
@@ -105,7 +105,7 @@ export function BuzzInInterface({ quizzes: quizzesProp, teams, onClose, onStartM
         mode="points"
         points={points[0]}
         soundCheck={soundCheckEnabled}
-        teams={teams}
+        teams={displayTeams}
         onEndRound={handleEndRound}
       />
     );
