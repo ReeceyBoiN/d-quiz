@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<pop_round>
+  <format_version>1</format_version>
+  <title>Round 2</title>
+  <generated_at>2026-03-12T21:14:24.282Z</generated_at>
+  <icon>assets/pq-icon.png</icon>
+  <question_count>20</question_count>
+  <items>
+    <item num="1">
+      <type>multiple_choice</type>
+      <text>What part of the lotus plant is frequently used in South and East Asian cookery?</text>
+      <options>
+        <opt label="A">Flower</opt>
+        <opt label="B">Leaf</opt>
+        <opt label="C">Root</opt>
+        <opt label="D">Stem</opt>
+      </options>
+      <answer_text>C</answer_text>
+    </item>
+    <item num="2">
+      <type>multiple_choice</type>
+      <text>Which of these capital cities ends in the same 3 letters as its corresponding country?</text>
+      <options>
+        <opt label="A">London</opt>
+        <opt label="B">Brasilia</opt>
+        <opt label="C">Tehran</opt>
+        <opt label="D">Vienna</opt>
+      </options>
+      <answer_text>Iran</answer_text>
+      <long_answer>Iran</long_answer>
+    </item>
+    <item num="3">
+      <type>letters</type>
+      <text>Name the actress that played &apos;Buffy the Vampire Slayer&apos; in the hit TV show.</text>
+      <options>
+        <opt label="A">S</opt>
+      </options>
+      <answer_text>Sarah Michelle Gellar</answer_text>
+      <long_answer>Sarah Michelle Gellar</long_answer>
+    </item>
+    <item num="4">
+      <type>multiple_choice</type>
+      <text>In science, what property of a substance is defined by mass per unit of volume?</text>
+      <options>
+        <opt label="A">Concentration</opt>
+        <opt label="B">Pressure</opt>
+        <opt label="C">Surface tension</opt>
+        <opt label="D">Density</opt>
+      </options>
+      <answer_text>D</answer_text>
+    </item>
+    <item num="5">
+      <type>letters</type>
+      <text>In &apos;Harry Potter and the Philosopher&apos;s Stone&apos;, it is revealed that which character has a scar in the shape of the London Underground map on their knee?</text>
+      <options>
+        <opt label="A">A</opt>
+      </options>
+      <answer_text>Albus Dumbledore</answer_text>
+      <long_answer>Albus Dumbledore</long_answer>
+    </item>
+    <item num="6">
+      <type>letters</type>
+      <text>Excluding the words &apos;football club&apos;, three teams in the Championship have three words in their name. They are Queens Park Rangers, West Bromwich Albion and what other team?</text>
+      <options>
+        <opt label="A">P</opt>
+      </options>
+      <answer_text>Preston North End</answer_text>
+      <long_answer>Preston North End</long_answer>
+    </item>
+    <item num="7">
+      <type>multiple_choice</type>
+      <text>Which of these celebrities apparently takes a size 11 shoe?</text>
+      <options>
+        <opt label="A">Paris Hilton</opt>
+        <opt label="B">Lady Gaga</opt>
+        <opt label="C">Beyonce</opt>
+        <opt label="D">Kylie Minogue</opt>
+      </options>
+      <answer_text>A</answer_text>
+    </item>
+    <item num="8">
+      <type>letters</type>
+      <text>The Catholic pilgrimage town of Lourdes is at the foot of what mountain range?</text>
+      <options>
+        <opt label="A">P</opt>
+      </options>
+      <answer_text>Pyrenees</answer_text>
+      <long_answer>Pyrenees</long_answer>
+    </item>
+    <item num="9">
+      <type>letters</type>
+      <text>Amblyopia is more commonly known as what optical condition?</text>
+      <options>
+        <opt label="A">L</opt>
+      </options>
+      <answer_text>Lazy eye</answer_text>
+      <long_answer>Lazy eye</long_answer>
+    </item>
+    <item num="10">
+      <type>multiple_choice</type>
+      <text>In which year was the first successful fly-by mission of the planet Mars completed by the NASA probe Mariner 4?</text>
+      <options>
+        <opt label="A">1967</opt>
+        <opt label="B">1977</opt>
+        <opt label="C">1987</opt>
+        <opt label="D">1997</opt>
+      </options>
+      <answer_text>A</answer_text>
+    </item>
+    <item num="11">
+      <type>multiple_choice</type>
+      <text>In a controversial move that ruffled feathers, which of the following won the 2021 New Zealand Bird of the Year competition via an online poll?</text>
+      <options>
+        <opt label="A">Kiwi bird</opt>
+        <opt label="B">Dodo</opt>
+        <opt label="C">Pigeon</opt>
+        <opt label="D">Long-tailed bat</opt>
+      </options>
+      <answer_text>The bat is a mammal not a bird, but its inclusion raised awareness that it is an endangered species</answer_text>
+      <long_answer>The bat is a mammal not a bird, but its inclusion raised awareness that it is an endangered species</long_answer>
+    </item>
+    <item num="12">
+      <type>sequence</type>
+      <text>Starting with the most, put these coffee shop chains in order of how many outlets they have in the UK.</text>
+      <options>
+        <opt label="A">Costa</opt>
+        <opt label="B">Starbucks</opt>
+        <opt label="C">Caffè Nero</opt>
+      </options>
+      <answer_text>Costa 2681, Starbucks 1025, Caffè Nero 648 (all as of Feb 2021)</answer_text>
+      <long_answer>Costa 2681, Starbucks 1025, Caffè Nero 648 (all as of Feb 2021)</long_answer>
+    </item>
+    <item num="13">
+      <type>multiple_choice</type>
+      <text>With what profession would you associate the name Marlon Teixeira?</text>
+      <options>
+        <opt label="A">Modelling</opt>
+        <opt label="B">Cuisine</opt>
+        <opt label="C">Sport</opt>
+        <opt label="D">Literature</opt>
+      </options>
+      <answer_text>A</answer_text>
+    </item>
+    <item num="14">
+      <type>multiple_choice</type>
+      <text>In 2012, Mountain Dew put the naming of their new flavour out to an online poll. Which of these was NOT in the top 10 leaderboard of names?</text>
+      <options>
+        <opt label="A">Hitler did nothing wrong</opt>
+        <opt label="B">Fizzy Jizz Nipples</opt>
+        <opt label="C">Moist Nugget</opt>
+        <opt label="D">Diabeetus</opt>
+      </options>
+      <answer_text>B</answer_text>
+    </item>
+    <item num="15">
+      <type>multiple_choice</type>
+      <text>Which type of classic car is older?</text>
+      <options>
+        <opt label="A">A vintage car</opt>
+        <opt label="B">A veteran car</opt>
+      </options>
+      <answer_text>In the UK, &apos;classic cars&apos; range from veteran (pre-First World War), to vintage (1919-1930), to post-vintage (1930s).</answer_text>
+      <long_answer>In the UK, &apos;classic cars&apos; range from veteran (pre-First World War), to vintage (1919-1930), to post-vintage (1930s).</long_answer>
+    </item>
+    <item num="16">
+      <type>letters</type>
+      <text>Which country does the island of Majorca belong to?</text>
+      <options>
+        <opt label="A">S</opt>
+      </options>
+      <answer_text>Spain</answer_text>
+      <long_answer>Spain</long_answer>
+    </item>
+    <item num="17">
+      <type>multiple_choice</type>
+      <text>In the Disney film, Bambi was an orphan but how did his mum die?</text>
+      <options>
+        <opt label="A">Shot by a hunter</opt>
+        <opt label="B">Ate poisonous berries</opt>
+        <opt label="C">Died in a forest fire</opt>
+      </options>
+      <answer_text>A</answer_text>
+    </item>
+    <item num="18">
+      <type>letters</type>
+      <text>Which martial arts film star lends his name to a 2018 hit by Tiesto and Dzeko?</text>
+      <options>
+        <opt label="A">J</opt>
+      </options>
+      <answer_text>Jackie Chan</answer_text>
+      <long_answer>Jackie Chan</long_answer>
+    </item>
+    <item num="19">
+      <type>letters</type>
+      <text>Which European country was ruled by Francisco Franco between 1939 and 1975?</text>
+      <options>
+        <opt label="A">S</opt>
+      </options>
+      <answer_text>Spain</answer_text>
+      <long_answer>Spain</long_answer>
+    </item>
+    <item num="20">
+      <type>multiple_choice</type>
+      <text>In the Bible, the main religious figures such as Noah and Abraham are descended from which of Adam and Eve&apos;s sons?</text>
+      <options>
+        <opt label="A">Cain</opt>
+        <opt label="B">Abel</opt>
+        <opt label="C">Seth</opt>
+      </options>
+      <answer_text>C</answer_text>
+    </item>
+  </items>
+</pop_round>

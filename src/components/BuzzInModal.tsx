@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Check, X, Award, Users, Brain } from "lucide-react";
+import { Check, X, Award, Users } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Slider } from "./ui/slider";
 
-type BuzzInMode = "points" | "classic" | "advanced";
+type BuzzInMode = "points" | "classic";
 
 interface BuzzInModalProps {
   onClose: () => void;
@@ -33,14 +33,6 @@ export function BuzzInModal({ onClose, onStartRound }: BuzzInModalProps) {
       description: "Players buzz in and answer verbally, continuing until a correct answer is given.",
       hasSlider: false
     },
-    {
-      id: "advanced" as const,
-      title: "Advanced",
-      icon: <Brain className="h-8 w-8 text-white opacity-60" />,
-      color: "#7f8c8d",
-      description: "Allows other teams to earn points by agreeing or disagreeing with the original answer given.",
-      hasSlider: false
-    }
   ];
 
   const handleStartRound = () => {

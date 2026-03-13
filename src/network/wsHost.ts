@@ -47,7 +47,11 @@ export type NetworkMessageType =
   | 'MUSIC_ROUND_NOW_PLAYING'  // broadcasts which clip is currently playing to players
   | 'MUSIC_ROUND_RESET'  // resets player buzzer for next target clip selection
   | 'MUSIC_ROUND_END'  // round is over, return to normal display
-  | 'MUSIC_BUZZ';  // incoming from player buzz during music round
+  | 'MUSIC_BUZZ'  // incoming from player buzz during music round
+  | 'BUZZ_LOCKED'  // broadcast when a team buzzes first (locks everyone else)
+  | 'BUZZ_RESET'  // broadcast when buzz reopens after wrong answer (with locked-out team list)
+  | 'BUZZ_RESULT'  // broadcast correct/wrong result to players
+
 
 export interface NetworkPayload {
   type: NetworkMessageType;
@@ -494,6 +498,70 @@ export function sendFlowStateToPlayers(flowData: any) {
     console.error('[wsHost] Error calling broadcastFlowState IPC:', err);
   }
 }
+
+export function sendBuzzLockedToPlayers(buzzedTeamName: string, buzzedTeamId: string) {
+  hostNetwork.broadcast({
+    type: 'BUZZ_LOCKED',
+    data: { teamName: buzzedTeamName, teamId: buzzedTeamId },
+  });
+
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.broadcastMessage) {
+      api.network.broadcastMessage({
+        type: 'BUZZ_LOCKED',
+        data: { teamName: buzzedTeamName, teamId: buzzedTeamId },
+      }).catch((err: any) => {
+        console.error('[wsHost] IPC broadcastMessage error (BUZZ_LOCKED):', err);
+      });
+    }
+  } catch (err) {
+    console.error('[wsHost] Error sending BUZZ_LOCKED:', err);
+  }
+}
+
+export function sendBuzzResetToPlayers(lockedOutTeamIds: string[]) {
+  hostNetwork.broadcast({
+    type: 'BUZZ_RESET',
+    data: { lockedOutTeamIds },
+  });
+
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.broadcastMessage) {
+      api.network.broadcastMessage({
+        type: 'BUZZ_RESET',
+        data: { lockedOutTeamIds },
+      }).catch((err: any) => {
+        console.error('[wsHost] IPC broadcastMessage error (BUZZ_RESET):', err);
+      });
+    }
+  } catch (err) {
+    console.error('[wsHost] Error sending BUZZ_RESET:', err);
+  }
+}
+
+export function sendBuzzResultToPlayers(teamName: string, correct: boolean) {
+  hostNetwork.broadcast({
+    type: 'BUZZ_RESULT',
+    data: { teamName, correct },
+  });
+
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.broadcastMessage) {
+      api.network.broadcastMessage({
+        type: 'BUZZ_RESULT',
+        data: { teamName, correct },
+      }).catch((err: any) => {
+        console.error('[wsHost] IPC broadcastMessage error (BUZZ_RESULT):', err);
+      });
+    }
+  } catch (err) {
+    console.error('[wsHost] Error sending BUZZ_RESULT:', err);
+  }
+}
+
 
 export function sendBuzzerFolderChangeToPlayers(folderPath: string) {
   // Send local listeners first (for internal displays)

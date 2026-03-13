@@ -35,6 +35,12 @@ interface QuizPackDisplayProps {
   onGameTimerStateChange?: (isRunning: boolean, duration?: number) => void; // Notify parent when timer state changes
   onWinnerPointsChange?: (winnerPoints: number) => void; // Callback when winner points slider changes (nearest wins)
   currentRoundWinnerPoints?: number | null; // Current round winner points from parent (nearest wins)
+  isBuzzinPack?: boolean;
+  teamAnswers?: { [teamId: string]: string };
+  teamResponseTimes?: { [teamId: string]: number };
+  teams?: Array<{ id: string; name: string; color?: string }>;
+  onBuzzCorrect?: (teamId: string) => void;
+  onBuzzWrong?: (teamId: string) => void;
 }
 
 export function QuizPackDisplay({
@@ -53,7 +59,13 @@ export function QuizPackDisplay({
   currentRoundSpeedBonus,
   onGameTimerStateChange,
   onWinnerPointsChange,
-  currentRoundWinnerPoints
+  currentRoundWinnerPoints,
+  isBuzzinPack,
+  teamAnswers,
+  teamResponseTimes,
+  teams,
+  onBuzzCorrect,
+  onBuzzWrong,
 }: QuizPackDisplayProps) {
   const [currentScreen, setCurrentScreen] = useState<'config' | 'question'>('config');
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
@@ -224,8 +236,8 @@ export function QuizPackDisplay({
       return;
     }
 
-    const timerLength = gameModeTimers.keypad || 30;
-    console.log('[QuizPackDisplay] Starting timer with length:', timerLength);
+    const timerLength = isBuzzinPack ? (gameModeTimers.buzzin || 15) : (gameModeTimers.keypad || 30);
+    console.log('[QuizPackDisplay] Starting timer with length:', timerLength, 'isBuzzinPack:', isBuzzinPack);
 
     // Reset timer refs for this session
     countdownRef.current = timerLength;
@@ -246,7 +258,7 @@ export function QuizPackDisplay({
     setTimerFinished(false);
     setIsTimerRunning(true);
     setTimerStartValue(timerLength);
-  }, [isTimerRunning, gameModeTimers.keypad]);
+  }, [isTimerRunning, gameModeTimers.keypad, gameModeTimers.buzzin, isBuzzinPack]);
 
   const getQuestionTypeLabel = (type: string): string => {
     switch (type.toLowerCase()) {
@@ -428,7 +440,18 @@ export function QuizPackDisplay({
 
     return (
     <div className="h-full bg-[#2c3e50] text-[#ecf0f1] p-6">
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      {/* Buzzin Pack Header */}
+      {isBuzzinPack && (
+        <div className="text-center mb-4">
+          <div className="inline-flex items-center gap-3 bg-[#f39c12] px-6 py-3 rounded-lg">
+            <Zap className="h-6 w-6 text-white" />
+            <h2 className="text-2xl font-bold text-white tracking-wide">BUZZ-IN ROUND</h2>
+            <Zap className="h-6 w-6 text-white" />
+          </div>
+          <p className="text-sm text-[#95a5a6] mt-2">Teams buzz in on their devices, then answer verbally. You judge correct or incorrect.</p>
+        </div>
+      )}
+      <div className={`grid ${isBuzzinPack ? 'grid-cols-2' : 'grid-cols-4'} gap-4 mb-6`}>
         {/* Scoring Section */}
         <div>
           {/* Points */}
@@ -464,7 +487,7 @@ export function QuizPackDisplay({
         </div>
 
         {/* Speed Bonus */}
-        <div>
+        {!isBuzzinPack && <div>
           <Card className="bg-[#34495e] border-[#4a5568] mb-2">
             <CardContent className="p-4 bg-[rgba(102,102,255,0)]">
               <div className="flex flex-col items-center text-center">
@@ -515,10 +538,10 @@ export function QuizPackDisplay({
               </div>
             </CardContent>
           </Card>
-        </div>
+        </div>}
 
         {/* Go Wide */}
-        <div>
+        {!isBuzzinPack && <div>
           <Card
             className={`border-[#4a5568] mb-2 transition-all cursor-pointer ${
               goWideEnabled ? 'bg-[#27ae60] border-[#27ae60]' : 'bg-[#7f8c8d]'
@@ -567,7 +590,7 @@ export function QuizPackDisplay({
               </div>
             </CardContent>
           </Card>
-        </div>
+        </div>}
 
         {/* Evil Mode */}
         <div>
@@ -595,7 +618,7 @@ export function QuizPackDisplay({
                   Evil mode takes the available points to win, away from the teams score if they answer incorectly.
                 </p>
 
-                <div
+                {!isBuzzinPack && <div
                   className="w-full border-t border-[#4a5568] pt-[20px] mt-[8px] cursor-pointer pr-[0px] pb-[0px] pl-[0px]"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -614,7 +637,7 @@ export function QuizPackDisplay({
                   <p className="text-xs text-[#2c3e50]">
                     If a team answers wrong or doesnt answer in time they lose points too.
                   </p>
-                </div>
+                </div>}
               </div>
             </CardContent>
           </Card>
@@ -625,8 +648,11 @@ export function QuizPackDisplay({
       <div className="flex gap-4">
         <Button
           onClick={handleStartRound}
-          className="flex-1 h-16 bg-[#3498db] hover:bg-[#2980b9] text-white flex items-center justify-center gap-3 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg text-xl font-bold"
+          className={`flex-1 h-16 text-white flex items-center justify-center gap-3 rounded-lg transition-all duration-200 hover:scale-105 shadow-lg text-xl font-bold ${
+            isBuzzinPack ? 'bg-[#f39c12] hover:bg-[#e67e22]' : 'bg-[#3498db] hover:bg-[#2980b9]'
+          }`}
         >
+          {isBuzzinPack && <Zap className="h-5 w-5" />}
           START ROUND
         </Button>
         <Button
@@ -653,12 +679,15 @@ export function QuizPackDisplay({
   return (
     <div className="w-full h-full bg-slate-800 text-white flex flex-col">
       {/* Top Header */}
-      <div className="bg-red-700 px-8 py-6 flex justify-between items-center border-b-4 border-red-900">
-        <div className="text-3xl font-bold tracking-wide">
+      <div className={`px-8 py-6 flex justify-between items-center border-b-4 ${
+        isBuzzinPack ? 'bg-[#f39c12] border-[#e67e22]' : 'bg-red-700 border-red-900'
+      }`}>
+        <div className="text-3xl font-bold tracking-wide flex items-center gap-3">
+          {isBuzzinPack && <Zap className="h-7 w-7 text-white" />}
           Question {currentQuestionIndex + 1} of {totalQuestions}
         </div>
         <div className="text-3xl font-bold tracking-wide">
-          {getQuestionTypeLabel(currentQuestion.type)}
+          {isBuzzinPack ? 'BUZZ-IN' : getQuestionTypeLabel(currentQuestion.type)}
         </div>
       </div>
 
@@ -763,6 +792,59 @@ export function QuizPackDisplay({
           </div>
         </div>
       </div>
+
+      {/* Buzzed Team Panel for buzzin pack mode */}
+      {isBuzzinPack && teamAnswers && teams && (
+        <div className="bg-slate-800 border-t-2 border-[#f39c12] px-6 py-4">
+          {(() => {
+            const buzzedTeams = Object.entries(teamAnswers)
+              .filter(([, answer]) => answer === 'buzzed')
+              .map(([teamId]) => ({
+                teamId,
+                time: teamResponseTimes?.[teamId] || Infinity,
+                team: teams.find(t => t.id === teamId),
+              }))
+              .sort((a, b) => a.time - b.time);
+            const fastest = buzzedTeams.length > 0 ? buzzedTeams[0] : null;
+
+            if (fastest) {
+              return (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <Zap className="h-8 w-8 text-[#f39c12]" />
+                    <div>
+                      <p className="text-sm text-slate-400 uppercase tracking-wider">First to Buzz</p>
+                      <p className="text-2xl font-bold text-white">{fastest.team?.name || `Team ${fastest.teamId}`}</p>
+                      <p className="text-sm text-slate-400">{(fastest.time / 1000).toFixed(2)}s response time</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={() => onBuzzCorrect?.(fastest.teamId)}
+                      className="px-8 py-4 bg-green-600 hover:bg-green-700 text-white font-bold text-lg rounded-lg"
+                    >
+                      CORRECT
+                    </Button>
+                    <Button
+                      onClick={() => onBuzzWrong?.(fastest.teamId)}
+                      className="px-8 py-4 bg-red-600 hover:bg-red-700 text-white font-bold text-lg rounded-lg"
+                    >
+                      WRONG
+                    </Button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="flex items-center gap-4 justify-center py-2">
+                <Zap className="h-6 w-6 text-slate-500 animate-pulse" />
+                <p className="text-slate-400 text-lg font-medium">Waiting for teams to buzz in...</p>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Bottom Navigation */}
       <div className="bg-slate-700 border-t-2 border-slate-600 px-8 py-5 flex justify-between items-center gap-6">

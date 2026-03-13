@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<pop_round>
+  <format_version>1</format_version>
+  <title>Nearest Wins</title>
+  <generated_at>2026-03-12T21:14:24.282Z</generated_at>
+  <icon>assets/pq-icon.png</icon>
+  <question_count>1</question_count>
+  <items>
+    <item num="1">
+      <type>nearest_wins</type>
+      <text>If you were to write down all the days of the week and all the months of the year, how many letters would there be?</text>
+      <answer_text>123</answer_text>
+      <long_answer>123</long_answer>
+    </item>
+  </items>
+</pop_round>

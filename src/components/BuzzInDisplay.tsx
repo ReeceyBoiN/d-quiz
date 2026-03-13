@@ -6,7 +6,7 @@ import { CountdownTimer } from "./CountdownTimer";
 import { useSettings } from "../utils/SettingsContext";
 import { sendTimeUpToPlayers } from "../network/wsHost";
 
-type BuzzInMode = "points" | "classic" | "advanced";
+type BuzzInMode = "points" | "classic";
 type BuzzInState = "waiting" | "buzzed" | "answered" | "complete";
 
 interface Team {
@@ -97,7 +97,7 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: B
     switch (mode) {
       case "points": return `Points Mode (${points} pts)`;
       case "classic": return "Classic Buzz-In";
-      case "advanced": return "Advanced Mode";
+
     }
   };
 
@@ -105,7 +105,7 @@ export function BuzzInDisplay({ mode, points, soundCheck, teams, onEndRound }: B
     switch (mode) {
       case "points": return `First to buzz in gets ${points} points for correct answers`;
       case "classic": return "Players buzz in and answer verbally until someone gets it right";
-      case "advanced": return "Teams can agree/disagree with answers for additional points";
+
     }
   };
 

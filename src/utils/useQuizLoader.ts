@@ -9,7 +9,8 @@ export function useQuizLoader() {
       const { loadQuizFromFile } = await import("./quizLoader");
       const quiz = await loadQuizFromFile(file);
 
-      setCurrentQuiz({ ...quiz, isQuizPack: true });
+      const isBuzzinPack = quiz.game?.toLowerCase() === 'buzzin';
+      setCurrentQuiz({ ...quiz, isQuizPack: true, isBuzzinPack });
 
       console.log("✅ Quiz loaded:", quiz);
       console.log("Game:", quiz.game);

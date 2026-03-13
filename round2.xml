@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<pop_round>
+  <format_version>1</format_version>
+  <title>Round 3</title>
+  <generated_at>2026-03-12T21:14:24.282Z</generated_at>
+  <icon>assets/pq-icon.png</icon>
+  <question_count>20</question_count>
+  <items>
+    <item num="1">
+      <type>letters</type>
+      <text>According to the TV adverts of the &apos;80s and &apos;90s, what did the man from Del Monte say to the delight of fruit growers when accepting their produce?</text>
+      <options>
+        <opt label="A">Y</opt>
+      </options>
+      <answer_text>Yes</answer_text>
+      <long_answer>Yes</long_answer>
+    </item>
+    <item num="2">
+      <type>numbers</type>
+      <text>After the tragic Ethiopian aircrash in March 2019, various countries&apos; aviation authorities, including the UK, Germany, Australia and Singapore, banned the use of which model of Boeing passenger aircraft?</text>
+      <answer_text>737</answer_text>
+      <long_answer>737</long_answer>
+    </item>
+    <item num="3">
+      <type>multiple_choice</type>
+      <text>What is the lowest rank in the British peerage?</text>
+      <options>
+        <opt label="A">Baron</opt>
+        <opt label="B">Earl</opt>
+        <opt label="C">Marquis</opt>
+        <opt label="D">Lord</opt>
+      </options>
+      <answer_text>A</answer_text>
+    </item>
+    <item num="4">
+      <type>letters</type>
+      <text>What musical instrument is pictured on the back of an Irish one Euro coin?</text>
+      <options>
+        <opt label="A">H</opt>
+      </options>
+      <answer_text>Harp</answer_text>
+      <long_answer>Harp</long_answer>
+    </item>
+    <item num="5">
+      <type>letters</type>
+      <text>In Scottish football, who are Hibernian FC&apos;s biggest rivals?</text>
+      <options>
+        <opt label="A">H</opt>
+      </options>
+      <answer_text>Heart of Midlothian FC (Hearts)</answer_text>
+      <long_answer>Heart of Midlothian FC (Hearts)</long_answer>
+    </item>
+    <item num="6">
+      <type>letters</type>
+      <text>Bowser, the King of the Koopas, is the nemesis of what Nintendo character?</text>
+      <options>
+        <opt label="A">M</opt>
+      </options>
+      <answer_text>Mario</answer_text>
+      <long_answer>Mario</long_answer>
+    </item>
+    <item num="7">
+      <type>multiple_choice</type>
+      <text>What was unusual about the 1960 Olympic marathon win by Abebe Bikila?</text>
+      <options>
+        <opt label="A">He stopped during the race to talk to a spectator</opt>
+        <opt label="B">He was 5th past the post and the first 4 were disqualified</opt>
+        <opt label="C">He had a wooden leg</opt>
+        <opt label="D">He ran barefoot</opt>
+      </options>
+      <answer_text>D</answer_text>
+    </item>
+    <item num="8">
+      <type>numbers</type>
+      <text>In what year did pro-democracy demonstrators clash with the Chinese government in Tiananmen Square; the USSR pulled out of Afghanistan; and serial killer Ted Bundy was executed?</text>
+      <answer_text>1989</answer_text>
+      <long_answer>1989</long_answer>
+    </item>
+    <item num="9">
+      <type>letters</type>
+      <text>In the TV show, &quot;Friends,&quot; according to Chandler, as well as being tidy, Monica is freakishly what?</text>
+      <options>
+        <opt label="A">S</opt>
+      </options>
+      <answer_text>Strong</answer_text>
+      <long_answer>Strong</long_answer>
+    </item>
+    <item num="10">
+      <type>letters</type>
+      <text>In physics, what word can be defined as &apos;the rate of work done&apos;?</text>
+      <options>
+        <opt label="A">P</opt>
+      </options>
+      <answer_text>Power</answer_text>
+      <long_answer>Power</long_answer>
+    </item>
+    <item num="11">
+      <type>letters</type>
+      <text>What is the name of the English engineer credited with inventing the World Wide Web?</text>
+      <options>
+        <opt label="A">T</opt>
+      </options>
+      <answer_text>Tim Berners-Lee</answer_text>
+      <long_answer>Tim Berners-Lee</long_answer>
+    </item>
+    <item num="12">
+      <type>letters</type>
+      <text>&quot;I wanna be the very best, like no one ever was, to catch them is my real test, to train them is my cause&quot; are lines from which TV show&apos;s theme song?</text>
+      <options>
+        <opt label="A">P</opt>
+      </options>
+      <answer_text>Pokemon</answer_text>
+      <long_answer>Pokemon</long_answer>
+    </item>
+    <item num="13">
+      <type>letters</type>
+      <text>First used in 1821, what Old West trail connected Missouri with New Mexico?</text>
+      <options>
+        <opt label="A">S</opt>
+      </options>
+      <answer_text>Santa Fe Trail</answer_text>
+      <long_answer>Santa Fe Trail</long_answer>
+    </item>
+    <item num="14">
+      <type>letters</type>
+      <text>Which former England manager released the autobiography &apos;Spurred to Success&apos; in 1987, and recently released another one entitled &apos;Playmaker: My Life and the Love of Football&apos;?</text>
+      <options>
+        <opt label="A">G</opt>
+      </options>
+      <answer_text>Glenn Hoddle</answer_text>
+      <long_answer>Glenn Hoddle</long_answer>
+    </item>
+    <item num="15">
+      <type>letters</type>
+      <text>Which Marvel anti-hero has the real name &apos;Johnny Blaze&apos;?</text>
+      <options>
+        <opt label="A">G</opt>
+      </options>
+      <answer_text>Ghost Rider</answer_text>
+      <long_answer>Ghost Rider</long_answer>
+    </item>
+    <item num="16">
+      <type>multiple_choice</type>
+      <text>What does a baroscope measure?</text>
+      <options>
+        <opt label="A">Humidity</opt>
+        <opt label="B">Wind speed</opt>
+        <opt label="C">Rainfall</opt>
+        <opt label="D">Atmospheric pressure</opt>
+      </options>
+      <answer_text>D</answer_text>
+    </item>
+    <item num="17">
+      <type>multiple_choice</type>
+      <text>In which modern-day country was Nelson Mandela born?</text>
+      <options>
+        <opt label="A">Zimbabwe</opt>
+        <opt label="B">South Africa</opt>
+        <opt label="C">Lesotho</opt>
+        <opt label="D">Botswana</opt>
+      </options>
+      <answer_text>B</answer_text>
+    </item>
+    <item num="18">
+      <type>sequence</type>
+      <text>Put these sports in order of how many players are in a team, from fewest to most.</text>
+      <options>
+        <opt label="A">Basketball</opt>
+        <opt label="B">Netball</opt>
+        <opt label="C">Cricket</opt>
+        <opt label="D">Rugby League</opt>
+        <opt label="E">Rugby Union</opt>
+        <opt label="F">Australian Rules Football</opt>
+      </options>
+      <answer_text>Basketball 5, Netball 7, Cricket 11, Rugby League 13, Rugby Union 15, Aussie Rules 18</answer_text>
+      <long_answer>Basketball 5, Netball 7, Cricket 11, Rugby League 13, Rugby Union 15, Aussie Rules 18</long_answer>
+    </item>
+    <item num="19">
+      <type>letters</type>
+      <text>In which 1988 film is the part of &quot;Josh Baskin&quot;played by both David Moscow and Tom Hanks?</text>
+      <options>
+        <opt label="A">B</opt>
+      </options>
+      <answer_text>Big</answer_text>
+      <long_answer>Big</long_answer>
+    </item>
+    <item num="20">
+      <type>letters</type>
+      <text>According to the saying, &apos;A nod&apos;s as good as a wink to a....&apos; what?</text>
+      <options>
+        <opt label="A">B</opt>
+      </options>
+      <answer_text>Blind horse</answer_text>
+      <long_answer>Blind horse</long_answer>
+    </item>
+  </items>
+</pop_round>

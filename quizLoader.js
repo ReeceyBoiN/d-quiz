@@ -53,6 +53,139 @@ function toDataUrlFromBase64(b64) {
   return `data:${mime};base64,${b64}`;
 }
 
+// ────── Regex-based fallback parser for .sqb files ──────────────────
+// Used when XML parsing fails (bare &, encoding issues, etc.)
+
+function extractTagContent(content, tagName) {
+  const match = content.match(new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, 'i'));
+  return match ? decodeXmlEntities(match[1].trim()) : '';
+}
+
+function decodeXmlEntities(text) {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+function parseSqbWithRegex(raw) {
+  console.log('[quizLoader] Using regex fallback parser for .sqb file');
+
+  // Extract round-level metadata
+  const gameMatch = raw.match(/<game>([\s\S]*?)<\/game>/i);
+  const titleMatch = raw.match(/<title>([\s\S]*?)<\/title>/i);
+  const gameVarMatch = raw.match(/<game_variation>([\s\S]*?)<\/game_variation>/i);
+
+  const game = gameMatch ? decodeXmlEntities(gameMatch[1].trim()) : 'Unknown';
+  const title = titleMatch ? decodeXmlEntities(titleMatch[1].trim()) : undefined;
+  const gameVariation = gameVarMatch ? decodeXmlEntities(gameVarMatch[1].trim()) : undefined;
+
+  // Extract all questions using regex
+  const questionRegex = /<question>([\s\S]*?)<\/question>/gi;
+  const questions = [];
+  let match;
+  while ((match = questionRegex.exec(raw)) !== null) {
+    const qContent = match[1];
+    const q = extractTagContent(qContent, 'q');
+    const longAns = extractTagContent(qContent, 'long_answer');
+    const shortAns = extractTagContent(qContent, 'short_answer');
+    const userView = extractTagContent(qContent, 'user_view');
+    const pictureB64Raw = qContent.match(/<picture>([\s\S]*?)<\/picture>/i);
+    const pictureB64 = pictureB64Raw ? pictureB64Raw[1].trim() : '';
+
+    // Extract options
+    const optionsBlock = qContent.match(/<options>([\s\S]*?)<\/options>/i);
+    const options = [];
+    if (optionsBlock) {
+      const optRegex = /<option>([\s\S]*?)<\/option>/gi;
+      let optMatch;
+      while ((optMatch = optRegex.exec(optionsBlock[1])) !== null) {
+        options.push(decodeXmlEntities(optMatch[1].trim()));
+      }
+    }
+
+    // Determine question type
+    let type;
+    if (userView === 'multi') type = 'multi';
+    else if (userView === 'letters') type = 'letters';
+    else if (userView === 'numbers') type = game === 'Nearest Wins' ? 'nearest' : 'numbers';
+    else if (userView === 'sequence') type = 'sequence';
+    else type = game === 'Nearest Wins' ? 'nearest' : 'buzzin';
+
+    let answerText = longAns || undefined;
+    let correctIndex;
+
+    // Handle multiple choice
+    if (type === 'multi' && options.length) {
+      if (shortAns && /^[A-Za-z]$/.test(shortAns)) {
+        const i = letterToIndex(shortAns);
+        if (i !== undefined && i < options.length) {
+          correctIndex = i;
+          if (!answerText) answerText = options[i];
+        }
+      } else if (shortAns) {
+        const i = options.findIndex(
+          (o) => o.trim().toLowerCase() === shortAns.trim().toLowerCase()
+        );
+        if (i >= 0) {
+          correctIndex = i;
+          if (!answerText) answerText = options[i];
+        }
+      } else if (answerText) {
+        const i = options.findIndex(
+          (o) => o.trim().toLowerCase() === answerText.trim().toLowerCase()
+        );
+        if (i >= 0) correctIndex = i;
+      }
+    }
+
+    // Handle letters type
+    if (type === 'letters') {
+      const extractLetter = (text) => {
+        if (!text) return undefined;
+        const stripped = text.replace(/^The\s+/i, '').trim();
+        if (stripped) {
+          const firstChar = stripped[0].toUpperCase();
+          if (/^[A-Za-z]$/.test(firstChar)) return firstChar;
+        }
+        return undefined;
+      };
+
+      let letter;
+      if (shortAns && /^[A-Za-z]$/.test(shortAns)) {
+        letter = shortAns.toUpperCase();
+        if (!answerText) answerText = letter;
+      } else if (shortAns) {
+        letter = extractLetter(shortAns);
+      } else if (answerText) {
+        letter = extractLetter(answerText);
+      }
+
+      if (letter) {
+        const i = letterToIndex(letter);
+        if (i !== undefined) correctIndex = i;
+      }
+    }
+
+    const imageDataUrl = pictureB64 ? toDataUrlFromBase64(pictureB64) : undefined;
+
+    questions.push({
+      type,
+      q,
+      answerText,
+      options: options.length ? options : undefined,
+      correctIndex,
+      imageDataUrl,
+      meta: { short_answer: shortAns || undefined, user_view: userView || undefined },
+    });
+  }
+
+  console.log('[quizLoader] Regex parser found', questions.length, 'questions');
+  return { game, title, gameVariation, questions };
+}
+
 // ---------- Parse one <question> ----------
 function parseQuestion(qEl, roundGame) {
   const q = getText($(qEl, "q"));
@@ -150,14 +283,86 @@ function parseQuizXmlString(xml) {
 // ---------- Load from file ----------
 async function loadQuizFromFile(fileOrPath) {
   if (typeof File !== "undefined" && fileOrPath instanceof File) {
+    // .sqb files wrap XML in <html> tags - need special handling
+    if (/\.sqb$/i.test(fileOrPath.name)) {
+      let raw = await fileOrPath.text();
+      console.log('[quizLoader] Loading .sqb file, raw length:', raw.length);
+
+      // Strip BOM if present
+      if (raw.charCodeAt(0) === 0xFEFF) {
+        raw = raw.substring(1);
+      }
+
+      // Preprocess for XML parsing
+      let preprocessed = raw;
+      preprocessed = preprocessed.replace(/^<html[^>]*>\s*/i, '').replace(/<\/html>\s*$/i, '');
+      const xmlDeclMatch = preprocessed.match(/<\?xml[^?]*\?>/);
+      if (xmlDeclMatch) {
+        preprocessed = preprocessed.replace(/<\?xml[^?]*\?>/, '');
+        preprocessed = xmlDeclMatch[0] + preprocessed;
+      }
+      preprocessed = preprocessed.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[\da-fA-F]+;)/g, '&amp;');
+
+      // Try XML parsing first
+      try {
+        const result = parseQuizXmlString(preprocessed);
+        if (result.questions.length > 0) {
+          console.log('[quizLoader] XML parsing succeeded with', result.questions.length, 'questions');
+          return result;
+        }
+        console.warn('[quizLoader] XML parsing returned 0 questions, falling back to regex parser');
+      } catch (e) {
+        console.warn('[quizLoader] XML parsing failed, falling back to regex parser:', e);
+      }
+
+      // Fallback: regex-based parsing
+      return parseSqbWithRegex(raw);
+    }
+
     const xml = await fileOrPath.text();
     return parseQuizXmlString(xml);
   }
 
   if (typeof fileOrPath === "string") {
     const fs = require("fs/promises");
-    const xml = await fs.readFile(fileOrPath, "utf-8");
-    return parseQuizXmlString(xml);
+    let raw = await fs.readFile(fileOrPath, "utf-8");
+
+    // .sqb files wrap XML in <html> tags - need special handling
+    if (/\.sqb$/i.test(fileOrPath)) {
+      console.log('[quizLoader] Loading .sqb file from path, raw length:', raw.length);
+
+      // Strip BOM if present
+      if (raw.charCodeAt(0) === 0xFEFF) {
+        raw = raw.substring(1);
+      }
+
+      // Preprocess for XML parsing
+      let preprocessed = raw;
+      preprocessed = preprocessed.replace(/^<html[^>]*>\s*/i, '').replace(/<\/html>\s*$/i, '');
+      const xmlDeclMatch = preprocessed.match(/<\?xml[^?]*\?>/);
+      if (xmlDeclMatch) {
+        preprocessed = preprocessed.replace(/<\?xml[^?]*\?>/, '');
+        preprocessed = xmlDeclMatch[0] + preprocessed;
+      }
+      preprocessed = preprocessed.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[\da-fA-F]+;)/g, '&amp;');
+
+      // Try XML parsing first
+      try {
+        const result = parseQuizXmlString(preprocessed);
+        if (result.questions.length > 0) {
+          console.log('[quizLoader] XML parsing succeeded with', result.questions.length, 'questions');
+          return result;
+        }
+        console.warn('[quizLoader] XML parsing returned 0 questions, falling back to regex parser');
+      } catch (e) {
+        console.warn('[quizLoader] XML parsing failed, falling back to regex parser:', e);
+      }
+
+      // Fallback: regex-based parsing
+      return parseSqbWithRegex(raw);
+    }
+
+    return parseQuizXmlString(raw);
   }
 
   throw new Error("Pass a File (browser) or string path (Node).");

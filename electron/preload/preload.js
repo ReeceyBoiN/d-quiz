@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('api', {
     questionPacksPath: () => invoke('files/question-packs-path'),
     musicRoundsPath: () => invoke('files/music-rounds-path'),
     listDirectory: (path) => invoke('files/list-directory', { path }),
+    readFileAsBlob: (path) => invoke('files/read-file-as-blob', { path }),
     getDefaultBuzzerPath: async () => {
       try {
         const result = await Promise.race([

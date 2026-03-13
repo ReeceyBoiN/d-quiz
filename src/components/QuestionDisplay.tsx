@@ -116,7 +116,7 @@ export function QuestionDisplay({
           <input
             ref={quizFileInputRef}
             type="file"
-            accept=".sqq,.sqn,.sqb"
+            accept=".sqq,.sqn,.sqb,.popq"
             className="hidden"
             onChange={(e) => {
               const file = e.currentTarget.files && e.currentTarget.files[0];
@@ -152,7 +152,7 @@ export function QuestionDisplay({
                     console.log("clicked item:", item.name);
                     if (item.isDirectory) {
                       openDir(item.path);
-                    } else if (/\.(sqq|sqn|sqb)$/i.test(item.name)) {
+                    } else if (/\.(sqq|sqn|sqb|popq)$/i.test(item.name)) {
                       try {
                         const file = await readFileAsBlob(item.path);
                         if (file) handleQuizFileSelection(file);

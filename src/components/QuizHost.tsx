@@ -39,7 +39,7 @@ import { useTimer } from "../hooks/useTimer";
 import { useHostInfo } from "../hooks/useHostInfo";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage, initialFlow } from "../state/flowState";
-import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController, sendScrambleUpdateToPlayers, sendFlowStateToPlayers, sendPrecacheToPlayers } from "../network/wsHost";
+import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController, sendScrambleUpdateToPlayers, sendFlowStateToPlayers, sendPrecacheToPlayers, sendBuzzLockedToPlayers, sendBuzzResetToPlayers, sendBuzzResultToPlayers, } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
 import { playApplauseSound, playFailSound } from "../utils/audioUtils";
 import { executeStartNormalTimer, executeStartSilentTimer, validateTimerDuration } from "../utils/unifiedTimerHandlers";
@@ -50,7 +50,7 @@ import { getBuzzerFilePath, getBuzzerUrl } from "../utils/api";
 import { calculateAnswerStats, getFastestCorrectTeam, type Team as AnswerStatsTeam } from "../utils/answerStats";
 import { Resizable } from "re-resizable";
 import { Button } from "./ui/button";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Zap } from "lucide-react";
 import { 
   AlertDialog, 
   AlertDialogAction, 
@@ -588,6 +588,11 @@ export function QuizHost() {
   const [keypadInstanceKey, setKeypadInstanceKey] = useState(0);
   const [keypadNextQuestionTrigger, setKeypadNextQuestionTrigger] = useState(0);
   const [isQuizPackMode, setIsQuizPackMode] = useState(false);
+  const [isBuzzinPackMode, setIsBuzzinPackMode] = useState(false);
+
+  // Buzzin pack state machine
+  const [buzzLockedOutTeams, setBuzzLockedOutTeams] = useState<Set<string>>(new Set());
+  const [buzzWinnerTeamId, setBuzzWinnerTeamId] = useState<string | null>(null);
 
   // Loaded quiz state
   const [loadedQuizQuestions, setLoadedQuizQuestions] = useState<any[]>([]);
@@ -645,7 +650,7 @@ export function QuizHost() {
   // Buzz-in mode state
   const [showBuzzInMode, setShowBuzzInMode] = useState(false);
   const [buzzInConfig, setBuzzInConfig] = useState<{
-    mode: "points" | "classic" | "advanced";
+    mode: "points" | "classic";
     points: number;
     soundCheck: boolean;
   } | null>(null);
@@ -1056,7 +1061,9 @@ export function QuizHost() {
       // Use KeypadInterface for both regular and quiz pack modes
       // In quiz pack mode, KeypadInterface will skip input screens and show pre-loaded answers
       const isQuizPack = currentQuiz.isQuizPack || false;
+      const isBuzzinPack = currentQuiz.isBuzzinPack || false;
       setIsQuizPackMode(isQuizPack);
+      setIsBuzzinPackMode(isBuzzinPack);
 
       if (isQuizPack) {
         // For quiz packs, show the quiz pack display (config or question screen)
@@ -1117,6 +1124,14 @@ export function QuizHost() {
         setTeamAnswerStatuses({});
         setTeamCorrectRankings({});
         setGameTimerStartTime(null); // Reset timer start time for new question
+
+        // Clear buzz state for new question
+        setBuzzLockedOutTeams(new Set());
+        setBuzzWinnerTeamId(null);
+        // Broadcast buzz reset to all players so they start fresh
+        if (isBuzzinPackMode) {
+          sendBuzzResetToPlayers([]);
+        }
 
         // Pre-cache picture question image on player devices before reveal
         if (hasQuestionImage(currentQuestion) && currentQuestion.imageDataUrl) {
@@ -1373,6 +1388,46 @@ export function QuizHost() {
       timerIsMountedRef.current = false;
     };
   }, []);
+
+  // Buzz detection effect - reactively detects first valid buzz in buzzin pack mode
+  useEffect(() => {
+    if (!isBuzzinPackMode || !flowState.isQuestionMode || buzzWinnerTeamId) return;
+
+    const validBuzzes = Object.entries(teamAnswers)
+      .filter(([, answer]) => answer === 'buzzed')
+      .filter(([teamId]) => !buzzLockedOutTeams.has(teamId))
+      .map(([teamId]) => ({ teamId, time: teamResponseTimes[teamId] || Infinity }))
+      .sort((a, b) => a.time - b.time);
+
+    if (validBuzzes.length === 0) return;
+
+    const firstTeamId = validBuzzes[0].teamId;
+    const team = quizzes.find(q => q.id === firstTeamId);
+
+    setBuzzWinnerTeamId(firstTeamId);
+
+    // Play team's buzzer sound
+    if (team?.buzzerSound) {
+      playFastestTeamBuzzer(team.buzzerSound);
+    }
+
+    // Broadcast lockout to all players
+    sendBuzzLockedToPlayers(team?.name || `Team ${firstTeamId}`, firstTeamId);
+
+    // Update external display with animated buzz-in view
+    sendToExternalDisplay({
+      type: 'DISPLAY_UPDATE',
+      mode: 'buzzin-team',
+      data: {
+        teamName: team?.name || `Team ${firstTeamId}`,
+        teamColor: team?.backgroundColor,
+        responseTime: validBuzzes[0].time,
+      },
+    });
+
+    console.log(`[QuizHost] Buzz detected: ${team?.name} (${firstTeamId}) at ${validBuzzes[0].time}ms`);
+  }, [teamAnswers, teamResponseTimes, isBuzzinPackMode, flowState.isQuestionMode,
+      buzzWinnerTeamId, buzzLockedOutTeams, quizzes]);
 
   // Close external display when host window closes (browser popout scenario)
   useEffect(() => {
@@ -1742,7 +1797,10 @@ export function QuizHost() {
         const currentGameState: any = {};
 
         // For quiz pack mode - send current question and timer state
-        if (showQuizPackDisplay && loadedQuizQuestions.length > 0 && currentLoadedQuestionIndex < loadedQuizQuestions.length) {
+        // Only send the question if it has actually been sent/revealed to players
+        // (flow states: 'sent-question', 'running', 'timeup', 'revealed', 'fastest')
+        const questionSentFlows = ['sent-question', 'running', 'timeup', 'revealed', 'fastest'];
+        if (showQuizPackDisplay && loadedQuizQuestions.length > 0 && currentLoadedQuestionIndex < loadedQuizQuestions.length && questionSentFlows.includes(flowState.flow)) {
           const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
           const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
 
@@ -1894,6 +1952,10 @@ export function QuizHost() {
     setShowFastestTeamDisplay(false);
     setShowQuizPackDisplay(false);
     setIsQuizPackMode(false);
+    setIsBuzzinPackMode(false);
+    // Reset buzzin pack state
+    setBuzzLockedOutTeams(new Set());
+    setBuzzWinnerTeamId(null);
     setGameTimerRunning(false);
     setGameTimerTimeRemaining(0);
     setGameTimerTotalTime(0);
@@ -2096,6 +2158,7 @@ export function QuizHost() {
     // Reset quiz pack display and mode flags
     setShowQuizPackDisplay(false);
     setIsQuizPackMode(false);
+    setIsBuzzinPackMode(false);
 
     // Force KeypadInterface remount if it was active during the round
     // This ensures complete state reset (including question type) when transitioning modes
@@ -2192,6 +2255,7 @@ export function QuizHost() {
     setLoadedQuizQuestions([]);
     setCurrentLoadedQuestionIndex(0);
     setIsQuizPackMode(false); // Ensure quiz pack mode is disabled for on-the-spot
+    setIsBuzzinPackMode(false);
     setShowKeypadInterface(true);
     setActiveTab("teams"); // Change active tab when keypad is opened
     setKeypadInstanceKey(prev => prev + 1); // Force re-render with fresh defaults
@@ -2202,6 +2266,7 @@ export function QuizHost() {
   const handleKeypadClose = () => {
     setShowKeypadInterface(false);
     setIsQuizPackMode(false);
+    setIsBuzzinPackMode(false);
     setGameTimerRunning(false);
     setGameTimerTimeRemaining(0);
     setGameTimerTotalTime(0);
@@ -3186,7 +3251,7 @@ export function QuizHost() {
   };
 
   // Handle buzz-in mode start
-  const handleBuzzInStart = (mode: "points" | "classic" | "advanced", points: number, soundCheck: boolean) => {
+  const handleBuzzInStart = (mode: "points" | "classic", points: number, soundCheck: boolean) => {
     closeAllGameModes(); // Close any other active modes first
     setBuzzInConfig({ mode, points, soundCheck });
     setShowBuzzInMode(true);
@@ -3343,6 +3408,7 @@ export function QuizHost() {
       setGameAnswerSelected(false);
       setKeypadCurrentScreen('config');
       setIsQuizPackMode(false);
+      setIsBuzzinPackMode(false);
     }
 
     setActiveTab(tab);
@@ -3356,6 +3422,8 @@ export function QuizHost() {
       const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
       const qType = currentQuestion?.type?.toLowerCase();
       if (qType === 'nearest' || qType === 'nearestwins') return "nearestwins";
+      // Buzzin pack questions use buzzin game mode for correct timer/scoring
+      if (isBuzzinPackMode || qType === 'buzzin') return "buzzin";
       return "keypad"; // Quiz packs use keypad-style controls by default
     }
     if (showBuzzInInterface || showBuzzInMode) return "buzzin";
@@ -5052,7 +5120,8 @@ export function QuizHost() {
     let noAnswerTeamIds: string[] = [];
 
     // For quiz pack mode, calculate and award points when answer is revealed
-    if (isQuizPackMode && loadedQuizQuestions.length > 0) {
+    // Skip auto-scoring for buzzin pack mode - host manually judges via CORRECT/WRONG buttons
+    if (isQuizPackMode && !isBuzzinPackMode && loadedQuizQuestions.length > 0) {
       const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
       if (currentQuestion) {
         // Determine correct teams based on the question's correct answer
@@ -6017,6 +6086,97 @@ export function QuizHost() {
     [currentRoundWinnerPoints, handleScoreChange, playApplauseSound]
   );
 
+  // Buzzin pack handlers - host judges verbal answers
+  const handleBuzzCorrect = useCallback((teamId: string) => {
+    const team = quizzes.find(q => q.id === teamId);
+    const teamName = team?.name || `Team ${teamId}`;
+
+    // Award points directly
+    const pointsToAward = currentRoundPoints || defaultPoints;
+    handleScoreChange(teamId, pointsToAward);
+    playApplauseSound().catch(err => console.warn('Failed to play applause:', err));
+    sendBuzzResultToPlayers(teamName, true);
+    sendToExternalDisplay({
+      type: 'DISPLAY_UPDATE',
+      mode: 'buzzin-correct',
+      data: { teamName, teamColor: team?.backgroundColor },
+    });
+
+    // Clear buzz state for next question
+    setBuzzWinnerTeamId(null);
+    setBuzzLockedOutTeams(new Set());
+    // Clear team answers so the panel goes back to waiting
+    setTeamAnswers({});
+    setTeamResponseTimes({});
+    console.log(`[QuizHost] Buzzin pack: Awarded ${pointsToAward} points to team ${teamName}`);
+  }, [currentRoundPoints, defaultPoints, handleScoreChange, quizzes]);
+
+  const handleBuzzWrong = useCallback((teamId: string) => {
+    const team = quizzes.find(q => q.id === teamId);
+    const teamName = team?.name || `Team ${teamId}`;
+
+    if (evilModeEnabled && punishmentEnabled) {
+      const pointsToDeduct = currentRoundPoints || defaultPoints;
+      handleScoreChange(teamId, -pointsToDeduct);
+      console.log(`[QuizHost] Buzzin pack: Deducted ${pointsToDeduct} points from ${teamName} (punishment)`);
+    }
+    playFailSound().catch(err => console.warn('Failed to play fail sound:', err));
+
+    // Add wrong team to permanently locked out set for this question
+    setBuzzLockedOutTeams(prev => {
+      const updated = new Set(prev);
+      updated.add(teamId);
+      return updated;
+    });
+    setBuzzWinnerTeamId(null);
+
+    // Clear only this team's buzz so detection effect can find next buzzer
+    setTeamAnswers(prev => {
+      const next = { ...prev };
+      delete next[teamId];
+      return next;
+    });
+    setTeamResponseTimes(prev => {
+      const next = { ...prev };
+      delete next[teamId];
+      return next;
+    });
+
+    // Send result to players
+    sendBuzzResultToPlayers(teamName, false);
+
+    // Check if all teams are now locked out
+    const newLockedOut = new Set([...buzzLockedOutTeams, teamId]);
+    const allTeamsLocked = quizzes.every(q => newLockedOut.has(q.id));
+
+    if (allTeamsLocked) {
+      console.log('[QuizHost] Buzzin pack: All teams locked out - no correct answer');
+      sendToExternalDisplay({
+        type: 'DISPLAY_UPDATE',
+        mode: 'buzzin-wrong',
+        data: { teamName, allLockedOut: true },
+      });
+    } else {
+      // Broadcast reset with locked-out team list so remaining teams can re-buzz
+      sendBuzzResetToPlayers(Array.from(newLockedOut));
+      sendToExternalDisplay({
+        type: 'DISPLAY_UPDATE',
+        mode: 'buzzin-wrong',
+        data: { teamName },
+      });
+      // After a brief delay, return external display to waiting
+      setTimeout(() => {
+        sendToExternalDisplay({
+          type: 'DISPLAY_UPDATE',
+          mode: 'buzzin-waiting',
+          data: { lockedOutCount: newLockedOut.size, totalTeams: quizzes.length },
+        });
+      }, 1500);
+    }
+
+    console.log(`[QuizHost] Buzzin pack: ${teamName} WRONG - locked out. ${newLockedOut.size}/${quizzes.length} teams locked.`);
+  }, [evilModeEnabled, punishmentEnabled, currentRoundPoints, defaultPoints, handleScoreChange, quizzes, buzzLockedOutTeams]);
+
   const handleScoreSet = useCallback((teamId: string, newScore: number) => {
     // Check if scores are paused
     if (scoresPaused) {
@@ -6571,11 +6731,26 @@ export function QuizHost() {
     if (showQuizPackDisplay && flowState.isQuestionMode) {
       const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
 
+      // For buzzin pack mode, use buzzWinnerTeamId from state machine
+      const buzzinWinnerTeam = buzzWinnerTeamId ? quizzes.find(q => q.id === buzzWinnerTeamId) : null;
+      const buzzinWinnerTime = buzzWinnerTeamId ? teamResponseTimes[buzzWinnerTeamId] : null;
+      const allTeamsLockedOut = isBuzzinPackMode && quizzes.length > 0 && quizzes.every(q => buzzLockedOutTeams.has(q.id));
+
       return (
         <div className="flex-1 relative min-h-0">
           {/* Main question display - hidden when results summary is shown */}
           {!showResultsSummary && (
             <div className="flex-1 overflow-hidden flex flex-col">
+              {/* Buzzin pack header bar */}
+              {isBuzzinPackMode && (
+                <div className="bg-[#f39c12] px-6 py-3 flex items-center gap-3 border-b-2 border-[#e67e22]">
+                  <Zap className="h-5 w-5 text-white" />
+                  <span className="text-white font-bold text-lg tracking-wide">BUZZ-IN ROUND</span>
+                  {buzzLockedOutTeams.size > 0 && (
+                    <span className="ml-auto text-white/80 text-sm">{buzzLockedOutTeams.size} of {quizzes.length} teams locked out</span>
+                  )}
+                </div>
+              )}
               <QuestionPanel
                 question={currentQuestion}
                 questionNumber={currentLoadedQuestionIndex + 1}
@@ -6584,6 +6759,60 @@ export function QuizHost() {
                 answerText={currentQuestion?.answerText}
                 correctIndex={currentQuestion?.correctIndex}
               />
+              {/* Buzzed Team Panel for buzzin pack mode */}
+              {isBuzzinPackMode && (
+                <div className="bg-slate-800 border-t-2 border-slate-600 px-6 py-4">
+                  {allTeamsLockedOut ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <Zap className="h-8 w-8 text-red-400" />
+                        <p className="text-lg font-medium text-red-300">All teams locked out — no correct answer</p>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          // Skip to next question
+                          if (currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
+                            setCurrentLoadedQuestionIndex(prev => prev + 1);
+                          }
+                        }}
+                        className="px-8 py-4 bg-slate-600 hover:bg-slate-700 text-white font-bold text-lg rounded-lg"
+                      >
+                        SKIP
+                      </Button>
+                    </div>
+                  ) : buzzWinnerTeamId && buzzinWinnerTeam ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <Zap className="h-8 w-8 text-[#f39c12]" />
+                        <div>
+                          <p className="text-sm text-slate-400 uppercase tracking-wider">First to Buzz</p>
+                          <p className="text-2xl font-bold text-white">{buzzinWinnerTeam.name}</p>
+                          <p className="text-sm text-slate-400">{buzzinWinnerTime ? `${(buzzinWinnerTime / 1000).toFixed(2)}s response time` : ''}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={() => handleBuzzCorrect(buzzWinnerTeamId)}
+                          className="px-8 py-4 bg-green-600 hover:bg-green-700 text-white font-bold text-lg rounded-lg"
+                        >
+                          CORRECT
+                        </Button>
+                        <Button
+                          onClick={() => handleBuzzWrong(buzzWinnerTeamId)}
+                          className="px-8 py-4 bg-red-600 hover:bg-red-700 text-white font-bold text-lg rounded-lg"
+                        >
+                          WRONG
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-4 justify-center py-2">
+                      <Zap className="h-6 w-6 text-slate-500 animate-pulse" />
+                      <p className="text-slate-400 text-lg font-medium">Waiting for teams to buzz in...</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {/* Show results summary overlay when timer ends */}
@@ -6750,6 +6979,12 @@ export function QuizHost() {
                 }));
               }
             }}
+            isBuzzinPack={isBuzzinPackMode}
+            teamAnswers={teamAnswers}
+            teamResponseTimes={teamResponseTimes}
+            teams={quizzes.map(q => ({ id: q.id, name: q.name, color: q.backgroundColor }))}
+            onBuzzCorrect={handleBuzzCorrect}
+            onBuzzWrong={handleBuzzWrong}
           />
         </div>
       );

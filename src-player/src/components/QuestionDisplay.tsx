@@ -13,6 +13,8 @@ interface QuestionDisplayProps {
   timerEnded?: boolean;
   onAnswerSubmit: (answer: any) => void;
   scrambled?: boolean;
+  buzzLockedBy?: string | null;
+  buzzLockedOut?: boolean;
 }
 
 type QuestionType = 'letters' | 'numbers' | 'multiple-choice' | string;
@@ -52,6 +54,8 @@ export function QuestionDisplay({
   timerEnded: timerEndedProp,
   onAnswerSubmit,
   scrambled = false,
+  buzzLockedBy,
+  buzzLockedOut = false,
 }: QuestionDisplayProps) {
   const { settings } = usePlayerSettings();
   const networkContext = useContext(NetworkContext);
@@ -929,18 +933,46 @@ export function QuestionDisplay({
 
         {/* Buzz In Button for question types without options or explicit buzzin type */}
         {isBuzzIn && (
-          <div className={`${hideAnswers ? 'opacity-0 pointer-events-none' : ''}`}>
-            <Button
-              onClick={() => handleAnswerSelect('buzzed')}
-              disabled={timerEnded || submitted}
-              className={`px-4 sm:px-8 md:px-12 lg:px-16 py-3 sm:py-4 md:py-6 lg:py-8 text-sm sm:text-lg md:text-2xl lg:text-3xl font-bold rounded-lg sm:rounded-xl md:rounded-xl transition-all transform active:scale-95 ${
-                submitted
-                  ? 'bg-green-500 text-white'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
-            >
-              {submitted ? '✓ Answer Submitted' : 'BUZZ IN'}
-            </Button>
+          <div className={`${hideAnswers ? 'opacity-0 pointer-events-none' : ''} w-full max-w-sm sm:max-w-md flex flex-col items-center gap-4`}>
+            {buzzLockedOut ? (
+              /* Permanently locked out for this question */
+              <div className="text-center">
+                <p className="text-red-400 text-2xl sm:text-3xl font-bold mb-2">Locked Out</p>
+                <p className="text-slate-400 text-sm sm:text-base">Your team answered incorrectly</p>
+              </div>
+            ) : buzzLockedBy ? (
+              /* Another team buzzed first - waiting */
+              submitted ? (
+                <div className="text-center">
+                  <p className="text-green-400 text-xl sm:text-2xl font-bold mb-2">YOU BUZZED!</p>
+                  <p className="text-slate-300 text-sm sm:text-base">Waiting for host...</p>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <p className="text-orange-400 text-xl sm:text-2xl font-bold mb-2">{buzzLockedBy} buzzed first</p>
+                  <p className="text-slate-400 text-sm sm:text-base">Wait...</p>
+                  <Button
+                    disabled
+                    className="mt-4 px-8 sm:px-12 py-4 sm:py-6 text-lg sm:text-2xl font-bold rounded-xl bg-slate-600 text-slate-400 cursor-not-allowed"
+                  >
+                    BUZZ IN
+                  </Button>
+                </div>
+              )
+            ) : (
+              /* Normal buzz-in button */
+              <Button
+                onClick={() => handleAnswerSelect('buzzed')}
+                disabled={timerEnded || submitted}
+                className={`px-4 sm:px-8 md:px-12 lg:px-16 py-3 sm:py-4 md:py-6 lg:py-8 text-sm sm:text-lg md:text-2xl lg:text-3xl font-bold rounded-lg sm:rounded-xl md:rounded-xl transition-all transform active:scale-95 ${
+                  submitted
+                    ? 'bg-green-500 text-white'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+              >
+                {submitted ? '✓ Answer Submitted' : 'BUZZ IN'}
+              </Button>
+            )}
           </div>
         )}
 

@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { Check, X, Award, Users, Brain, Zap } from "lucide-react";
+import { Check, X, Award, Users, Zap } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Slider } from "./ui/slider";
 import { BuzzInDisplay } from "./BuzzInDisplay";
 import { useSettings } from "../utils/SettingsContext";
 
-type BuzzInMode = "points" | "classic" | "advanced";
+type BuzzInMode = "points" | "classic";
 
 interface Quiz {
   id: string;
@@ -30,7 +30,7 @@ export function BuzzInInterface({ quizzes = [], onClose, onAwardPoints, onEndRou
   const [points, setPoints] = useState([gameModePoints.buzzin]);
   const [soundCheckEnabled, setSoundCheckEnabled] = useState(true);
   const [gameStarted, setGameStarted] = useState(false);
-  const [advancedModeEnabled, setAdvancedModeEnabled] = useState(false);
+
 
   const modes = [
     {
@@ -47,8 +47,7 @@ export function BuzzInInterface({ quizzes = [], onClose, onAwardPoints, onEndRou
       icon: <Users className="h-12 w-12 text-white" />,
       color: "#f39c12",
       description: "Players buzz in and answer verbally, continuing until a correct answer is given.",
-      hasSlider: false,
-      hasAdvancedToggle: true
+      hasSlider: false
     }
   ];
 
@@ -110,13 +109,10 @@ export function BuzzInInterface({ quizzes = [], onClose, onAwardPoints, onEndRou
     color: getTeamColor(quiz.id)
   }));
 
-  // Determine actual mode to pass to BuzzInDisplay
-  const actualMode = selectedMode === "classic" && advancedModeEnabled ? "advanced" : selectedMode;
-
   if (gameStarted) {
     return (
       <BuzzInDisplay
-        mode={actualMode}
+        mode={selectedMode}
         points={points[0]}
         soundCheck={soundCheckEnabled}
         teams={teams}
@@ -177,70 +173,7 @@ export function BuzzInInterface({ quizzes = [], onClose, onAwardPoints, onEndRou
                   </div>
                 )}
 
-                {/* Advanced mode toggle for Classic mode */}
-                {mode.hasAdvancedToggle && (
-                  <div className="space-y-4 mt-4 pt-4 border-t border-border">
-                    {/* Game Mode Label */}
-                    <div className="text-center">
-                      <span className="text-sm font-semibold text-foreground">Game Mode</span>
-                    </div>
-                    
-                    {/* Classic vs Advanced sections */}
-                    <div className="grid grid-cols-2 gap-4">
-                      {/* Classic section */}
-                      <div className="text-center space-y-2">
-                        <div className="flex items-center justify-center gap-2">
-                          <Users className="h-5 w-5 text-muted-foreground" />
-                          <span className={`text-sm font-medium transition-colors ${!advancedModeEnabled ? 'text-primary' : 'text-muted-foreground'}`}>
-                            Classic
-                          </span>
-                        </div>
-                        {!advancedModeEnabled && (
-                          <p className="text-xs text-muted-foreground leading-relaxed">
-                            Standard buzz-in gameplay
-                          </p>
-                        )}
-                      </div>
-                      
-                      {/* Vertical divider */}
-                      <div className="relative">
-                        <div className="absolute left-0 top-0 bottom-0 w-px bg-border"></div>
-                        <div className="text-center space-y-2 pl-4">
-                          <div className="flex items-center justify-center gap-2">
-                            <Brain className="h-5 w-5 text-muted-foreground" />
-                            <span className={`text-sm font-medium transition-colors ${advancedModeEnabled ? 'text-primary' : 'text-muted-foreground'}`}>
-                              Advanced
-                            </span>
-                          </div>
-                          {advancedModeEnabled && (
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                              Teams can agree/disagree with answers
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Toggle button at bottom */}
-                    <div className="flex justify-center pt-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAdvancedModeEnabled(!advancedModeEnabled);
-                        }}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-                          advancedModeEnabled ? 'bg-primary' : 'bg-muted'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            advancedModeEnabled ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                )}
+
               </CardContent>
             </Card>
           ))}

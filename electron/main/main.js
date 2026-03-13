@@ -578,6 +578,16 @@ async function boot() {
     return { entries };
   });
 
+  // Read a file as binary data (used by file browser to load quiz files)
+  router.mount('files/read-file-as-blob', async (payload = {}) => {
+    const filePath = payload.path;
+    if (!filePath || typeof filePath !== 'string') {
+      throw new Error('path is required');
+    }
+    const data = fs.readFileSync(filePath);
+    return { buffer: data };
+  });
+
   // Get the default buzzer folder path
   router.mount('files/get-default-buzzer-path', async () => {
     try {

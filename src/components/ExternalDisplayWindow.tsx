@@ -1484,6 +1484,160 @@ export function ExternalDisplayWindow() {
         );
       }
 
+      case 'buzzin-waiting': {
+        return (
+          <div style={{
+            height: '100%', width: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            position: 'relative', overflow: 'hidden'
+          }}>
+            {/* Animated border glow */}
+            <div style={{
+              position: 'absolute', inset: '0',
+              border: '4px solid #f39c12',
+              borderRadius: '0',
+              animation: 'pulse 2s ease-in-out infinite',
+              boxShadow: '0 0 30px rgba(243, 156, 18, 0.3), inset 0 0 30px rgba(243, 156, 18, 0.1)'
+            }} />
+            <div style={{ fontSize: 'clamp(4rem, 10vw, 8rem)', marginBottom: '20px', animation: 'pulse 1.5s ease-in-out infinite' }}>⚡</div>
+            <h1 style={{
+              fontSize: 'clamp(3rem, 8vw, 7rem)', fontWeight: 900, color: '#f39c12',
+              textShadow: '0 0 40px rgba(243, 156, 18, 0.5)', letterSpacing: '0.1em',
+              animation: 'pulse 2s ease-in-out infinite'
+            }}>BUZZ IN!</h1>
+            {displayData.data?.lockedOutCount > 0 && (
+              <p style={{ fontSize: 'clamp(1rem, 3vw, 2rem)', color: 'rgba(255,255,255,0.5)', marginTop: '20px' }}>
+                {displayData.data.lockedOutCount} of {displayData.data.totalTeams} teams locked out
+              </p>
+            )}
+          </div>
+        );
+      }
+
+      case 'buzzin-team': {
+        const teamColor = displayData.data?.teamColor || '#f39c12';
+        const teamName = displayData.data?.teamName || 'Unknown';
+        const responseTime = displayData.data?.responseTime;
+        return (
+          <div style={{
+            height: '100%', width: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: `radial-gradient(ellipse at center, ${teamColor}44 0%, ${teamColor}11 50%, #111827 100%)`,
+            position: 'relative', overflow: 'hidden',
+            animation: 'scaleInAnimation 0.4s ease-out'
+          }}>
+            {/* Flash overlay */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              backgroundColor: teamColor,
+              opacity: 0, animation: 'buzzFlash 0.6s ease-out'
+            }} />
+            <div style={{ position: 'relative', zIndex: 10, textAlign: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '30px', marginBottom: '20px' }}>
+                <span style={{ fontSize: 'clamp(3rem, 6vw, 5rem)', animation: 'bounce 1s ease-in-out infinite' }}>⚡</span>
+                <h1 style={{
+                  fontSize: 'clamp(4rem, 12vw, 10rem)', fontWeight: 900, color: 'white',
+                  textShadow: `0 0 60px ${teamColor}, 0 0 120px ${teamColor}88`,
+                  letterSpacing: '0.05em', animation: 'pulse 1.5s ease-in-out infinite'
+                }}>{teamName}</h1>
+                <span style={{ fontSize: 'clamp(3rem, 6vw, 5rem)', animation: 'bounce 1s ease-in-out infinite' }}>⚡</span>
+              </div>
+              <p style={{
+                fontSize: 'clamp(2rem, 5vw, 4rem)', fontWeight: 700, color: teamColor,
+                textTransform: 'uppercase', letterSpacing: '0.2em',
+                textShadow: `0 0 20px ${teamColor}88`
+              }}>BUZZED IN!</p>
+              {responseTime && (
+                <p style={{ fontSize: 'clamp(1rem, 2.5vw, 2rem)', color: 'rgba(255,255,255,0.5)', marginTop: '15px' }}>
+                  {(responseTime / 1000).toFixed(2)}s
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      case 'buzzin-correct': {
+        const correctTeamName = displayData.data?.teamName || '';
+        const correctTeamColor = displayData.data?.teamColor || '#27ae60';
+        return (
+          <div style={{
+            height: '100%', width: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%)',
+            animation: 'scaleInAnimation 0.3s ease-out'
+          }}>
+            <div style={{ fontSize: 'clamp(5rem, 12vw, 10rem)', marginBottom: '20px', animation: 'bounce 0.8s ease-in-out' }}>✓</div>
+            <h1 style={{
+              fontSize: 'clamp(4rem, 10vw, 8rem)', fontWeight: 900, color: '#4ade80',
+              textShadow: '0 0 40px rgba(74, 222, 128, 0.5)', letterSpacing: '0.1em'
+            }}>CORRECT!</h1>
+            {correctTeamName && (
+              <p style={{ fontSize: 'clamp(1.5rem, 4vw, 3rem)', color: 'white', marginTop: '20px', fontWeight: 700 }}>
+                {correctTeamName}
+              </p>
+            )}
+          </div>
+        );
+      }
+
+      case 'buzzin-wrong': {
+        const wrongTeamName = displayData.data?.teamName || '';
+        const allLockedOut = displayData.data?.allLockedOut || false;
+        return (
+          <div style={{
+            height: '100%', width: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 50%, #b91c1c 100%)',
+            animation: 'scaleInAnimation 0.3s ease-out'
+          }}>
+            <div style={{ fontSize: 'clamp(5rem, 12vw, 10rem)', marginBottom: '20px', animation: 'bounce 0.5s ease-in-out' }}>✗</div>
+            <h1 style={{
+              fontSize: 'clamp(4rem, 10vw, 8rem)', fontWeight: 900, color: '#fca5a5',
+              textShadow: '0 0 40px rgba(252, 165, 165, 0.5)', letterSpacing: '0.1em'
+            }}>WRONG!</h1>
+            {wrongTeamName && (
+              <p style={{ fontSize: 'clamp(1.5rem, 4vw, 3rem)', color: 'rgba(255,255,255,0.7)', marginTop: '20px', fontWeight: 600 }}>
+                {wrongTeamName}
+              </p>
+            )}
+            {allLockedOut && (
+              <p style={{ fontSize: 'clamp(1rem, 3vw, 2rem)', color: 'rgba(255,255,255,0.5)', marginTop: '15px' }}>
+                All teams locked out — no correct answer
+              </p>
+            )}
+          </div>
+        );
+      }
+
+      case 'buzzin-vote': {
+        const voteTeamName = displayData.data?.teamName || '';
+        const voteTeamColor = displayData.data?.teamColor || '#8e44ad';
+        return (
+          <div style={{
+            height: '100%', width: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: `linear-gradient(135deg, #1a1a2e 0%, ${voteTeamColor}33 50%, #1a1a2e 100%)`,
+            position: 'relative'
+          }}>
+            <div style={{ fontSize: 'clamp(3rem, 6vw, 5rem)', marginBottom: '20px', animation: 'spin 3s linear infinite' }}>🗳️</div>
+            <h1 style={{
+              fontSize: 'clamp(3rem, 8vw, 6rem)', fontWeight: 900, color: '#c084fc',
+              textShadow: '0 0 30px rgba(192, 132, 252, 0.5)', letterSpacing: '0.05em'
+            }}>VOTING...</h1>
+            {voteTeamName && (
+              <p style={{ fontSize: 'clamp(1.5rem, 4vw, 3rem)', color: 'white', marginTop: '20px', fontWeight: 700 }}>
+                {voteTeamName}
+              </p>
+            )}
+            <p style={{ fontSize: 'clamp(1rem, 3vw, 2rem)', color: 'rgba(255,255,255,0.5)', marginTop: '10px' }}>
+              Agree or Disagree?
+            </p>
+          </div>
+        );
+      }
+
       default:
         return (
           <div style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1532,6 +1686,10 @@ export function ExternalDisplayWindow() {
             opacity: 1;
             transform: scale(1);
           }
+        }
+        @keyframes buzzFlash {
+          0% { opacity: 0.6; }
+          100% { opacity: 0; }
         }
         [data-external-display-header="true"] {
           -webkit-app-region: drag;

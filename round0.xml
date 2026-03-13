@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<pop_round>
+  <format_version>1</format_version>
+  <title>Round 1</title>
+  <generated_at>2026-03-12T21:14:24.281Z</generated_at>
+  <icon>assets/pq-icon.png</icon>
+  <question_count>20</question_count>
+  <items>
+    <item num="1">
+      <type>letters</type>
+      <text>Who is the only Leeds United player to have won the Golden Boot award as top scorer in a Premier League season?</text>
+      <options>
+        <opt label="A">J</opt>
+      </options>
+      <answer_text>Jimmy Floyd Hasselbaink (in 1998-99)</answer_text>
+      <long_answer>Jimmy Floyd Hasselbaink (in 1998-99)</long_answer>
+    </item>
+    <item num="2">
+      <type>letters</type>
+      <text>Which Disney song features the lyric &apos;It&apos;s enough to make kings and vagabonds/Believe the very best&apos;?</text>
+      <options>
+        <opt label="A">C</opt>
+      </options>
+      <answer_text>Can You Feel The Love Tonight? (by Elton John)</answer_text>
+      <long_answer>Can You Feel The Love Tonight? (by Elton John)</long_answer>
+    </item>
+    <item num="3">
+      <type>letters</type>
+      <text>Who became a Dame in the 2005 New Year honours list after winning two gold medals at the Athens Olympics?</text>
+      <options>
+        <opt label="A">K</opt>
+      </options>
+      <answer_text>Kelly Holmes</answer_text>
+      <long_answer>Kelly Holmes</long_answer>
+    </item>
+    <item num="4">
+      <type>letters</type>
+      <text>Where in the human body is the fovea centralis?</text>
+      <options>
+        <opt label="A">E</opt>
+      </options>
+      <answer_text>Eye</answer_text>
+      <long_answer>Eye</long_answer>
+    </item>
+    <item num="5">
+      <type>letters</type>
+      <text>Which Teletubby is slightly larger than the other three?</text>
+      <options>
+        <opt label="A">T</opt>
+      </options>
+      <answer_text>Tinky Winky</answer_text>
+      <long_answer>Tinky Winky</long_answer>
+    </item>
+    <item num="6">
+      <type>multiple_choice</type>
+      <text>Which of these is the correct name of the protagonist in the popular &apos;Monkey Island&apos; video game series from the &apos;90s?</text>
+      <options>
+        <opt label="A">Guybrush Threepwood</opt>
+        <opt label="B">Mancomb Chatleaf</opt>
+        <opt label="C">Chapbroom Talktree</opt>
+        <opt label="D">Malemop Yaplog</opt>
+      </options>
+      <answer_text>A</answer_text>
+    </item>
+    <item num="7">
+      <type>multiple_choice</type>
+      <text>Lhasa, after which the Lhasa Apso dog breed is named, is the capital of what Asian region?</text>
+      <options>
+        <opt label="A">Tibet</opt>
+        <opt label="B">Manchuria</opt>
+        <opt label="C">Kashmir</opt>
+        <opt label="D">Nepal</opt>
+      </options>
+      <answer_text>A</answer_text>
+    </item>
+    <item num="8">
+      <type>letters</type>
+      <text>Also receiving a humanitarian visa from Poland, the Olympic sprinter Kristina Timanovskaya was recently given police protection in Tokyo after saying she was taken to the airport against her will by her country&apos;s team officials. What country is she from?</text>
+      <options>
+        <opt label="A">B</opt>
+      </options>
+      <answer_text>Belarus</answer_text>
+      <long_answer>Belarus</long_answer>
+    </item>
+    <item num="9">
+      <type>sequence</type>
+      <text>Rearrange these words to make the title of a 1950s American novel, followed by the name of the author</text>
+      <options>
+        <opt label="A">Catcher</opt>
+        <opt label="B">In</opt>
+        <opt label="C">The</opt>
+        <opt label="D">Rye</opt>
+        <opt label="E">J.D.</opt>
+        <opt label="F">Salinger</opt>
+      </options>
+      <answer_text>Catcher in the Rye - J D Salinger</answer_text>
+      <long_answer>Catcher in the Rye - J D Salinger</long_answer>
+    </item>
+    <item num="10">
+      <type>multiple_choice</type>
+      <text>&apos;Yellowbelly&apos; is a term given to people born and bred in which English county?</text>
+      <options>
+        <opt label="A">Lincolnshire</opt>
+        <opt label="B">Yorkshire</opt>
+        <opt label="C">Berkshire</opt>
+        <opt label="D">Cheshire</opt>
+      </options>
+      <answer_text>A</answer_text>
+    </item>
+    <item num="11">
+      <type>letters</type>
+      <text>What would a young bobbed-haired woman in the 1920&apos;s who acted boldly whilst listening to jazz music and wearing short skirts be referred to as?</text>
+      <options>
+        <opt label="A">F</opt>
+      </options>
+      <answer_text>Flapper</answer_text>
+      <long_answer>Flapper</long_answer>
+    </item>
+    <item num="12">
+      <type>letters</type>
+      <text>Based on the geometric phenomenon known as &quot;roulette curves&quot;, what was the name of the popular drawing toy, which was a Christmas bestseller throughout the late &apos;60s and &apos;70s?</text>
+      <options>
+        <opt label="A">S</opt>
+      </options>
+      <answer_text>Spirograph</answer_text>
+      <long_answer>Spirograph</long_answer>
+    </item>
+    <item num="13">
+      <type>multiple_choice</type>
+      <text>A free-range chicken bred for meat must be kept outdoors for a minimum of how many hours per day in the UK to be classed as free-range?</text>
+      <options>
+        <opt label="A">4</opt>
+        <opt label="B">8</opt>
+        <opt label="C">12</opt>
+        <opt label="D">16</opt>
+        <opt label="E">24</opt>
+      </options>
+      <answer_text>B</answer_text>
+    </item>
+    <item num="14">
+      <type>letters</type>
+      <text>A year after leaving the club, which legendary footballer staved off retirement to rejoin Juventus ahead of the current season?</text>
+      <options>
+        <opt label="A">G</opt>
+      </options>
+      <answer_text>Gianluigi Buffon</answer_text>
+      <long_answer>Gianluigi Buffon</long_answer>
+    </item>
+    <item num="15">
+      <type>letters</type>
+      <text>What film does this line come from: &quot;Man who catch fly with chopstick accomplish anything&quot;?</text>
+      <options>
+        <opt label="A">K</opt>
+      </options>
+      <answer_text>The Karate Kid</answer_text>
+      <long_answer>The Karate Kid</long_answer>
+    </item>
+    <item num="16">
+      <type>letters</type>
+      <text>Which TV character&apos;s classic lines include &quot;time&apos;s fun when you&apos;re having flies&quot; and &quot;it&apos;s not easy being green&quot;?</text>
+      <options>
+        <opt label="A">K</opt>
+      </options>
+      <answer_text>Kermit The Frog</answer_text>
+      <long_answer>Kermit The Frog</long_answer>
+    </item>
+    <item num="17">
+      <type>multiple_choice</type>
+      <text>Los Angeles stands on the edge of what desert?</text>
+      <options>
+        <opt label="A">Black Rock</opt>
+        <opt label="B">Sonoran</opt>
+        <opt label="C">Mojave</opt>
+        <opt label="D">Chihuahuan</opt>
+      </options>
+      <answer_text>C</answer_text>
+    </item>
+    <item num="18">
+      <type>numbers</type>
+      <text>In what year did Netherlands become the first country in the world to legalise same-sex marriage; the Gameboy Advance was released to the general public; and Zoolander was at the cinema?</text>
+      <answer_text>2001</answer_text>
+      <long_answer>2001</long_answer>
+    </item>
+    <item num="19">
+      <type>letters</type>
+      <text>In which country would you find the Cambrian mountains?</text>
+      <options>
+        <opt label="A">W</opt>
+      </options>
+      <answer_text>Wales</answer_text>
+      <long_answer>Wales</long_answer>
+    </item>
+    <item num="20">
+      <type>multiple_choice</type>
+      <text>Which of the following Monopoly pieces did Hasbro introduce in early 2017?</text>
+      <options>
+        <opt label="A">Tank</opt>
+        <opt label="B">T-Rex</opt>
+        <opt label="C">Turtle</opt>
+        <opt label="D">Teapot</opt>
+      </options>
+      <answer_text>B</answer_text>
+    </item>
+  </items>
+</pop_round>

@@ -85,6 +85,9 @@ export default function App() {
   const [timerEnded, setTimerEnded] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [isKeypadScrambled, setIsKeypadScrambled] = useState(false);
+  // Buzz-in lockout and vote state
+  const [buzzLockedBy, setBuzzLockedBy] = useState<string | null>(null); // team name that buzzed first
+  const [buzzLockedOut, setBuzzLockedOut] = useState(false); // permanently locked out for this question
   const [isHostController, setIsHostController] = useState(false); // Track if player is authenticated as host controller
   const [controllerAuthError, setControllerAuthError] = useState<string | null>(null); // Track controller auth failures
   const [flowState, setFlowState] = useState<{
@@ -414,7 +417,9 @@ export default function App() {
     setSubmittedAnswer(null);
     submittedAnswerRef.current = null;
     timerStartTimeRef.current = null; // Clear stale timer reference to prevent using previous question's timestamp
-
+    // Clear buzz state for new question
+    setBuzzLockedBy(null);
+    setBuzzLockedOut(false);
     // Cancel fastest team timer if running
     if (fastestTeamTimerRef.current) {
       clearTimeout(fastestTeamTimerRef.current);
@@ -610,34 +615,26 @@ export default function App() {
           const isInBuzzerSelection = currentScreen === 'buzzer-selection';
           const isInPinEntry = currentScreen === 'pin-entry';
 
-          if (currentGameState?.currentQuestion) {
-            // Late joiner - show current question immediately
-
-            const questionData = {
-              ...currentGameState.currentQuestion,
-              type: normalizeQuestionType(currentGameState.currentQuestion.type)
-            };
-            setCurrentQuestion(questionData);
-            setGoWideEnabled(false);
-            setAnswerRevealed(false);
-            setCorrectAnswer(undefined);
-            setSelectedAnswers([]);
-
-            // Show the question screen immediately
-            setCurrentScreen('question');
-
-            // If timer is running, show it with remaining time
-            if (currentGameState.timerState?.isRunning) {
-              setTotalTimerLength(currentGameState.timerState.totalTime);
-              setTimeRemaining(currentGameState.timerState.timeRemaining);
-              setShowTimer(true);
-            }
-          } else if (isInPinEntry || isInBuzzerSelection) {
+          if (isInPinEntry || isInBuzzerSelection) {
             // PIN entry or buzzer selection in progress - save approval data without changing screen
-            // If on pin-entry, transition to buzzer-selection so the player can pick their buzzer
+            // Buzzer selection ALWAYS takes priority - player must choose a buzzer first
             if (isInPinEntry) {
               console.log('[Player] TEAM_APPROVED received during pin-entry, transitioning to buzzer-selection');
               setCurrentScreen('buzzer-selection');
+            }
+
+            // If there's a current question, save it as a pending message for after buzzer selection
+            if (currentGameState?.currentQuestion) {
+              console.log('[Player] TEAM_APPROVED during buzzer selection - saving question as pending message');
+              // Format the pending message data the same way a normal QUESTION message would arrive
+              const pendingQuestionData = {
+                ...currentGameState.currentQuestion,
+                type: normalizeQuestionType(currentGameState.currentQuestion.type)
+              };
+              setPendingMessage({
+                type: 'QUESTION',
+                data: pendingQuestionData
+              });
             }
 
             // Extract and save display mode data
@@ -670,6 +667,28 @@ export default function App() {
             }
 
             // Don't change screen - stay in buzzer-selection to let user select
+          } else if (currentGameState?.currentQuestion) {
+            // Late joiner / reconnecting player (already has buzzer) - show current question immediately
+
+            const questionData = {
+              ...currentGameState.currentQuestion,
+              type: normalizeQuestionType(currentGameState.currentQuestion.type)
+            };
+            setCurrentQuestion(questionData);
+            setGoWideEnabled(false);
+            setAnswerRevealed(false);
+            setCorrectAnswer(undefined);
+            setSelectedAnswers([]);
+
+            // Show the question screen immediately
+            setCurrentScreen('question');
+
+            // If timer is running, show it with remaining time
+            if (currentGameState.timerState?.isRunning) {
+              setTotalTimerLength(currentGameState.timerState.totalTime);
+              setTimeRemaining(currentGameState.timerState.timeRemaining);
+              setShowTimer(true);
+            }
           } else {
             // Normal approval flow - show approval screen
             setCurrentScreen('approval');
@@ -1225,6 +1244,52 @@ export default function App() {
           }
         } catch (err) {
           console.error('[Player] Error in MUSIC_ROUND_END handler:', err);
+        }
+        break;
+
+      case 'BUZZ_LOCKED' as any:
+        try {
+          const buzzerTeamName = message.data?.teamName || 'Unknown';
+          const buzzerTeamId = message.data?.teamId || '';
+          console.log('[Player] BUZZ_LOCKED received - team:', buzzerTeamName);
+          setBuzzLockedBy(buzzerTeamName);
+          // If this player's device is the buzzer, they already submitted
+          if (buzzerTeamId === deviceId) {
+            console.log('[Player] This player buzzed first!');
+          }
+        } catch (err) {
+          console.error('[Player] Error in BUZZ_LOCKED handler:', err);
+        }
+        break;
+
+      case 'BUZZ_RESET' as any:
+        try {
+          const lockedOutIds: string[] = message.data?.lockedOutTeamIds || [];
+          console.log('[Player] BUZZ_RESET received - locked out teams:', lockedOutIds);
+          if (lockedOutIds.includes(deviceId)) {
+            // This player's team is permanently locked out for this question
+            setBuzzLockedOut(true);
+            setBuzzLockedBy(null);
+          } else {
+            // This player can buzz again
+            setBuzzLockedBy(null);
+            setBuzzLockedOut(false);
+            setSubmittedAnswer(null);
+            submittedAnswerRef.current = null;
+          }
+        } catch (err) {
+          console.error('[Player] Error in BUZZ_RESET handler:', err);
+        }
+        break;
+
+      case 'BUZZ_RESULT' as any:
+        try {
+          const resultTeamName = message.data?.teamName || '';
+          const resultCorrect = message.data?.correct ?? false;
+          console.log('[Player] BUZZ_RESULT received:', resultTeamName, resultCorrect ? 'CORRECT' : 'WRONG');
+          setBuzzLockedBy(null);
+        } catch (err) {
+          console.error('[Player] Error in BUZZ_RESULT handler:', err);
         }
         break;
 
@@ -1852,6 +1917,8 @@ export default function App() {
               timerEnded={timerEnded}
               onAnswerSubmit={handleAnswerSubmit}
               scrambled={isKeypadScrambled}
+              buzzLockedBy={buzzLockedBy}
+              buzzLockedOut={buzzLockedOut}
             />
           )}
 
@@ -1899,6 +1966,8 @@ export default function App() {
                 timerEnded={timerEnded}
                 onAnswerSubmit={handleAnswerSubmit}
                 scrambled={isKeypadScrambled}
+                buzzLockedBy={buzzLockedBy}
+                buzzLockedOut={buzzLockedOut}
               />
               {showFastestTeam && (
                 <FastestTeamOverlay
