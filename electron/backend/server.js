@@ -2817,7 +2817,40 @@ async function startBackend({ port = 4310 } = {}) {
     }
   }
 
-  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastFlowState, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, broadcastPrecache, broadcastMusicRound, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos, sendToPlayer };
+  function broadcastMessage(type, data) {
+    try {
+      const message = JSON.stringify({
+        type,
+        data: data || {},
+        timestamp: Date.now()
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+
+      networkPlayers.forEach((player, deviceId) => {
+        if (player.ws && player.ws.readyState === 1 && player.status === 'approved') {
+          try {
+            player.ws.send(message, (err) => {
+              if (err) {
+                log.error(`❌ [broadcastMessage] ws.send error for ${deviceId}:`, err.message);
+              }
+            });
+            successCount++;
+          } catch (error) {
+            log.error(`❌ Failed to send ${type} to ${deviceId}:`, error.message);
+            failCount++;
+          }
+        }
+      });
+
+      log.info(`📡 Broadcast ${type} to ${successCount} approved players` + (failCount > 0 ? `, ${failCount} failed` : ''));
+    } catch (err) {
+      log.error(`❌ broadcastMessage error (${type}):`, err.message);
+    }
+  }
+
+  return { port, server, wss, approveTeam, declineTeam, getPendingTeams, getAllNetworkPlayers, getPendingAnswers, broadcastDisplayMode, broadcastDisplayUpdate, broadcastFlowState, broadcastQuestion, broadcastReveal, broadcastFastest, broadcastTimeUp, broadcastPicture, broadcastPrecache, broadcastMusicRound, cleanupTeamPhotos, stopHeartbeat, updateBuzzerFolderPath, broadcastBuzzerFolderChange, setAutoApproveTeamPhotos, sendToPlayer, broadcastMessage };
 }
 
 export { startBackend };

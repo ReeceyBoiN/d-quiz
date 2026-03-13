@@ -10,6 +10,17 @@ files:
       - dist/**/*
       - dist-player/**/*
       - package.json
+extraResources:
+  - from: resorces/sounds/Misc
+    to: sounds/Misc
+  - from: resorces/sounds/Applause
+    to: sounds/Applause
+  - from: resorces/sounds/Countdown
+    to: sounds/Countdown
+  - from: resorces/sounds/Fail Sounds
+    to: sounds/Fail Sounds
+  - from: resorces/sounds/Buzzers
+    to: sounds/Buzzers
 asar: true
 win:
   target:

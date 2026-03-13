@@ -51,6 +51,8 @@ export type NetworkMessageType =
   | 'BUZZ_LOCKED'  // broadcast when a team buzzes first (locks everyone else)
   | 'BUZZ_RESET'  // broadcast when buzz reopens after wrong answer (with locked-out team list)
   | 'BUZZ_RESULT'  // broadcast correct/wrong result to players
+  | 'TIMER_PAUSE'  // broadcast when timer should pause (e.g. buzz-in during timer)
+  | 'TIMER_RESUME'  // broadcast when timer should resume with remaining time
 
 
 export interface NetworkPayload {
@@ -562,6 +564,48 @@ export function sendBuzzResultToPlayers(teamName: string, correct: boolean) {
   }
 }
 
+
+export function sendTimerPauseToPlayers() {
+  hostNetwork.broadcast({
+    type: 'TIMER_PAUSE',
+    data: {},
+  });
+
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.broadcastMessage) {
+      api.network.broadcastMessage({
+        type: 'TIMER_PAUSE',
+        data: {},
+      }).catch((err: any) => {
+        console.error('[wsHost] IPC broadcastMessage error (TIMER_PAUSE):', err);
+      });
+    }
+  } catch (err) {
+    console.error('[wsHost] Error sending TIMER_PAUSE:', err);
+  }
+}
+
+export function sendTimerResumeToPlayers(remainingSeconds: number) {
+  hostNetwork.broadcast({
+    type: 'TIMER_RESUME',
+    data: { remainingSeconds },
+  });
+
+  try {
+    const api = (window as any)?.api;
+    if (api?.network?.broadcastMessage) {
+      api.network.broadcastMessage({
+        type: 'TIMER_RESUME',
+        data: { remainingSeconds },
+      }).catch((err: any) => {
+        console.error('[wsHost] IPC broadcastMessage error (TIMER_RESUME):', err);
+      });
+    }
+  } catch (err) {
+    console.error('[wsHost] Error sending TIMER_RESUME:', err);
+  }
+}
 
 export function sendBuzzerFolderChangeToPlayers(folderPath: string) {
   // Send local listeners first (for internal displays)

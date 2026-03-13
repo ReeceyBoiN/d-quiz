@@ -1,12 +1,13 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
-import { ChevronLeft, ChevronRight, Flag, Star, Zap, Grid3X3, Skull, ArrowLeft, Timer as TimerIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, Star, Zap, Grid3X3, Skull, ArrowLeft, Timer as TimerIcon, Check, X } from "lucide-react";
 import { Slider } from "./ui/slider";
 import { Checkbox } from "./ui/checkbox";
 import { useSettings } from "../utils/SettingsContext";
 import { TimerProgressBar } from "./TimerProgressBar";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
+import { playBuzzCorrectSound, playBuzzWrongSound } from "../utils/audioUtils";
 
 interface LoadedQuestion {
   type: string;
@@ -94,6 +95,8 @@ export function QuizPackDisplay({
     updateStaggeredEnabled,
     punishmentEnabled,
     updatePunishmentEnabled,
+    oneGuessPerTeam,
+    updateOneGuessPerTeam,
     gameModeTimers,
     gameModePoints
   } = useSettings();
@@ -642,6 +645,70 @@ export function QuizPackDisplay({
             </CardContent>
           </Card>
         </div>
+
+        {/* One Guess Per Team - only shown in buzz-in pack mode */}
+        {isBuzzinPack && (
+          <div>
+            <Card
+              className={`border-[#4a5568] mb-2 transition-all cursor-pointer ${
+                oneGuessPerTeam ? 'bg-[#c0392b] border-[#c0392b]' : 'bg-[#7f8c8d]'
+              }`}
+              onClick={() => updateOneGuessPerTeam(!oneGuessPerTeam)}
+            >
+              <CardContent className="p-4">
+                <div className="flex flex-col items-center text-center">
+                  <div className="bg-[#95a5a6] p-2 rounded-lg mb-2">
+                    <Flag className="h-4 w-4 text-white" />
+                  </div>
+                  <div className="flex items-center gap-1 mb-1">
+                    <Checkbox
+                      checked={oneGuessPerTeam}
+                      onCheckedChange={updateOneGuessPerTeam}
+                      className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <h4 className="font-semibold text-sm">One Guess Per Team</h4>
+                  </div>
+                  <p className="text-xs text-[#2c3e50]">
+                    Teams that answer incorrectly cannot buzz in again for that question.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Demo and Test Sounds - only shown in buzz-in pack mode */}
+        {isBuzzinPack && (
+          <div>
+            <Card className="bg-[#34495e] border-[#4a5568] mb-2">
+              <CardContent className="p-4">
+                <div className="flex flex-col items-center text-center">
+                  <h4 className="font-semibold mb-1 text-sm">Demo and Test Sounds</h4>
+                  <p className="text-xs text-[rgba(255,255,255,1)] mb-3">
+                    Familiarise your teams with the game sounds.
+                  </p>
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); playBuzzCorrectSound(); }}
+                      className="w-10 h-10 rounded-full flex items-center justify-center transition-all bg-green-500 text-white shadow-lg hover:bg-green-600"
+                      size="icon"
+                    >
+                      <Check className="h-5 w-5" />
+                    </Button>
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); playBuzzWrongSound(); }}
+                      className="w-10 h-10 rounded-full flex items-center justify-center transition-all bg-red-500 text-white shadow-lg hover:bg-red-600"
+                      size="icon"
+                    >
+                      <X className="h-5 w-5" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
 
       {/* Action Buttons - Updated to match BuzzInInterface */}

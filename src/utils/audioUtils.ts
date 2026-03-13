@@ -123,3 +123,27 @@ export async function playFailSound(): Promise<void> {
     console.warn('Failed to play fail sound:', error);
   }
 }
+
+/**
+ * Play buzz-in correct sound (specific file from Misc folder)
+ */
+export async function playBuzzCorrectSound(): Promise<void> {
+  try {
+    const soundsPath = await getSoundsPath();
+    playAudioFile(`${soundsPath}/Misc/buzz in - correct.wav`, 1);
+  } catch (error) {
+    console.warn('Failed to play buzz correct sound:', error);
+  }
+}
+
+/**
+ * Play buzz-in wrong sound (specific file from Misc folder)
+ */
+export async function playBuzzWrongSound(): Promise<void> {
+  try {
+    const soundsPath = await getSoundsPath();
+    playAudioFile(`${soundsPath}/Misc/buzz in - wrong.wav`, 1);
+  } catch (error) {
+    console.warn('Failed to play buzz wrong sound:', error);
+  }
+}

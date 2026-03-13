@@ -119,6 +119,7 @@ contextBridge.exposeInMainWorld('api', {
     broadcastBuzzerFolderChange: (data) => invoke('network/broadcast-buzzer-folder-change', data),
     broadcastMusicRound: (data) => invoke('network/broadcast-music-round', data),
     sendToPlayer: (data) => invoke('network/send-to-player', data),
+    broadcastMessage: (data) => invoke('network/broadcast-message', data),
   },
 
   // --- External display control ---

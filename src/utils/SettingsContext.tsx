@@ -29,6 +29,7 @@ interface SettingsContextType {
   evilModeEnabled: boolean;
   staggeredEnabled: boolean;
   punishmentEnabled: boolean;
+  oneGuessPerTeam: boolean;
   voiceCountdown: boolean;
   hideQuizPackAnswers: boolean;
   buzzerFolderPath: string | null;
@@ -49,6 +50,7 @@ interface SettingsContextType {
   updateEvilModeEnabled: (enabled?: boolean) => void;
   updateStaggeredEnabled: (enabled?: boolean) => void;
   updatePunishmentEnabled: (enabled?: boolean) => void;
+  updateOneGuessPerTeam: (enabled?: boolean) => void;
   updateVoiceCountdown: (enabled: boolean) => void;
   updateHideQuizPackAnswers: (enabled: boolean) => void;
   updateBuzzerFolderPath: (path: string | null) => void;
@@ -114,6 +116,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   const [evilModeEnabled, setEvilModeEnabled] = useState(initialSettings.evilModeEnabled || false);
   const [staggeredEnabled, setStaggeredEnabled] = useState(initialSettings.staggeredEnabled || false);
   const [punishmentEnabled, setPunishmentEnabled] = useState(initialSettings.punishmentEnabled || false);
+  const [oneGuessPerTeam, setOneGuessPerTeam] = useState(initialSettings.oneGuessPerTeam || false);
   const [voiceCountdown, setVoiceCountdown] = useState(initialSettings.voiceCountdown !== undefined ? initialSettings.voiceCountdown : true);
   const [hideQuizPackAnswers, setHideQuizPackAnswers] = useState(initialSettings.hideQuizPackAnswers || false);
   const [buzzerFolderPath, setBuzzerFolderPath] = useState<string | null>(initialSettings.buzzerFolderPath || null);
@@ -168,6 +171,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
           setEvilModeEnabled(parsed.evilModeEnabled || false);
           setStaggeredEnabled(parsed.staggeredEnabled || false);
           setPunishmentEnabled(parsed.punishmentEnabled || false);
+          setOneGuessPerTeam(parsed.oneGuessPerTeam || false);
           setVoiceCountdown(parsed.voiceCountdown !== undefined ? parsed.voiceCountdown : true);
           setHideQuizPackAnswers(parsed.hideQuizPackAnswers || false);
           setBuzzerFolderPath(parsed.buzzerFolderPath || null);
@@ -392,6 +396,15 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     window.dispatchEvent(new Event('settingsUpdated'));
   };
 
+  const updateOneGuessPerTeam = (enabled?: boolean) => {
+    const newValue = enabled !== undefined ? enabled : !oneGuessPerTeam;
+    setOneGuessPerTeam(newValue);
+    const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
+    const updatedSettings = { ...currentSettings, oneGuessPerTeam: newValue };
+    localStorage.setItem('quizHostSettings', JSON.stringify(updatedSettings));
+    window.dispatchEvent(new Event('settingsUpdated'));
+  };
+
   const updateVoiceCountdown = (enabled: boolean) => {
     setVoiceCountdown(enabled);
     // Save to localStorage and trigger event
@@ -449,6 +462,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         evilModeEnabled,
         staggeredEnabled,
         punishmentEnabled,
+        oneGuessPerTeam,
         voiceCountdown,
         hideQuizPackAnswers,
         buzzerFolderPath,
@@ -469,6 +483,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         updateEvilModeEnabled,
         updateStaggeredEnabled,
         updatePunishmentEnabled,
+        updateOneGuessPerTeam,
         updateVoiceCountdown,
         updateHideQuizPackAnswers,
         updateBuzzerFolderPath,

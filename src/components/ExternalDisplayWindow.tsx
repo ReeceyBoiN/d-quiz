@@ -1561,6 +1561,7 @@ export function ExternalDisplayWindow() {
       case 'buzzin-correct': {
         const correctTeamName = displayData.data?.teamName || '';
         const correctTeamColor = displayData.data?.teamColor || '#27ae60';
+        const correctTeamPhoto = displayData.data?.teamPhoto || null;
         return (
           <div style={{
             height: '100%', width: '100%', display: 'flex', flexDirection: 'column',
@@ -1568,7 +1569,18 @@ export function ExternalDisplayWindow() {
             background: 'linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%)',
             animation: 'scaleInAnimation 0.3s ease-out'
           }}>
-            <div style={{ fontSize: 'clamp(5rem, 12vw, 10rem)', marginBottom: '20px', animation: 'bounce 0.8s ease-in-out' }}>✓</div>
+            {correctTeamPhoto && (
+              <div style={{
+                width: 'clamp(120px, 20vw, 200px)', height: 'clamp(120px, 20vw, 200px)',
+                borderRadius: '50%', overflow: 'hidden', border: '4px solid #4ade80',
+                marginBottom: '20px', boxShadow: '0 0 40px rgba(74, 222, 128, 0.4)'
+              }}>
+                <img src={correctTeamPhoto} alt={correctTeamName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            )}
+            {!correctTeamPhoto && (
+              <div style={{ fontSize: 'clamp(5rem, 12vw, 10rem)', marginBottom: '20px', animation: 'bounce 0.8s ease-in-out' }}>✓</div>
+            )}
             <h1 style={{
               fontSize: 'clamp(4rem, 10vw, 8rem)', fontWeight: 900, color: '#4ade80',
               textShadow: '0 0 40px rgba(74, 222, 128, 0.5)', letterSpacing: '0.1em'

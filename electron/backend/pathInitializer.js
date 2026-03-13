@@ -25,6 +25,7 @@ const FOLDERS_TO_CREATE = [
   'PopQuiz/Resources/Sounds/Countdown',
   'PopQuiz/Resources/Sounds/Applause',
   'PopQuiz/Resources/Sounds/Fail Sounds',
+  'PopQuiz/Resources/Sounds/Misc',
   'PopQuiz/Resources/Sounds/Buzzers', // User's custom buzzers are safe here - never deleted
   'PopQuiz/Music Rounds' // User's music round folders
 ];
@@ -143,8 +144,9 @@ function migrateSoundsIfNeeded() {
   try {
     const newSoundsPath = path.join(getPopQuizRootPath(), 'Resources', 'Sounds');
     const failSoundsPath = path.join(newSoundsPath, 'Fail Sounds');
+    const miscSoundsPath = path.join(newSoundsPath, 'Misc');
 
-    // Check multiple possible old locations
+    // Check multiple possible old locations (dev/legacy paths)
     const possibleOldLocations = [
       path.join(process.cwd(), 'resorces', 'sounds'), // Original process.cwd() location
       path.join('C:', 'PopQuiz', 'd-quiz', 'resorces', 'sounds') // Actual old location
@@ -194,6 +196,49 @@ function migrateSoundsIfNeeded() {
 
         log.info('[PathInitializer] ✅ Sound migration completed');
       }
+
+      // Migrate Misc sounds independently (not gated by Countdown/Applause/Fail)
+      const hasOldMisc = fs.existsSync(path.join(foundOldPath, 'Misc'));
+      if (hasOldMisc) {
+        const oldMiscPath = path.join(foundOldPath, 'Misc');
+        copyDirectoryRecursive(oldMiscPath, miscSoundsPath);
+        log.info('[PathInitializer] Migrated Misc sounds from old location');
+      }
+    }
+
+    // FALLBACK: Copy sounds from electron-builder extraResources (production builds)
+    // In production, extraResources are at process.resourcesPath/sounds/<folder>
+    const soundFoldersToMigrate = ['Misc', 'Applause', 'Countdown', 'Fail Sounds', 'Buzzers'];
+
+    for (const folderName of soundFoldersToMigrate) {
+      const destFolder = path.join(newSoundsPath, folderName);
+      const destHasFiles = fs.existsSync(destFolder) && fs.readdirSync(destFolder).length > 0;
+
+      if (!destHasFiles) {
+        // Try extraResources path first (production builds)
+        const extraResourcesFolder = path.join(process.resourcesPath || '', 'sounds', folderName);
+        if (fs.existsSync(extraResourcesFolder)) {
+          log.info(`[PathInitializer] ${folderName} sounds missing at destination, copying from extraResources: ${extraResourcesFolder}`);
+          copyDirectoryRecursive(extraResourcesFolder, destFolder);
+          log.info(`[PathInitializer] ✅ Copied ${folderName} sounds from extraResources`);
+        } else {
+          // Last resort: try to copy from repo's resorces folder relative to app path
+          const repoFolderPaths = [
+            path.join(process.cwd(), 'resorces', 'sounds', folderName),
+            path.join(__dirname, '..', '..', 'resorces', 'sounds', folderName)
+          ];
+          for (const repoFolder of repoFolderPaths) {
+            if (fs.existsSync(repoFolder)) {
+              log.info(`[PathInitializer] Copying ${folderName} sounds from repo path: ${repoFolder}`);
+              copyDirectoryRecursive(repoFolder, destFolder);
+              log.info(`[PathInitializer] ✅ Copied ${folderName} sounds from repo path`);
+              break;
+            }
+          }
+        }
+      } else {
+        log.info(`[PathInitializer] ✓ ${folderName} sounds already present at: ${destFolder}`);
+      }
     }
 
     // FALLBACK: Ensure Fail Sounds folder exists as a safety net
@@ -212,6 +257,12 @@ function migrateSoundsIfNeeded() {
       }
     } else {
       log.info(`[PathInitializer] ✓ Fail Sounds folder already exists: ${failSoundsPath}`);
+    }
+
+    // Ensure Misc folder exists
+    if (!fs.existsSync(miscSoundsPath)) {
+      fs.mkdirSync(miscSoundsPath, { recursive: true });
+      log.info(`[PathInitializer] ✓ Created Misc sounds folder: ${miscSoundsPath}`);
     }
 
     log.info('[PathInitializer] ===== END: migrateSoundsIfNeeded() =====');

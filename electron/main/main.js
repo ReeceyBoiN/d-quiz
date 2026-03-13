@@ -930,6 +930,25 @@ async function boot() {
     }
   });
 
+  // Generic broadcast message to all approved player devices (for BUZZ_RESET, BUZZ_RESULT, BUZZ_LOCKED, TIMER_PAUSE, TIMER_RESUME, etc.)
+  router.mount('network/broadcast-message', async (payload) => {
+    try {
+      const { type, data } = payload;
+      log.info('[IPC] network/broadcast-message called with:', { type });
+
+      if (!backend || !backend.broadcastMessage) {
+        log.error('[IPC] Backend not initialized for broadcast-message');
+        throw new Error('Backend not initialized');
+      }
+
+      backend.broadcastMessage(type, data);
+      return { broadcasted: true };
+    } catch (err) {
+      log.error('[IPC] network/broadcast-message error:', err.message);
+      throw err;
+    }
+  });
+
   // Send message to a specific player (controller or player)
   router.mount('network/send-to-player', async (payload) => {
     try {

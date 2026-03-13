@@ -15,6 +15,7 @@ interface QuestionDisplayProps {
   scrambled?: boolean;
   buzzLockedBy?: string | null;
   buzzLockedOut?: boolean;
+  timerPaused?: boolean;
 }
 
 type QuestionType = 'letters' | 'numbers' | 'multiple-choice' | string;
@@ -56,6 +57,7 @@ export function QuestionDisplay({
   scrambled = false,
   buzzLockedBy,
   buzzLockedOut = false,
+  timerPaused = false,
 }: QuestionDisplayProps) {
   const { settings } = usePlayerSettings();
   const networkContext = useContext(NetworkContext);
@@ -143,6 +145,14 @@ export function QuestionDisplay({
     setSequenceOrder([]);
     setSequenceLocked(false);
   }, [questionIdentity]);
+
+  // Reset internal submitted state when buzz lockout is cleared (after wrong answer reset)
+  useEffect(() => {
+    if (isBuzzIn && !buzzLockedBy && !buzzLockedOut) {
+      setSubmitted(false);
+      setSubmittedAnswer(null);
+    }
+  }, [buzzLockedBy, buzzLockedOut, isBuzzIn]);
 
   // Track a stable question round counter that increments only on genuine new questions
   // This prevents re-shuffling when transitioning from placeholder to revealed question
@@ -933,44 +943,44 @@ export function QuestionDisplay({
 
         {/* Buzz In Button for question types without options or explicit buzzin type */}
         {isBuzzIn && (
-          <div className={`${hideAnswers ? 'opacity-0 pointer-events-none' : ''} w-full max-w-sm sm:max-w-md flex flex-col items-center gap-4`}>
+          <div className={`${hideAnswers ? 'opacity-0 pointer-events-none' : ''} w-full flex-1 flex flex-col items-center justify-center px-4`}>
             {buzzLockedOut ? (
               /* Permanently locked out for this question */
               <div className="text-center">
-                <p className="text-red-400 text-2xl sm:text-3xl font-bold mb-2">Locked Out</p>
-                <p className="text-slate-400 text-sm sm:text-base">Your team answered incorrectly</p>
+                <p className="text-red-400 text-3xl sm:text-4xl font-bold mb-2">Locked Out</p>
+                <p className="text-slate-400 text-base sm:text-lg">Your team answered incorrectly</p>
               </div>
             ) : buzzLockedBy ? (
               /* Another team buzzed first - waiting */
               submitted ? (
                 <div className="text-center">
-                  <p className="text-green-400 text-xl sm:text-2xl font-bold mb-2">YOU BUZZED!</p>
-                  <p className="text-slate-300 text-sm sm:text-base">Waiting for host...</p>
+                  <p className="text-green-400 text-3xl sm:text-4xl font-bold mb-2">YOU BUZZED!</p>
+                  <p className="text-slate-300 text-base sm:text-lg">Waiting for host...</p>
                 </div>
               ) : (
-                <div className="text-center">
-                  <p className="text-orange-400 text-xl sm:text-2xl font-bold mb-2">{buzzLockedBy} buzzed first</p>
-                  <p className="text-slate-400 text-sm sm:text-base">Wait...</p>
+                <div className="text-center w-full">
+                  <p className="text-orange-400 text-2xl sm:text-3xl font-bold mb-2">{buzzLockedBy} buzzed first</p>
+                  <p className="text-slate-400 text-base sm:text-lg mb-4">Wait...</p>
                   <Button
                     disabled
-                    className="mt-4 px-8 sm:px-12 py-4 sm:py-6 text-lg sm:text-2xl font-bold rounded-xl bg-slate-600 text-slate-400 cursor-not-allowed"
+                    className="w-full h-[40vh] text-3xl sm:text-4xl font-bold rounded-2xl bg-slate-600 text-slate-400 cursor-not-allowed"
                   >
                     BUZZ IN
                   </Button>
                 </div>
               )
             ) : (
-              /* Normal buzz-in button */
+              /* Normal buzz-in button - MASSIVE for quick tapping */
               <Button
                 onClick={() => handleAnswerSelect('buzzed')}
                 disabled={timerEnded || submitted}
-                className={`px-4 sm:px-8 md:px-12 lg:px-16 py-3 sm:py-4 md:py-6 lg:py-8 text-sm sm:text-lg md:text-2xl lg:text-3xl font-bold rounded-lg sm:rounded-xl md:rounded-xl transition-all transform active:scale-95 ${
+                className={`w-full h-[50vh] text-4xl sm:text-5xl md:text-6xl font-bold rounded-2xl transition-all transform active:scale-95 ${
                   submitted
                     ? 'bg-green-500 text-white'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30'
                 }`}
               >
-                {submitted ? '✓ Answer Submitted' : 'BUZZ IN'}
+                {submitted ? '✓ BUZZED!' : 'BUZZ IN'}
               </Button>
             )}
           </div>
@@ -979,8 +989,8 @@ export function QuestionDisplay({
         {/* Time remaining display */}
         {showTimer && (
           <div className="mt-4 sm:mt-6 md:mt-8 lg:mt-10 text-center">
-            <p className="text-slate-400 text-xs sm:text-sm md:text-base lg:text-lg">
-              Time Remaining: <span className="text-cyan-400 font-bold">{timeRemaining}s</span>
+            <p className={`text-slate-400 text-xs sm:text-sm md:text-base lg:text-lg ${timerPaused ? 'animate-pulse' : ''}`}>
+              Time Remaining: <span className={`font-bold ${timerPaused ? 'text-orange-400' : 'text-cyan-400'}`}>{timeRemaining}s{timerPaused ? ' (PAUSED)' : ''}</span>
             </p>
           </div>
         )}

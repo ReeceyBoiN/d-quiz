@@ -44,6 +44,23 @@ interface PendingMessage {
   data: any;
 }
 
+// Priority map for pending messages during buzzer selection
+// Higher priority messages cannot be overwritten by lower priority ones
+const MESSAGE_PRIORITY: Record<string, number> = {
+  'QUESTION': 10,
+  'PICTURE': 10,
+  'MUSIC_ROUND_START': 10,
+  'NEXT': 8,
+  'END_ROUND': 8,
+  'APPROVAL_PENDING': 7,
+  'DISPLAY_MODE': 3,
+  'FLOW_STATE': 1,
+};
+
+const SCREEN_TRANSITIONING_TYPES = new Set([
+  'QUESTION', 'PICTURE', 'NEXT', 'END_ROUND', 'MUSIC_ROUND_START', 'APPROVAL_PENDING'
+]);
+
 export default function App() {
   useWakeLock();
   const [currentScreen, setCurrentScreen] = useState<'team-entry' | 'buzzer-selection' | 'waiting' | 'approval' | 'declined' | 'question' | 'ready-for-question' | 'display' | 'host-terminal' | 'pin-entry' | 'music-buzz'>('team-entry');
@@ -61,7 +78,28 @@ export default function App() {
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [pendingApprovalData, setPendingApprovalData] = useState<PendingApprovalData | null>(null);
-  const [pendingMessage, setPendingMessage] = useState<PendingMessage | null>(null);
+  const [pendingMessage, setPendingMessageRaw] = useState<PendingMessage | null>(null);
+  const pendingMessageRef = useRef<PendingMessage | null>(null);
+
+  // Priority-aware setPendingMessage: only overwrite if new message has equal or higher priority
+  const setPendingMessage = useCallback((msg: PendingMessage | null) => {
+    if (msg === null) {
+      pendingMessageRef.current = null;
+      setPendingMessageRaw(null);
+      return;
+    }
+    const existing = pendingMessageRef.current;
+    if (existing) {
+      const existingPriority = MESSAGE_PRIORITY[existing.type] ?? 0;
+      const newPriority = MESSAGE_PRIORITY[msg.type] ?? 0;
+      if (newPriority < existingPriority) {
+        console.log(`[Player] ⏭️ Ignoring pending ${msg.type} (priority ${newPriority}) — already have ${existing.type} (priority ${existingPriority})`);
+        return;
+      }
+    }
+    pendingMessageRef.current = msg;
+    setPendingMessageRaw(msg);
+  }, []);
   const [showTimer, setShowTimer] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [totalTimerLength, setTotalTimerLength] = useState(30);
@@ -83,6 +121,7 @@ export default function App() {
   const [isAnswerCorrect, setIsAnswerCorrect] = useState<boolean | undefined>();
   const [submittedAnswer, setSubmittedAnswer] = useState<any>(null);
   const [timerEnded, setTimerEnded] = useState(false);
+  const [timerPaused, setTimerPaused] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [isKeypadScrambled, setIsKeypadScrambled] = useState(false);
   // Buzz-in lockout and vote state
@@ -407,6 +446,7 @@ export default function App() {
     setSelectedAnswers([]);
     setShowTimer(false);
     setTimerEnded(false);
+    setTimerPaused(false);
     setShowFastestTeam(false);
     setFastestTeamName('');
     setFastestTeamPhoto(null);
@@ -855,6 +895,22 @@ export default function App() {
         break;
       case 'TIMER':
         setTimeRemaining(message.data?.seconds || 0);
+        break;
+      case 'TIMER_PAUSE' as any:
+        console.log('[Player] TIMER_PAUSE received - freezing countdown');
+        setTimerPaused(true);
+        break;
+      case 'TIMER_RESUME' as any:
+        try {
+          const resumeSeconds = message.data?.remainingSeconds;
+          console.log('[Player] TIMER_RESUME received - resuming with', resumeSeconds, 'seconds');
+          setTimerPaused(false);
+          if (resumeSeconds !== undefined) {
+            setTimeRemaining(resumeSeconds);
+          }
+        } catch (err) {
+          console.error('[Player] Error in TIMER_RESUME handler:', err);
+        }
         break;
       case 'TIMEUP':
         setShowTimer(false);
@@ -1677,6 +1733,14 @@ export default function App() {
           applyDisplayModeUpdate(pendingMessage.data, 'PENDING_DISPLAY_MODE');
           break;
 
+        case 'MUSIC_ROUND_START':
+          console.log('[App] Applying pending MUSIC_ROUND_START message');
+          setMusicBuzzState('waiting');
+          setMusicTargetClip('');
+          setMusicBuzzPoints(undefined);
+          setCurrentScreen('music-buzz');
+          break;
+
         case 'APPROVAL_PENDING':
           console.log('[App] Applying pending APPROVAL_PENDING message');
           setCurrentScreen('approval');
@@ -1693,9 +1757,12 @@ export default function App() {
       }
 
       setPendingMessage(null); // Clear pending message after applying
-      if (handledPendingMessage) {
-        return; // Exit early - don't show approval screen
+      // Only skip the approval flow if the pending message actually transitioned the screen
+      // FLOW_STATE and DISPLAY_MODE update internal state but don't change currentScreen
+      if (handledPendingMessage && SCREEN_TRANSITIONING_TYPES.has(pendingMessage.type)) {
+        return; // Screen was transitioned by the pending message handler
       }
+      // Otherwise fall through to approval/display flow
     }
 
     setCurrentScreen('approval');
@@ -1915,6 +1982,7 @@ export default function App() {
               showTimer={showTimer}
               totalTimerLength={totalTimerLength}
               timerEnded={timerEnded}
+              timerPaused={timerPaused}
               onAnswerSubmit={handleAnswerSubmit}
               scrambled={isKeypadScrambled}
               buzzLockedBy={buzzLockedBy}
@@ -1964,6 +2032,7 @@ export default function App() {
                 showTimer={showTimer}
                 totalTimerLength={totalTimerLength}
                 timerEnded={timerEnded}
+                timerPaused={timerPaused}
                 onAnswerSubmit={handleAnswerSubmit}
                 scrambled={isKeypadScrambled}
                 buzzLockedBy={buzzLockedBy}

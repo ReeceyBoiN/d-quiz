@@ -39,9 +39,9 @@ import { useTimer } from "../hooks/useTimer";
 import { useHostInfo } from "../hooks/useHostInfo";
 import type { QuestionFlowState, HostFlow } from "../state/flowState";
 import { getTotalTimeForQuestion, hasQuestionImage, initialFlow } from "../state/flowState";
-import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController, sendScrambleUpdateToPlayers, sendFlowStateToPlayers, sendPrecacheToPlayers, sendBuzzLockedToPlayers, sendBuzzResetToPlayers, sendBuzzResultToPlayers, } from "../network/wsHost";
+import { sendPictureToPlayers, sendQuestionToPlayers, sendTimerToPlayers, sendTimeUpToPlayers, sendRevealToPlayers, sendNextQuestion, sendEndRound, sendFastestToDisplay, registerNetworkPlayer, onNetworkMessage, broadcastMessage, onAdminCommand, sendAdminResponse, sendFlowStateToController, sendScrambleUpdateToPlayers, sendFlowStateToPlayers, sendPrecacheToPlayers, sendBuzzLockedToPlayers, sendBuzzResetToPlayers, sendBuzzResultToPlayers, sendTimerPauseToPlayers, sendTimerResumeToPlayers, } from "../network/wsHost";
 import { playCountdownAudio, stopCountdownAudio } from "../utils/countdownAudio";
-import { playApplauseSound, playFailSound } from "../utils/audioUtils";
+import { playApplauseSound, playFailSound, playBuzzCorrectSound, playBuzzWrongSound } from "../utils/audioUtils";
 import { executeStartNormalTimer, executeStartSilentTimer, validateTimerDuration } from "../utils/unifiedTimerHandlers";
 import { calculateTeamPoints, rankCorrectTeams, shouldAutoDisableGoWide, type ScoringConfig } from "../utils/scoringEngine";
 import { getAnswerText, createHandleComputeAndAwardScores, createHandleApplyEvilModePenalty } from "../utils/quizHostHelpers";
@@ -228,7 +228,8 @@ export function QuizHost() {
     nearestWinsTimer,
     voiceCountdown,
     teamPhotosAutoApprove,
-    hideQuizPackAnswers
+    hideQuizPackAnswers,
+    oneGuessPerTeam
   } = useSettings();
 
   // Get external display text size from localStorage
@@ -593,6 +594,8 @@ export function QuizHost() {
   // Buzzin pack state machine
   const [buzzLockedOutTeams, setBuzzLockedOutTeams] = useState<Set<string>>(new Set());
   const [buzzWinnerTeamId, setBuzzWinnerTeamId] = useState<string | null>(null);
+  const [buzzTimerExpired, setBuzzTimerExpired] = useState(false);
+  const buzzTimerWasRunningRef = useRef(false);
 
   // Loaded quiz state
   const [loadedQuizQuestions, setLoadedQuizQuestions] = useState<any[]>([]);
@@ -629,6 +632,13 @@ export function QuizHost() {
       }));
       // Notify players that time is up
       sendTimeUpToPlayers();
+
+      // For buzz-in mode: play fail sound, block buzzes, set expired flag
+      if (isBuzzinPackMode) {
+        setBuzzTimerExpired(true);
+        playBuzzWrongSound().catch(err => console.warn('Failed to play fail sound on timer expiry:', err));
+        stopCountdownAudio();
+      }
     },
     onTick: (remaining) => {
       setFlowState(prev => ({
@@ -1128,6 +1138,8 @@ export function QuizHost() {
         // Clear buzz state for new question
         setBuzzLockedOutTeams(new Set());
         setBuzzWinnerTeamId(null);
+        setBuzzTimerExpired(false);
+        buzzTimerWasRunningRef.current = false;
         // Broadcast buzz reset to all players so they start fresh
         if (isBuzzinPackMode) {
           sendBuzzResetToPlayers([]);
@@ -1297,11 +1309,11 @@ export function QuizHost() {
 
   // Auto-show answer and results summary in app when timer ends (flow transitions to 'timeup')
   useEffect(() => {
-    if (flowState.flow === 'timeup' && isQuizPackMode) {
+    if (flowState.flow === 'timeup' && isQuizPackMode && !isBuzzinPackMode) {
       setShowAnswer(true);
       setShowResultsSummary(true);
     }
-  }, [flowState.flow, isQuizPackMode]);
+  }, [flowState.flow, isQuizPackMode, isBuzzinPackMode]);
 
   // Reset results summary and fastest team ID when flow changes to ensure clean state transitions
   useEffect(() => {
@@ -1393,7 +1405,7 @@ export function QuizHost() {
 
   // Buzz detection effect - reactively detects first valid buzz in buzzin pack mode
   useEffect(() => {
-    if (!isBuzzinPackMode || !flowState.isQuestionMode || buzzWinnerTeamId) return;
+    if (!isBuzzinPackMode || !flowState.isQuestionMode || buzzWinnerTeamId || buzzTimerExpired) return;
 
     const validBuzzes = Object.entries(teamAnswers)
       .filter(([, answer]) => answer === 'buzzed')
@@ -1416,6 +1428,17 @@ export function QuizHost() {
     // Broadcast lockout to all players
     sendBuzzLockedToPlayers(team?.name || `Team ${firstTeamId}`, firstTeamId);
 
+    // Stop timer if it's running (team buzzed during active countdown)
+    if (timer.isRunning) {
+      buzzTimerWasRunningRef.current = true;
+      timer.stop();
+      sendTimerPauseToPlayers(); // Notify players to stop their timer
+      stopCountdownAudio();
+      // Set flow back to ready so timer can be restarted after wrong answer
+      setFlowState(prev => ({ ...prev, flow: 'ready' }));
+      console.log(`[QuizHost] Timer stopped due to buzz-in by ${team?.name}`);
+    }
+
     // Update external display with animated buzz-in view
     sendToExternalDisplay({
       type: 'DISPLAY_UPDATE',
@@ -1429,7 +1452,7 @@ export function QuizHost() {
 
     console.log(`[QuizHost] Buzz detected: ${team?.name} (${firstTeamId}) at ${validBuzzes[0].time}ms`);
   }, [teamAnswers, teamResponseTimes, isBuzzinPackMode, flowState.isQuestionMode,
-      buzzWinnerTeamId, buzzLockedOutTeams, quizzes]);
+      buzzWinnerTeamId, buzzLockedOutTeams, quizzes, timer, buzzTimerExpired]);
 
   // Close external display when host window closes (browser popout scenario)
   useEffect(() => {
@@ -1963,6 +1986,8 @@ export function QuizHost() {
     // Reset buzzin pack state
     setBuzzLockedOutTeams(new Set());
     setBuzzWinnerTeamId(null);
+    setBuzzTimerExpired(false);
+    buzzTimerWasRunningRef.current = false;
     setGameTimerRunning(false);
     setGameTimerTimeRemaining(0);
     setGameTimerTotalTime(0);
@@ -2766,13 +2791,19 @@ export function QuizHost() {
             flow: 'fastest',
           }));
         } else {
-          // For quiz pack: Show results summary on external display, show fastest team info in app
-          // Transition to revealed state (next click will show fastest team on external display)
-          setFastestTeamRevealTime(Date.now());
-          setFlowState(prev => ({
-            ...prev,
-            flow: 'revealed',
-          }));
+          // For quiz pack
+          if (isBuzzinPackMode) {
+            // No fastest team in buzz-in mode - just transition to revealed
+            setFlowState(prev => ({ ...prev, flow: 'revealed' }));
+          } else {
+            // Normal quiz pack: Show results summary on external display, show fastest team info in app
+            // Transition to revealed state (next click will show fastest team on external display)
+            setFastestTeamRevealTime(Date.now());
+            setFlowState(prev => ({
+              ...prev,
+              flow: 'revealed',
+            }));
+          }
         }
         break;
       }
@@ -3263,6 +3294,15 @@ export function QuizHost() {
     setBuzzInConfig({ mode, points, soundCheck });
     setShowBuzzInMode(true);
     setActiveTab("teams"); // Switch to teams tab when buzz-in starts
+
+    // Update flowState so periodic sync broadcasts 'ready' instead of 'idle'
+    // This prevents players from being kicked back to the waiting screen
+    setFlowState(prev => ({
+      ...prev,
+      flow: 'ready',
+      isQuestionMode: true,
+    }));
+    console.log('[QuizHost] Buzz-in mode started - flowState set to ready/isQuestionMode');
   };
 
   // Handle buzz-in mode end
@@ -3270,6 +3310,14 @@ export function QuizHost() {
     setShowBuzzInMode(false);
     setBuzzInConfig(null);
     setActiveTab("home"); // Return to home when buzz-in ends
+
+    // Reset flowState back to idle so players return to waiting screen
+    setFlowState(prev => ({
+      ...prev,
+      flow: 'idle',
+      isQuestionMode: false,
+    }));
+    console.log('[QuizHost] Buzz-in mode ended - flowState reset to idle');
   };
 
   // Handle music round click
@@ -6098,15 +6146,22 @@ export function QuizHost() {
     const team = quizzes.find(q => q.id === teamId);
     const teamName = team?.name || `Team ${teamId}`;
 
+    // Stop timer completely - question is done
+    if (timer.isRunning || timer.isPaused) {
+      timer.stop();
+      stopCountdownAudio();
+    }
+
     // Award points directly
     const pointsToAward = currentRoundPoints || defaultPoints;
     handleScoreChange(teamId, pointsToAward);
     playApplauseSound().catch(err => console.warn('Failed to play applause:', err));
+    playBuzzCorrectSound().catch(err => console.warn('Failed to play buzz correct:', err));
     sendBuzzResultToPlayers(teamName, true);
     sendToExternalDisplay({
       type: 'DISPLAY_UPDATE',
       mode: 'buzzin-correct',
-      data: { teamName, teamColor: team?.backgroundColor },
+      data: { teamName, teamColor: team?.backgroundColor, teamPhoto: team?.photoUrl },
     });
 
     // Clear buzz state for next question
@@ -6116,25 +6171,27 @@ export function QuizHost() {
     setTeamAnswers({});
     setTeamResponseTimes({});
     console.log(`[QuizHost] Buzzin pack: Awarded ${pointsToAward} points to team ${teamName}`);
-  }, [currentRoundPoints, defaultPoints, handleScoreChange, quizzes]);
+  }, [currentRoundPoints, defaultPoints, handleScoreChange, quizzes, timer]);
 
   const handleBuzzWrong = useCallback((teamId: string) => {
     const team = quizzes.find(q => q.id === teamId);
     const teamName = team?.name || `Team ${teamId}`;
 
-    if (evilModeEnabled && punishmentEnabled) {
+    if (evilModeEnabled) {
       const pointsToDeduct = currentRoundPoints || defaultPoints;
       handleScoreChange(teamId, -pointsToDeduct);
-      console.log(`[QuizHost] Buzzin pack: Deducted ${pointsToDeduct} points from ${teamName} (punishment)`);
+      console.log(`[QuizHost] Buzzin pack: Deducted ${pointsToDeduct} points from ${teamName} (evil mode)`);
     }
-    playFailSound().catch(err => console.warn('Failed to play fail sound:', err));
+    playBuzzWrongSound().catch(err => console.warn('Failed to play buzz wrong:', err));
 
-    // Add wrong team to permanently locked out set for this question
-    setBuzzLockedOutTeams(prev => {
-      const updated = new Set(prev);
-      updated.add(teamId);
-      return updated;
-    });
+    // Only lock out team if oneGuessPerTeam is enabled
+    if (oneGuessPerTeam) {
+      setBuzzLockedOutTeams(prev => {
+        const updated = new Set(prev);
+        updated.add(teamId);
+        return updated;
+      });
+    }
     setBuzzWinnerTeamId(null);
 
     // Clear only this team's buzz so detection effect can find next buzzer
@@ -6152,9 +6209,11 @@ export function QuizHost() {
     // Send result to players
     sendBuzzResultToPlayers(teamName, false);
 
-    // Check if all teams are now locked out
-    const newLockedOut = new Set([...buzzLockedOutTeams, teamId]);
-    const allTeamsLocked = quizzes.every(q => newLockedOut.has(q.id));
+    // Build the locked out set for broadcast
+    const newLockedOut = oneGuessPerTeam
+      ? new Set([...buzzLockedOutTeams, teamId])
+      : buzzLockedOutTeams; // No change if oneGuessPerTeam is off
+    const allTeamsLocked = oneGuessPerTeam && quizzes.every(q => newLockedOut.has(q.id));
 
     if (allTeamsLocked) {
       console.log('[QuizHost] Buzzin pack: All teams locked out - no correct answer');
@@ -6179,10 +6238,23 @@ export function QuizHost() {
           data: { lockedOutCount: newLockedOut.size, totalTeams: quizzes.length },
         });
       }, 1500);
+
+      // Reset timer to full duration after wrong buzz-in
+      if (buzzTimerWasRunningRef.current) {
+        buzzTimerWasRunningRef.current = false;
+        const fullDuration = flowState.totalTime || 30;
+        timer.stop(); // Ensure clean state
+        setGameTimerStartTime(Date.now());
+        setFlowState(prev => ({ ...prev, flow: 'running', timeRemaining: fullDuration }));
+        // timer.start will be triggered by the flow state change to 'running' effect
+        sendTimerResumeToPlayers(fullDuration);
+        playCountdownAudio(fullDuration, false).catch(err => console.warn('Failed to restart countdown audio:', err));
+        console.log(`[QuizHost] Timer reset to full duration (${fullDuration}s) after wrong answer`);
+      }
     }
 
-    console.log(`[QuizHost] Buzzin pack: ${teamName} WRONG - locked out. ${newLockedOut.size}/${quizzes.length} teams locked.`);
-  }, [evilModeEnabled, punishmentEnabled, currentRoundPoints, defaultPoints, handleScoreChange, quizzes, buzzLockedOutTeams]);
+    console.log(`[QuizHost] Buzzin pack: ${teamName} WRONG${oneGuessPerTeam ? ' - locked out' : ''}. ${newLockedOut.size}/${quizzes.length} teams locked.`);
+  }, [evilModeEnabled, currentRoundPoints, defaultPoints, handleScoreChange, quizzes, buzzLockedOutTeams, oneGuessPerTeam, timer, flowState.totalTime]);
 
   const handleScoreSet = useCallback((teamId: string, newScore: number) => {
     // Check if scores are paused
@@ -6762,14 +6834,46 @@ export function QuizHost() {
                 question={currentQuestion}
                 questionNumber={currentLoadedQuestionIndex + 1}
                 totalQuestions={loadedQuizQuestions.length}
-                showAnswer={flowState.flow === 'timeup' || flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
+                showAnswer={isBuzzinPackMode || flowState.flow === 'timeup' || flowState.flow === 'revealed' || flowState.flow === 'fastest' || flowState.flow === 'complete'}
                 answerText={currentQuestion?.answerText}
                 correctIndex={currentQuestion?.correctIndex}
               />
               {/* Buzzed Team Panel for buzzin pack mode */}
               {isBuzzinPackMode && (
                 <div className="bg-slate-800 border-t-2 border-slate-600 px-6 py-4">
-                  {allTeamsLockedOut ? (
+                  {buzzTimerExpired && !buzzWinnerTeamId ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <Zap className="h-8 w-8 text-red-400" />
+                        <p className="text-lg font-medium text-red-300">Time's Up — No one buzzed in</p>
+                      </div>
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={() => {
+                            setShowAnswer(true);
+                            sendToExternalDisplay({
+                              type: 'DISPLAY_UPDATE',
+                              mode: 'buzzin-wrong',
+                              data: { allLockedOut: true, timerExpired: true },
+                            });
+                          }}
+                          className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-lg"
+                        >
+                          REVEAL ANSWER
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            if (currentLoadedQuestionIndex < loadedQuizQuestions.length - 1) {
+                              setCurrentLoadedQuestionIndex(prev => prev + 1);
+                            }
+                          }}
+                          className="px-8 py-4 bg-slate-600 hover:bg-slate-700 text-white font-bold text-lg rounded-lg"
+                        >
+                          SKIP
+                        </Button>
+                      </div>
+                    </div>
+                  ) : allTeamsLockedOut ? (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <Zap className="h-8 w-8 text-red-400" />
