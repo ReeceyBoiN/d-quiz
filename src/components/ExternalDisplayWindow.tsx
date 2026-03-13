@@ -22,9 +22,9 @@ declare global {
 
 const isElectron = Boolean(window.api);
 
-// Hardcoded QR instructions image - always included in slideshow rotation
-const QR_INSTRUCTIONS_IMAGE_URL = 'https://cdn.builder.io/api/v1/image/assets%2Ffc9fa4b494f14138b58309dabb6bd450%2F364dace40d9a4b69b2cfd47d1ed2a9a3';
-const QR_INSTRUCTIONS_IMAGE = { url: QR_INSTRUCTIONS_IMAGE_URL, name: 'Join Instructions', isQrInstructions: true };
+// Hardcoded QR instructions entry - always included in slideshow rotation
+// Uses a sentinel URL since the instructions screen is rendered as pure HTML/CSS
+const QR_INSTRUCTIONS_IMAGE = { url: '__qr_instructions__', name: 'Join Instructions', isQrInstructions: true };
 
 // Helper for ordinal suffixes in external display
 const getExtSuffix = (pos: number) => {
@@ -1723,45 +1723,76 @@ export function ExternalDisplayWindow() {
           }}>
             {currentImage ? (
               isQrInstructionsImage ? (
-                // Aspect-ratio-locked container for QR instructions image
-                // Locks to 16:9 so the white square position is always consistent
+                // Pure HTML/CSS recreation of the instructions screen
+                // No background image needed - works at any aspect ratio
                 <div style={{
-                  position: 'relative',
-                  aspectRatio: '16/9',
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain'
+                  width: '100%', height: '100%',
+                  backgroundColor: '#E8882F',
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  padding: '2% 3%',
+                  boxSizing: 'border-box'
                 }}>
-                  <img
-                    src={currentImage.url}
-                    alt="Join Instructions"
-                    style={{
-                      width: '100%', height: '100%', objectFit: 'contain',
-                      transition: 'opacity 0.5s ease'
-                    }}
-                  />
-                  {qrCodeDataUrl && displayData.joinUrl && (
+                  {/* POP QUIZ Title */}
+                  <h1 style={{
+                    fontFamily: "'Impact', 'Arial Black', sans-serif",
+                    fontSize: 'clamp(3rem, 10vw, 8rem)',
+                    color: 'white',
+                    textTransform: 'uppercase',
+                    textShadow: '4px 4px 0px rgba(0,0,0,0.3), 2px 2px 0px rgba(0,0,0,0.2)',
+                    margin: '0 0 2% 0',
+                    letterSpacing: '0.05em',
+                    lineHeight: 1
+                  }}>
+                    POP QUIZ
+                  </h1>
+
+                  {/* Instructions Card */}
+                  <div style={{
+                    width: '92%', flex: '1 1 auto',
+                    maxHeight: '70%',
+                    backgroundColor: '#000',
+                    borderRadius: '20px',
+                    border: '5px solid #2D8B3A',
+                    display: 'flex', flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: '3% 4%',
+                    boxSizing: 'border-box',
+                    gap: '4%'
+                  }}>
+                    {/* Left - Instructions */}
+                    <div style={{ flex: '1 1 60%', display: 'flex', flexDirection: 'column', justifyContent: 'space-around', height: '100%' }}>
+                      {['1. JOIN QUIZ WI-FI', '2. SCAN QR CODE', '3. ENTER TEAM NAME'].map((text, i) => (
+                        <p key={i} style={{
+                          fontFamily: "'Impact', 'Arial Black', sans-serif",
+                          fontSize: 'clamp(1.5rem, 5vw, 4rem)',
+                          color: 'white',
+                          textTransform: 'uppercase',
+                          margin: 0,
+                          lineHeight: 1.3
+                        }}>{text}</p>
+                      ))}
+                    </div>
+
+                    {/* Right - QR Code */}
                     <div style={{
-                      position: 'absolute',
-                      top: '23%',
-                      right: '3.5%',
-                      width: '29%',
-                      height: '64%',
-                      zIndex: 20,
+                      flex: '0 0 auto',
+                      aspectRatio: '1/1',
+                      height: '90%',
+                      backgroundColor: 'white',
+                      borderRadius: '8px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      padding: '1.5%'
+                      padding: '3%'
                     }}>
-                      <img
-                        src={qrCodeDataUrl}
-                        alt="Scan to join"
-                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                      />
+                      {qrCodeDataUrl && displayData.joinUrl ? (
+                        <img src={qrCodeDataUrl} alt="Scan to join" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%' }} />
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               ) : (
                 // Regular slideshow images - full bleed cover
