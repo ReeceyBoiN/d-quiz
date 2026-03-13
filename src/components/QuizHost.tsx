@@ -1146,6 +1146,7 @@ export function QuizHost() {
         // Broadcast placeholder question to players immediately so they see answer pads right away
         try {
           let placeholderCount =
+            isBuzzinPackMode ? 1 : // Buzzin pack always shows buzz-in button
             currentQuestion.type === 'letters' ? 6 : // A-F
             currentQuestion.type === 'multi' || currentQuestion.type === 'multiple-choice' ? 4 : // 4 options
             currentQuestion.type === 'numbers' ? 4 : // 4 numbers
@@ -1155,7 +1156,7 @@ export function QuizHost() {
 
           const placeholderOptions = Array.from({ length: placeholderCount }, (_, i) => `option_${i + 1}`);
 
-          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          const normalizedType = isBuzzinPackMode ? 'buzzin' : normalizeQuestionTypeForBroadcast(currentQuestion.type);
           const teamScrambleStates: Record<string, boolean> = {};
           quizzes.forEach(quiz => { teamScrambleStates[quiz.name] = quiz.scrambled ?? false; });
           broadcastQuestionToPlayers({
@@ -1223,6 +1224,7 @@ export function QuizHost() {
         // Broadcast placeholder question to players immediately so they see answer pads right away
         try {
           let placeholderCount =
+            isBuzzinPackMode ? 1 : // Buzzin pack always shows buzz-in button
             currentQuestion.type === 'letters' ? 6 : // A-F
             currentQuestion.type === 'multi' || currentQuestion.type === 'multiple-choice' ? 4 : // 4 options
             currentQuestion.type === 'numbers' ? 4 : // 4 numbers
@@ -1232,7 +1234,7 @@ export function QuizHost() {
 
           const placeholderOptions = Array.from({ length: placeholderCount }, (_, i) => `option_${i + 1}`);
 
-          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          const normalizedType = isBuzzinPackMode ? 'buzzin' : normalizeQuestionTypeForBroadcast(currentQuestion.type);
           const teamScrambleStates: Record<string, boolean> = {};
           quizzes.forEach(quiz => { teamScrambleStates[quiz.name] = quiz.scrambled ?? false; });
           broadcastQuestionToPlayers({
@@ -1799,18 +1801,23 @@ export function QuizHost() {
         // For quiz pack mode - send current question and timer state
         // Only send the question if it has actually been sent/revealed to players
         // (flow states: 'sent-question', 'running', 'timeup', 'revealed', 'fastest')
+        // In buzzin pack mode, also send during 'ready' so late joiners see the buzz-in button
         const questionSentFlows = ['sent-question', 'running', 'timeup', 'revealed', 'fastest'];
-        if (showQuizPackDisplay && loadedQuizQuestions.length > 0 && currentLoadedQuestionIndex < loadedQuizQuestions.length && questionSentFlows.includes(flowState.flow)) {
+        const shouldSendQuestion = questionSentFlows.includes(flowState.flow) || (isBuzzinPackMode && flowState.flow === 'ready');
+        if (showQuizPackDisplay && loadedQuizQuestions.length > 0 && currentLoadedQuestionIndex < loadedQuizQuestions.length && shouldSendQuestion) {
           const currentQuestion = loadedQuizQuestions[currentLoadedQuestionIndex];
-          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          const normalizedType = isBuzzinPackMode ? 'buzzin' : normalizeQuestionTypeForBroadcast(currentQuestion.type);
 
+          // In buzzin pack mode during 'ready' state, send placeholder text (question not revealed yet)
+          const isPreSend = isBuzzinPackMode && flowState.flow === 'ready';
           currentGameState.currentQuestion = {
-            text: currentQuestion.q,
-            options: currentQuestion.options || [],
+            text: isPreSend ? 'Waiting for question...' : currentQuestion.q,
+            options: isPreSend ? ['option_1'] : (currentQuestion.options || []),
             type: normalizedType,
-            imageDataUrl: currentQuestion.imageDataUrl || null,
+            imageDataUrl: isPreSend ? null : (currentQuestion.imageDataUrl || null),
             questionNumber: currentLoadedQuestionIndex + 1,
-            totalQuestions: loadedQuizQuestions.length
+            totalQuestions: loadedQuizQuestions.length,
+            isPlaceholder: isPreSend,
           };
 
           // Send timer state if question is active
@@ -2414,7 +2421,7 @@ export function QuizHost() {
           broadcastPictureToPlayers(currentQuestion.imageDataUrl);
 
           // Also send question data alongside picture
-          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          const normalizedType = isBuzzinPackMode ? 'buzzin' : normalizeQuestionTypeForBroadcast(currentQuestion.type);
           const teamScrambleStates: Record<string, boolean> = {};
           quizzes.forEach(quiz => { teamScrambleStates[quiz.name] = quiz.scrambled ?? false; });
           sendQuestionToPlayers(currentQuestion.q, currentQuestion.options, normalizedType, teamScrambleStates);
@@ -2460,7 +2467,7 @@ export function QuizHost() {
           }));
         } else {
           // No picture, send question directly
-          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          const normalizedType = isBuzzinPackMode ? 'buzzin' : normalizeQuestionTypeForBroadcast(currentQuestion.type);
           // Build per-team scramble states map for all teams
           const teamScrambleStates: Record<string, boolean> = {};
           quizzes.forEach(quiz => { teamScrambleStates[quiz.name] = quiz.scrambled ?? false; });
@@ -2511,7 +2518,7 @@ export function QuizHost() {
       case 'sent-picture': {
         // Send question after picture (unless hideQuestionMode is true)
         if (!hideQuestionMode) {
-          const normalizedType = normalizeQuestionTypeForBroadcast(currentQuestion.type);
+          const normalizedType = isBuzzinPackMode ? 'buzzin' : normalizeQuestionTypeForBroadcast(currentQuestion.type);
           // Build per-team scramble states map for all teams
           const teamScrambleStates2: Record<string, boolean> = {};
           quizzes.forEach(quiz => { teamScrambleStates2[quiz.name] = quiz.scrambled ?? false; });
@@ -3215,13 +3222,13 @@ export function QuizHost() {
         // Broadcast a QUESTION message with placeholder text and question type to players
         // This will trigger players to show the appropriate input interface (letters/numbers/multiple-choice)
         // with a blank question area waiting for the actual question text
-        const normalizedType = normalizeQuestionTypeForBroadcast(questionData.type);
+        const normalizedType = isBuzzinPackMode ? 'buzzin' : normalizeQuestionTypeForBroadcast(questionData.type);
         const teamScrambleStates: Record<string, boolean> = {};
         quizzes.forEach(quiz => { teamScrambleStates[quiz.name] = quiz.scrambled ?? false; });
         broadcastQuestionToPlayers({
           text: 'Waiting for question...',
           q: 'Waiting for question...',
-          options: optionsToSend,
+          options: isBuzzinPackMode ? ['option_1'] : optionsToSend,
           type: normalizedType,
           questionIndex: questionData.questionIndex,
           isPlaceholder: true, // Mark this as a placeholder message
@@ -3229,12 +3236,12 @@ export function QuizHost() {
           goWideEnabled: goWideEnabled,
           teamScrambleStates,
         });
-        console.log('[QuizHost] Broadcasted placeholder question to players with type:', questionData.type, '-> normalized:', normalizedType, 'options count:', optionsToSend.length);
+        console.log('[QuizHost] Broadcasted placeholder question to players with type:', questionData.type, '-> normalized:', normalizedType, 'options count:', isBuzzinPackMode ? 1 : optionsToSend.length);
       } catch (error) {
         console.error('[QuizHost] Error broadcasting placeholder question:', error);
       }
     },
-    [quizzes, goWideEnabled]
+    [quizzes, goWideEnabled, isBuzzinPackMode]
   );
 
   // Handle buzz-in interface toggle
