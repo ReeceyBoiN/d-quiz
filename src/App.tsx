@@ -9,12 +9,22 @@ import { initHostNetwork } from "./network/wsHost";
 
 function AppInner() {
   const { handleQuizFileSelection } = useQuizLoader();
-  const { buzzerFolderPath } = useSettings();
+  const { buzzerFolderPath, hostFontScale } = useSettings();
   const isExternalDisplay = new URLSearchParams(window.location.search).get('external') === '1';
 
   useEffect(() => {
     initHostNetwork({ enabled: true });
   }, []);
+
+  // Apply host font scale to document root (only affects host app window)
+  useEffect(() => {
+    if (!isExternalDisplay) {
+      document.documentElement.style.fontSize = `${hostFontScale}%`;
+    }
+    return () => {
+      document.documentElement.style.fontSize = '';
+    };
+  }, [hostFontScale, isExternalDisplay]);
 
   // Zoom controls: Ctrl+/Ctrl- keyboard shortcuts
   useEffect(() => {

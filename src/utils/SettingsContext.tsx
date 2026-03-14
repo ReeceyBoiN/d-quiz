@@ -60,6 +60,8 @@ interface SettingsContextType {
   updateMusicRoundDefaultVolume: (volume: number) => void;
   updateMusicRoundElimination: (enabled: boolean) => void;
   updateMusicRoundReversed: (enabled: boolean) => void;
+  hostFontScale: number;
+  updateHostFontScale: (scale: number) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -126,6 +128,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   const [musicRoundDefaultVolume, setMusicRoundDefaultVolume] = useState(initialSettings.musicRoundDefaultVolume !== undefined ? initialSettings.musicRoundDefaultVolume : 80);
   const [musicRoundElimination, setMusicRoundElimination] = useState(initialSettings.musicRoundElimination !== undefined ? initialSettings.musicRoundElimination : true);
   const [musicRoundReversed, setMusicRoundReversed] = useState(initialSettings.musicRoundReversed !== undefined ? initialSettings.musicRoundReversed : false);
+  const [hostFontScale, setHostFontScale] = useState(initialSettings.hostFontScale !== undefined ? initialSettings.hostFontScale : 100);
 
   // Remove the useEffect that loads settings on mount as it is now done synchronously
   // Listen for storage changes (when settings are updated in Settings component)
@@ -181,6 +184,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
           if (parsed.musicRoundDefaultVolume !== undefined) setMusicRoundDefaultVolume(parsed.musicRoundDefaultVolume);
           if (parsed.musicRoundElimination !== undefined) setMusicRoundElimination(parsed.musicRoundElimination);
           if (parsed.musicRoundReversed !== undefined) setMusicRoundReversed(parsed.musicRoundReversed);
+          if (parsed.hostFontScale !== undefined) setHostFontScale(parsed.hostFontScale);
         } catch (error) {
           console.error('Failed to parse saved settings:', error);
         }
@@ -446,6 +450,15 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   const updateMusicRoundElimination = (enabled: boolean) => updateMusicRoundSetting('musicRoundElimination', enabled, setMusicRoundElimination);
   const updateMusicRoundReversed = (enabled: boolean) => updateMusicRoundSetting('musicRoundReversed', enabled, setMusicRoundReversed);
 
+  const updateHostFontScale = (scale: number) => {
+    const clamped = Math.max(75, Math.min(150, scale));
+    setHostFontScale(clamped);
+    const currentSettings = JSON.parse(localStorage.getItem('quizHostSettings') || '{}');
+    const updatedSettings = { ...currentSettings, hostFontScale: clamped };
+    localStorage.setItem('quizHostSettings', JSON.stringify(updatedSettings));
+    window.dispatchEvent(new Event('settingsUpdated'));
+  };
+
   return (
     <SettingsContext.Provider
       value={{
@@ -493,6 +506,8 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
         updateMusicRoundDefaultVolume,
         updateMusicRoundElimination,
         updateMusicRoundReversed,
+        hostFontScale,
+        updateHostFontScale,
       }}
     >
       {children}

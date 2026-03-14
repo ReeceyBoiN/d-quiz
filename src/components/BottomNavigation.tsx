@@ -511,7 +511,9 @@ export function StatusBar({
     updateGoWideEnabled,
     updateEvilModeEnabled,
     teamPhotosAutoApprove,
-    updateTeamPhotosAutoApprove
+    updateTeamPhotosAutoApprove,
+    hostFontScale,
+    updateHostFontScale
   } = useSettings();
 
   // Use popup states from parent props if provided
@@ -1217,22 +1219,23 @@ export function StatusBar({
           <button
             className="min-w-[30px] px-1.5 flex flex-col items-center justify-center h-full hover:bg-accent transition-colors border-r border-border p-[0px]"
             style={{ flex: '3.5 1 0%' }}
-            onClick={() => {/* TODO: Add font size down functionality */}}
+            onClick={() => updateHostFontScale(hostFontScale - 5)}
             title="Font Size Down"
           >
             <Minus className="h-4 w-4 shrink-0" />
           </button>
 
           {/* Font Size Label */}
-          <div className="min-w-[50px] px-1.5 flex flex-col items-center justify-center h-full text-[11px] leading-tight break-words whitespace-normal text-muted-foreground border-r border-border text-center" style={{ flex: '7 1 0%' }}>
-            Font Size
+          <div className={`min-w-[50px] px-1.5 flex flex-col items-center justify-center h-full text-[11px] leading-tight break-words whitespace-normal border-r border-border text-center ${hostFontScale !== 100 ? 'text-blue-400 font-semibold' : 'text-muted-foreground'}`} style={{ flex: '7 1 0%' }}>
+            Font
+            <span>Size {hostFontScale}%</span>
           </div>
 
           {/* Font Size Up */}
           <button
             className="min-w-[30px] px-1.5 flex flex-col items-center justify-center h-full hover:bg-accent transition-colors border-r border-border p-[0px]"
             style={{ flex: '3.5 1 0%' }}
-            onClick={() => {/* TODO: Add font size up functionality */}}
+            onClick={() => updateHostFontScale(hostFontScale + 5)}
             title="Font Size Up"
           >
             <Plus className="h-4 w-4 shrink-0" />
