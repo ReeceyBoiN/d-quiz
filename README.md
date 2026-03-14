@@ -23,8 +23,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   -?-on player device when scores / leaderboard is shown, it needs to be scrolable so players can scroll up or down the leaderboard
 
-  Font size buttons need mapping
-
   x Scaling visually needs adding as its currently too cramped on the screen slightly whole software wide. 
 
   x enforce demo mode into application to stop hosts from bypassing licence
