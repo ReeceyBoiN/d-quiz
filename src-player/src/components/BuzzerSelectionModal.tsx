@@ -6,15 +6,19 @@ import { usePlayerSettings } from '../hooks/usePlayerSettings';
 interface BuzzerSelectionModalProps {
   isOpen: boolean;
   selectedBuzzers?: Record<string, string>; // deviceId -> buzzerSound mapping
+  rejection?: { buzzerSound: string; takenBy: string } | null;
   onConfirm: (buzzerSound: string) => void;
   onCancel?: () => void;
+  onClearRejection?: () => void;
 }
 
 export function BuzzerSelectionModal({
   isOpen,
   selectedBuzzers = {},
+  rejection,
   onConfirm,
-  onCancel
+  onCancel,
+  onClearRejection
 }: BuzzerSelectionModalProps) {
   const [buzzers, setBuzzers] = useState<string[]>([]);
   const [selectedBuzzer, setSelectedBuzzer] = useState<string | null>(null);
@@ -22,6 +26,7 @@ export function BuzzerSelectionModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [rejectionToast, setRejectionToast] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const networkContext = useContext(NetworkContext);
   const { settings } = usePlayerSettings();
@@ -119,6 +124,19 @@ export function BuzzerSelectionModal({
     // Don't reset selection, allow user to try again
   };
 
+  // Show rejection toast when rejection prop changes
+  useEffect(() => {
+    if (rejection) {
+      const displayName = getDisplayName(rejection.buzzerSound);
+      setRejectionToast(`"${displayName}" is already taken by ${rejection.takenBy}`);
+      setShowConfirmation(false);
+      setSelectedBuzzer(null);
+      onClearRejection?.();
+      const timer = setTimeout(() => setRejectionToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [rejection]);
+
   // Check if buzzer is selected by another team
   const isBuzzerTaken = (buzzerName: string): boolean => {
     return Object.values(selectedBuzzers).includes(buzzerName);
@@ -136,6 +154,20 @@ export function BuzzerSelectionModal({
             Choose a buzzer sound that will play when you answer
           </p>
         </div>
+
+        {/* Rejection Toast */}
+        {rejectionToast && (
+          <div className="mx-6 mt-4 bg-red-900 bg-opacity-50 border border-red-500 rounded-lg p-3 flex items-center gap-2 animate-pulse">
+            <span className="text-red-400 text-lg">⚠️</span>
+            <p className="text-red-300 font-medium text-sm">{rejectionToast}</p>
+            <button
+              onClick={() => setRejectionToast(null)}
+              className="ml-auto text-red-400 hover:text-red-300 text-lg"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Content */}
         <div className="px-6 py-6">

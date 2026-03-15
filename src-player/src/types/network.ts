@@ -33,7 +33,9 @@ export type HostMessageType =
   | 'MUSIC_ROUND_REVEAL'
   | 'MUSIC_ROUND_FASTEST'
   | 'MUSIC_ROUND_NOW_PLAYING'
-  | 'MUSIC_ROUND_END';
+  | 'MUSIC_ROUND_END'
+  | 'BUZZER_STATE_SYNC'
+  | 'BUZZER_REJECTED';
 
 export interface HostMessage {
   type: HostMessageType;
@@ -268,6 +270,20 @@ export interface MusicBuzzMessage {
   deviceId: string;
   teamName: string;
   timestamp: number;
+}
+
+export interface BuzzerStateSyncMessage {
+  type: 'BUZZER_STATE_SYNC';
+  buzzerSelections: Record<string, string>; // deviceId -> buzzerSound
+  timestamp?: number;
+}
+
+export interface BuzzerRejectedMessage {
+  type: 'BUZZER_REJECTED';
+  buzzerSound: string;
+  reason: string;
+  takenBy: string;
+  timestamp?: number;
 }
 
 export type ClientMessage = PlayerJoinMessage | TeamPhotoMessage | PlayerAnswerMessage | PlayerAwayMessage | PlayerActiveMessage | PlayerBuzzerSelectMessage | AdminCommandMessage | PinSubmitMessage | MusicBuzzMessage;

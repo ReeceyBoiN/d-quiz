@@ -865,6 +865,30 @@ async function startBackend({ port = 4310 } = {}) {
               }
               throw broadcastErr;
             }
+
+            // Send BUZZER_STATE_SYNC to the joining player so they know which buzzers are already taken
+            try {
+              const buzzerSelections = {};
+              for (const [pid, player] of networkPlayers.entries()) {
+                if (pid !== deviceId && player.buzzerSound) {
+                  buzzerSelections[pid] = player.buzzerSound;
+                }
+              }
+
+              if (Object.keys(buzzerSelections).length > 0) {
+                const syncMessage = JSON.stringify({
+                  type: 'BUZZER_STATE_SYNC',
+                  buzzerSelections,
+                  timestamp: Date.now()
+                });
+                ws.send(syncMessage);
+                log.info(`[WS-${connectionId}] 🔊 Sent BUZZER_STATE_SYNC to joining player with ${Object.keys(buzzerSelections).length} taken buzzers`);
+              } else {
+                log.info(`[WS-${connectionId}] 🔊 No buzzers taken yet, skipping BUZZER_STATE_SYNC for joining player`);
+              }
+            } catch (syncErr) {
+              log.error(`[WS-${connectionId}] ❌ Error sending BUZZER_STATE_SYNC:`, syncErr.message);
+            }
           } catch (playerJoinErr) {
             log.error(`[WS-${connectionId}] ❌ Error processing PLAYER_JOIN:`, playerJoinErr.message);
             if (playerJoinErr.stack) {
@@ -1267,6 +1291,47 @@ async function startBackend({ port = 4310 } = {}) {
               .replace(/\.mp3$/i, '') + '.mp3';
 
             log.info(`[WS-${connectionId}] 🔊 Player buzzer selection: ${data.teamName} selected "${data.buzzerSound}" → normalized to "${normalizedBuzzerSound}" (device: ${buzzerDeviceId})`);
+
+            // Check if this buzzer is already taken by another player
+            let buzzerTakenBy = null;
+            for (const [pid, player] of networkPlayers.entries()) {
+              if (pid !== buzzerDeviceId && player.buzzerSound === normalizedBuzzerSound) {
+                buzzerTakenBy = player.teamName || pid;
+                break;
+              }
+            }
+
+            if (buzzerTakenBy) {
+              // Buzzer is already taken - reject the selection
+              log.info(`[WS-${connectionId}] 🚫 Buzzer "${normalizedBuzzerSound}" already taken by "${buzzerTakenBy}", rejecting for ${data.teamName}`);
+              try {
+                const rejectMessage = JSON.stringify({
+                  type: 'BUZZER_REJECTED',
+                  buzzerSound: normalizedBuzzerSound,
+                  reason: 'Already selected by another team',
+                  takenBy: buzzerTakenBy,
+                  timestamp: Date.now()
+                });
+                ws.send(rejectMessage);
+
+                // Also send updated BUZZER_STATE_SYNC so the player has the latest state
+                const buzzerSelections = {};
+                for (const [pid, player] of networkPlayers.entries()) {
+                  if (pid !== buzzerDeviceId && player.buzzerSound) {
+                    buzzerSelections[pid] = player.buzzerSound;
+                  }
+                }
+                const syncMessage = JSON.stringify({
+                  type: 'BUZZER_STATE_SYNC',
+                  buzzerSelections,
+                  timestamp: Date.now()
+                });
+                ws.send(syncMessage);
+              } catch (rejectErr) {
+                log.error(`[WS-${connectionId}] ❌ Error sending BUZZER_REJECTED:`, rejectErr.message);
+              }
+              return;
+            }
 
             // Update networkPlayers with normalized buzzer sound
             const existingPlayer = networkPlayers.get(buzzerDeviceId);

@@ -29,7 +29,9 @@ export type HostMessageType =
   | 'CONTROLLER_AUTH_FAILED'   // Host denies PIN authentication
   | 'PIN_REQUIRED'             // Host requires waiting room PIN
   | 'PIN_RESULT'               // Host responds to PIN submission
-  | 'ADMIN_RESPONSE';          // Host responds to admin command
+  | 'ADMIN_RESPONSE'           // Host responds to admin command
+  | 'BUZZER_STATE_SYNC'        // Server sends all confirmed buzzer selections to a player
+  | 'BUZZER_REJECTED';         // Server rejects a buzzer selection (already taken)
 
 export interface PlayerMessage {
   type: PlayerMessageType;

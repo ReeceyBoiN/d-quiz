@@ -73,6 +73,7 @@ export default function App() {
   const [pinAccepted, setPinAccepted] = useState(false);
   const [selectedBuzzers, setSelectedBuzzers] = useState<Record<string, string>>({}); // deviceId -> buzzerSound mapping (other players)
   const [confirmedBuzzer, setConfirmedBuzzer] = useState<string | null>(null); // Current player's confirmed buzzer
+  const [buzzerRejection, setBuzzerRejection] = useState<{ buzzerSound: string; takenBy: string } | null>(null);
   const [teamName, setTeamName] = useState('');
   const [playerId] = useState(() => `player-${Math.random().toString(36).slice(2, 9)}`);
   const [deviceId] = useState(() => getOrCreateDeviceId());
@@ -566,6 +567,36 @@ export default function App() {
   }, [applyPendingDisplayMode, clearIdleExitTimeout, currentScreen, resetQuestionState, transitionToIdleDisplay]);
 
   const handleMessage = useCallback((message: HostMessage) => {
+
+    // Handle BUZZER_STATE_SYNC - full buzzer state from server (on join or after rejection)
+    if ((message.type as any) === 'BUZZER_STATE_SYNC') {
+      try {
+        const syncMessage = message as any;
+        console.log('[Player] Received BUZZER_STATE_SYNC:', syncMessage.buzzerSelections);
+        setSelectedBuzzers(syncMessage.buzzerSelections || {});
+      } catch (err) {
+        console.error('[Player] Error handling BUZZER_STATE_SYNC:', err);
+      }
+      return;
+    }
+
+    // Handle BUZZER_REJECTED - server rejected our buzzer choice (already taken)
+    if ((message.type as any) === 'BUZZER_REJECTED') {
+      try {
+        const rejectMessage = message as any;
+        console.log('[Player] Buzzer REJECTED:', rejectMessage.buzzerSound, 'taken by', rejectMessage.takenBy);
+        // Clear the confirmed buzzer so the player stays on buzzer selection
+        setConfirmedBuzzer(null);
+        updateBuzzerSound(null);
+        // Set rejection info for the modal to display
+        setBuzzerRejection({ buzzerSound: rejectMessage.buzzerSound, takenBy: rejectMessage.takenBy });
+        // Make sure we're on the buzzer selection screen
+        setCurrentScreen('buzzer-selection');
+      } catch (err) {
+        console.error('[Player] Error handling BUZZER_REJECTED:', err);
+      }
+      return;
+    }
 
     // Handle PLAYER_BUZZER_SELECT broadcasts from other players
     if ((message.type as any) === 'PLAYER_BUZZER_SELECT') {
@@ -1951,8 +1982,10 @@ export default function App() {
               <BuzzerSelectionModal
                 isOpen={currentScreen === 'buzzer-selection'}
                 selectedBuzzers={selectedBuzzers}
+                rejection={buzzerRejection}
                 onConfirm={handleBuzzerConfirm}
                 onCancel={handleBuzzerCancel}
+                onClearRejection={() => setBuzzerRejection(null)}
               />
             </>
           )}
