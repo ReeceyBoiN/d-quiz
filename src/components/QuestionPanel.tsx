@@ -43,6 +43,20 @@ export function QuestionPanel({
   const hasImage = !!question.imageDataUrl;
   const hasOptions = question.options && question.options.length > 0;
 
+  // Get proper display label for question type
+  const getTypeLabel = (type: string): string => {
+    switch (type) {
+      case 'multi': return 'Multiple Choice';
+      case 'letters': return 'Letters';
+      case 'numbers': return 'Numbers';
+      case 'nearest':
+      case 'nearestwins': return 'Nearest Wins';
+      case 'sequence': return 'Sequence';
+      case 'buzzin': return 'Buzz In';
+      default: return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+  };
+
   // Render options as letters (A, B, C, ...)
   const renderOptions = () => {
     if (!hasOptions) return null;
@@ -124,7 +138,7 @@ export function QuestionPanel({
               margin: '0 0 5px 50px',
             }}
           >
-            {qType.charAt(0).toUpperCase() + qType.slice(1)}
+            {getTypeLabel(qType)}
           </div>
         </div>
       </div>

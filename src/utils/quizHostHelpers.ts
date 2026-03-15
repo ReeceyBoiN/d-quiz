@@ -25,9 +25,9 @@ export const getAnswerText = (question: any): string => {
     return question.answerText || question.meta?.short_answer || '';
   }
 
-  // For sequence: return the sequence item at correctIndex
-  if (question.type?.toLowerCase() === 'sequence' && question.options && question.correctIndex !== undefined) {
-    return question.options[question.correctIndex] || '';
+  // For sequence: return all options joined as comma-separated string (matching player submission format)
+  if (question.type?.toLowerCase() === 'sequence' && question.options && question.options.length > 0) {
+    return question.options.join(',');
   }
 
   // For other types: use answerText or meta.short_answer

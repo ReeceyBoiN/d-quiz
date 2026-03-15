@@ -5405,6 +5405,8 @@ export function QuizHost() {
         answerText = currentQuestion.answerText || '';
       } else if (currentQuestion.type?.toLowerCase() === 'nearest' || currentQuestion.type?.toLowerCase() === 'nearestwins') {
         answerText = answerLetter; // The target number
+      } else if (currentQuestion.type?.toLowerCase() === 'sequence') {
+        answerText = currentQuestion.answerText || '';
       }
 
       // For nearest wins questions, send nearest-wins-results display instead
@@ -6806,11 +6808,11 @@ export function QuizHost() {
         currentQuestion.correctIndex !== undefined) {
       return String.fromCharCode(65 + currentQuestion.correctIndex);
     }
-    // For sequence: return the sequence item at correctIndex
+    // For sequence: return all options joined as comma-separated string (matching player submission format)
     if (currentQuestion.type?.toLowerCase() === 'sequence' &&
         currentQuestion.options &&
-        currentQuestion.correctIndex !== undefined) {
-      return currentQuestion.options[currentQuestion.correctIndex] || null;
+        currentQuestion.options.length > 0) {
+      return currentQuestion.options.join(',');
     }
     // For other types: use answerText if available
     return currentQuestion.answerText || null;
@@ -6840,6 +6842,11 @@ export function QuizHost() {
       const answerLetter = String.fromCharCode(65 + currentQuestion.correctIndex);
       const answerText = currentQuestion.answerText;
       return answerText ? `${answerLetter} - ${answerText}` : answerLetter;
+    }
+
+    // For sequence: show the human-readable answerText (e.g. "Diego Armando") instead of comma-joined options
+    if (currentQuestion.type?.toLowerCase() === 'sequence') {
+      return currentQuestion.answerText || correctAnswer;
     }
 
     // For other types: return the answer as-is
