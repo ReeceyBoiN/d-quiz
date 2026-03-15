@@ -697,6 +697,11 @@ export function QuizHost() {
   const [teamAnswerStatuses, setTeamAnswerStatuses] = useState<{[teamId: string]: 'correct' | 'incorrect' | 'no-answer'}>({});
   const [teamCorrectRankings, setTeamCorrectRankings] = useState<{[teamId: string]: number}>({});
 
+  // Cumulative answer stats across the entire quiz session (for Performance panel)
+  const [teamCumulativeStats, setTeamCumulativeStats] = useState<{
+    [teamId: string]: { correct: number; incorrect: number; noAnswer: number; total: number }
+  }>({});
+
   // Pending teams state for network players awaiting approval
   const [pendingTeams, setPendingTeams] = useState<Array<{deviceId: string, playerId: string, teamName: string, timestamp: number}>>([]);
   const [showPendingTeams, setShowPendingTeams] = useState(false);
@@ -1071,6 +1076,7 @@ export function QuizHost() {
       console.log('[QuizHost] ✅ Setting loadedQuizQuestions with', currentQuiz.questions.length, 'questions');
       setLoadedQuizQuestions(currentQuiz.questions);
       setCurrentLoadedQuestionIndex(0);
+      setTeamCumulativeStats({});
       closeAllGameModes();
 
       // Use KeypadInterface for both regular and quiz pack modes
@@ -2236,6 +2242,7 @@ export function QuizHost() {
     console.log('[QuizHost] ⚠️  About to clear loadedQuizQuestions');
     setLoadedQuizQuestions([]);
     setCurrentLoadedQuestionIndex(0);
+    setTeamCumulativeStats({});
 
     // Reset quiz pack display and mode flags
     setShowQuizPackDisplay(false);
@@ -2332,6 +2339,7 @@ export function QuizHost() {
 
     closeAllGameModes(); // Close any other active modes first
     resetCurrentRoundScores(); // Reset scores to defaults when starting a new keypad round
+    setTeamCumulativeStats({});
     // Clear loaded quiz questions to ensure on-the-spot mode doesn't auto-detect question type from previous quiz pack
     console.log('[QuizHost] ⚠️  About to clear loadedQuizQuestions for keypad mode');
     setLoadedQuizQuestions([]);
@@ -2725,6 +2733,21 @@ export function QuizHost() {
 
         // Update state with the calculated statuses
         setTeamAnswerStatuses(newStatuses);
+
+        // Update cumulative stats for all teams after scoring
+        setTeamCumulativeStats(prev => {
+          const updated = { ...prev };
+          Object.entries(newStatuses).forEach(([teamId, status]) => {
+            const existing = updated[teamId] || { correct: 0, incorrect: 0, noAnswer: 0, total: 0 };
+            updated[teamId] = {
+              correct: existing.correct + (status === 'correct' ? 1 : 0),
+              incorrect: existing.incorrect + (status === 'incorrect' ? 1 : 0),
+              noAnswer: existing.noAnswer + (status === 'no-answer' ? 1 : 0),
+              total: existing.total + 1,
+            };
+          });
+          return updated;
+        });
 
         // Send the answer to all players and external display
         // Skip for nearest wins questions - handleRevealAnswer already sends the correct format
@@ -5386,6 +5409,24 @@ export function QuizHost() {
 
         console.log(`[QuizPack] Scoring applied for question ${currentLoadedQuestionIndex + 1}`);
         }
+
+        // Update cumulative stats for all teams after scoring
+        setTeamCumulativeStats(prev => {
+          const updated = { ...prev };
+          correctTeamIds.forEach(id => {
+            const existing = updated[id] || { correct: 0, incorrect: 0, noAnswer: 0, total: 0 };
+            updated[id] = { ...existing, correct: existing.correct + 1, total: existing.total + 1 };
+          });
+          wrongTeamIds.forEach(id => {
+            const existing = updated[id] || { correct: 0, incorrect: 0, noAnswer: 0, total: 0 };
+            updated[id] = { ...existing, incorrect: existing.incorrect + 1, total: existing.total + 1 };
+          });
+          noAnswerTeamIds.forEach(id => {
+            const existing = updated[id] || { correct: 0, incorrect: 0, noAnswer: 0, total: 0 };
+            updated[id] = { ...existing, noAnswer: existing.noAnswer + 1, total: existing.total + 1 };
+          });
+          return updated;
+        });
       }
     }
 
@@ -7098,6 +7139,7 @@ export function QuizHost() {
                 buzzerVolumes={buzzerVolumes}
                 onBuzzerVolumeChange={handleBuzzerVolumeChange}
                 displayMode={fastestTeamDisplayMode}
+                teamCumulativeStats={teamCumulativeStats}
               />
             </div>
           )}
@@ -7188,6 +7230,7 @@ export function QuizHost() {
                 buzzerVolumes={buzzerVolumes}
                 onBuzzerVolumeChange={handleBuzzerVolumeChange}
                 displayMode={fastestTeamDisplayMode}
+                teamCumulativeStats={teamCumulativeStats}
               />
             </div>
           )}
@@ -7211,6 +7254,7 @@ export function QuizHost() {
             buzzerVolumes={buzzerVolumes}
             onBuzzerVolumeChange={handleBuzzerVolumeChange}
             displayMode={fastestTeamDisplayMode}
+            teamCumulativeStats={teamCumulativeStats}
           />
         </div>
       );
@@ -7356,6 +7400,7 @@ export function QuizHost() {
                 buzzerVolumes={buzzerVolumes}
                 onBuzzerVolumeChange={handleBuzzerVolumeChange}
                 displayMode={fastestTeamDisplayMode}
+                teamCumulativeStats={teamCumulativeStats}
               />
             </div>
           )}

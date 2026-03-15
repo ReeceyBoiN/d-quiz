@@ -33,6 +33,9 @@ interface FastestTeamDisplayProps {
   onBlockTeam?: (teamId: string, blocked: boolean) => void;
   buzzerVolumes?: {[buzzerName: string]: number};
   onBuzzerVolumeChange?: (buzzerSound: string, volume: number) => void;
+  teamCumulativeStats?: {
+    [teamId: string]: { correct: number; incorrect: number; noAnswer: number; total: number }
+  };
 }
 
 export function FastestTeamDisplay({
@@ -46,7 +49,8 @@ export function FastestTeamDisplay({
   onBlockTeam,
   buzzerVolumes = {},
   onBuzzerVolumeChange,
-  displayMode = 'fastest'
+  displayMode = 'fastest',
+  teamCumulativeStats = {}
 }: FastestTeamDisplayProps) {
   // Derive buzzer volume from parent prop, or default to 75
   const currentBuzzerVolume = fastestTeam?.team.buzzerSound
@@ -129,18 +133,15 @@ export function FastestTeamDisplay({
     setIsDraggingHost(false);
   };
 
-  // Generate mock historical stats for the team (in a real app, this would come from a database)
+  // Get cumulative performance stats for the team from real quiz data
   const getTeamStats = (teamId: string) => {
-    // Using team ID to generate consistent mock data
-    const seed = parseInt(teamId) || 1;
-    const correctAnswers = Math.floor(Math.random() * 25) + 15; // 15-40 correct answers
-    const incorrectAnswers = Math.floor(Math.random() * 12) + 3; // 3-15 incorrect answers
-    const totalQuestions = correctAnswers + incorrectAnswers;
-    const correctPercentage = Math.round((correctAnswers / totalQuestions) * 100);
-    
+    const stats = teamCumulativeStats[teamId];
+    const correctAnswers = stats?.correct ?? 0;
+    const totalQuestions = stats?.total ?? 0;
+    const correctPercentage = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
+
     return {
       correctAnswers,
-      incorrectAnswers,
       totalQuestions,
       correctPercentage
     };

@@ -17,6 +17,10 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   -?-sequence question is only allowing 1 answer to be selected on on the spot mode
 
+  Answer needs to be visible for host on a toggle
+
+  reveal answer should show the fastest team on the host screen before announcing that team 
+
   -?-Buzz in mode needs just making in general hahaha -  sequence question needs to be able to tap the correct sequence of answers, not just one answer 
 
   -?-on player device when scores / leaderboard is shown, it needs to be scrolable so players can scroll up or down the leaderboard
