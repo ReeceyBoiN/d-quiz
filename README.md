@@ -17,8 +17,6 @@ Get your IP from CMD (ipconfig) then on a phone on the same wifi network, enter 
 
   -?-sequence question is only allowing 1 answer to be selected on on the spot mode
 
-  if a team choses a buzzer it should be greyed out so other teams cant choose that buzzer. - host can override though.
-
   -?-Buzz in mode needs just making in general hahaha -  sequence question needs to be able to tap the correct sequence of answers, not just one answer 
 
   -?-on player device when scores / leaderboard is shown, it needs to be scrolable so players can scroll up or down the leaderboard
